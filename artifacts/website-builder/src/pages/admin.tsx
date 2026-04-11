@@ -22,11 +22,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ShoppingCart, DollarSign, Activity, CheckCircle, Clock, XCircle, Trash2, Plus, Edit } from "lucide-react";
+import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X } from "lucide-react";
 import { format } from "date-fns";
-import { ar } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
   getGetAdminStatsQueryKey, 
@@ -63,6 +63,8 @@ export default function Admin() {
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const [editingAmount, setEditingAmount] = useState<{ orderId: number; value: string } | null>(null);
 
   const handleUpdateOrderStatus = (orderId: number, status: string) => {
     updateOrder.mutate({ id: orderId, data: { status } }, {
@@ -132,6 +134,25 @@ export default function Admin() {
         }
       });
     }
+  };
+
+  const handleSaveAmount = (orderId: number) => {
+    if (!editingAmount) return;
+    const amount = parseFloat(editingAmount.value);
+    if (isNaN(amount) || amount < 0) {
+      toast({ variant: "destructive", title: "خطأ", description: "أدخل مبلغاً صحيحاً" });
+      return;
+    }
+    updateOrder.mutate({ id: orderId, data: { totalAmount: amount } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        toast({ title: "تم التحديث", description: "تم تحديث المبلغ الإجمالي بنجاح" });
+        setEditingAmount(null);
+      },
+      onError: () => {
+        toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث المبلغ" });
+      }
+    });
   };
 
   if (statsLoading || ordersLoading) {
@@ -212,63 +233,116 @@ export default function Admin() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>رقم الطلب</TableHead>
+                      <TableHead className="w-16">رقم</TableHead>
                       <TableHead>العميل</TableHead>
                       <TableHead>الموقع</TableHead>
                       <TableHead>التاريخ</TableHead>
+                      <TableHead>المبلغ الإجمالي</TableHead>
+                      <TableHead>المقدم (50%)</TableHead>
                       <TableHead>الحالة</TableHead>
                       <TableHead>الدفع (مقدم / متبقي)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {orders?.map(order => (
-                      <TableRow key={order.id}>
-                        <TableCell className="font-medium">#{order.id}</TableCell>
-                        <TableCell>{order.user.fullName}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span className="font-semibold">{order.siteName}</span>
-                            <span className="text-xs text-muted-foreground">{order.siteType}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{format(new Date(order.createdAt), "dd/MM/yyyy")}</TableCell>
-                        <TableCell>
-                          <Select 
-                            defaultValue={order.status} 
-                            onValueChange={(val) => handleUpdateOrderStatus(order.id, val)}
-                          >
-                            <SelectTrigger className="w-[140px] h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">قيد الانتظار</SelectItem>
-                              <SelectItem value="in_progress">جاري التنفيذ</SelectItem>
-                              <SelectItem value="completed">مكتمل</SelectItem>
-                              <SelectItem value="cancelled">ملغي</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-4">
-                            <div className="flex items-center gap-2">
-                              <Switch 
-                                checked={order.depositPaid} 
-                                onCheckedChange={(val) => handleUpdateOrderPayment(order.id, "depositPaid", val)} 
-                              />
+                    {orders?.map(order => {
+                      const isEditingThis = editingAmount?.orderId === order.id;
+                      const deposit = order.totalAmount ? order.totalAmount / 2 : null;
+                      return (
+                        <TableRow key={order.id}>
+                          <TableCell className="font-medium">#{order.id}</TableCell>
+                          <TableCell>{order.user.fullName}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-semibold">{order.siteName}</span>
+                              <span className="text-xs text-muted-foreground">{order.siteType}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Switch 
-                                checked={order.finalPaid} 
-                                onCheckedChange={(val) => handleUpdateOrderPayment(order.id, "finalPaid", val)} 
-                              />
+                          </TableCell>
+                          <TableCell>{format(new Date(order.createdAt), "dd/MM/yyyy")}</TableCell>
+                          <TableCell>
+                            {isEditingThis ? (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  className="w-28 h-8 text-sm"
+                                  value={editingAmount.value}
+                                  onChange={e => setEditingAmount({ orderId: order.id, value: e.target.value })}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") handleSaveAmount(order.id);
+                                    if (e.key === "Escape") setEditingAmount(null);
+                                  }}
+                                  autoFocus
+                                />
+                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleSaveAmount(order.id)}>
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setEditingAmount(null)}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold">
+                                  {order.totalAmount ? `${order.totalAmount} ${order.currency}` : <span className="text-muted-foreground text-xs">غير محدد</span>}
+                                </span>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                  onClick={() => setEditingAmount({ orderId: order.id, value: String(order.totalAmount ?? "") })}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {deposit !== null ? (
+                              <span className="font-semibold text-primary">{deposit} {order.currency}</span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Select 
+                              defaultValue={order.status} 
+                              onValueChange={(val) => handleUpdateOrderStatus(order.id, val)}
+                            >
+                              <SelectTrigger className="w-[140px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">قيد الانتظار</SelectItem>
+                                <SelectItem value="in_progress">جاري التنفيذ</SelectItem>
+                                <SelectItem value="completed">مكتمل</SelectItem>
+                                <SelectItem value="cancelled">ملغي</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-4">
+                              <div className="flex items-center gap-1">
+                                <Switch 
+                                  checked={order.depositPaid} 
+                                  onCheckedChange={(val) => handleUpdateOrderPayment(order.id, "depositPaid", val)} 
+                                />
+                                <Label className="text-xs text-muted-foreground">مقدم</Label>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Switch 
+                                  checked={order.finalPaid} 
+                                  onCheckedChange={(val) => handleUpdateOrderPayment(order.id, "finalPaid", val)} 
+                                />
+                                <Label className="text-xs text-muted-foreground">متبقي</Label>
+                              </div>
                             </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {(!orders || orders.length === 0) && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                           لا توجد طلبات
                         </TableCell>
                       </TableRow>
