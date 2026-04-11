@@ -1,0 +1,125 @@
+import { useAuth } from "@/lib/auth";
+import { useLogout } from "@workspace/api-client-react";
+import { Link, useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetMeQueryKey } from "@workspace/api-client-react";
+import { LogOut, User as UserIcon, Menu } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useState } from "react";
+
+export function Layout({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated } = useAuth();
+  const logout = useLogout();
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+  const [open, setOpen] = useState(false);
+
+  const handleLogout = () => {
+    logout.mutate(undefined, {
+      onSuccess: () => {
+        queryClient.setQueryData(getGetMeQueryKey(), null);
+        setLocation("/");
+      },
+    });
+  };
+
+  const NavLinks = () => (
+    <>
+      <Link href="/" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+        الرئيسية
+      </Link>
+      <Link href="/testimonials" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+        آراء العملاء
+      </Link>
+      {isAuthenticated && (
+        <Link href="/my-orders" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+          طلباتي
+        </Link>
+      )}
+      {user?.role === "admin" && (
+        <Link href="/admin" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
+          لوحة التحكم
+        </Link>
+      )}
+    </>
+  );
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <Link href="/" className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg">م</div>
+              <span className="font-bold text-lg hidden sm:inline-block">منصة بناء المواقع</span>
+            </Link>
+            
+            <nav className="hidden md:flex items-center gap-6 ms-6">
+              <NavLinks />
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {isAuthenticated ? (
+              <div className="flex items-center gap-4">
+                <Link href="/order" className="hidden sm:block">
+                  <Button variant="default" size="sm">طلب موقع جديد</Button>
+                </Link>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <UserIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline-block">{user?.fullName}</span>
+                </div>
+                <Button variant="ghost" size="icon" onClick={handleLogout} title="تسجيل الخروج">
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link href="/login">
+                  <Button variant="ghost" size="sm">تسجيل الدخول</Button>
+                </Link>
+                <Link href="/register">
+                  <Button variant="default" size="sm">حساب جديد</Button>
+                </Link>
+              </div>
+            )}
+
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetTrigger asChild className="md:hidden">
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="flex flex-col gap-6 pt-12">
+                <NavLinks />
+                {isAuthenticated && (
+                  <Link href="/order" onClick={() => setOpen(false)}>
+                    <Button variant="default" className="w-full">طلب موقع جديد</Button>
+                  </Link>
+                )}
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 flex flex-col">
+        {children}
+      </main>
+
+      <footer className="border-t bg-white py-8 md:py-12 mt-auto">
+        <div className="container mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">م</div>
+            <span className="font-semibold text-muted-foreground">منصة بناء المواقع &copy; {new Date().getFullYear()}</span>
+          </div>
+          <div className="flex gap-4 text-sm text-muted-foreground">
+            <Link href="/" className="hover:text-primary">الشروط والأحكام</Link>
+            <Link href="/" className="hover:text-primary">سياسة الخصوصية</Link>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
