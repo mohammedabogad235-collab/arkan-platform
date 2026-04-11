@@ -46,7 +46,7 @@ export function ProtectedRoute({ children, adminOnly = false }: { children: Reac
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
-        setLocation("/login");
+        setLocation(adminOnly ? "/admin/login" : "/login");
       } else if (adminOnly && user?.role !== "admin") {
         setLocation("/");
       }

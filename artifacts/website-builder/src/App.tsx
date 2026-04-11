@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,14 +12,20 @@ import Order from "@/pages/order";
 import MyOrders from "@/pages/my-orders";
 import Testimonials from "@/pages/testimonials";
 import Admin from "@/pages/admin";
+import AdminLogin from "@/pages/admin-login";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
 
+const ADMIN_STANDALONE_PATHS = ["/admin/login"];
+
 function Router() {
-  return (
+  const [location] = useLocation();
+  const isStandalone = ADMIN_STANDALONE_PATHS.some((p) => location === p || location.startsWith(p + "?"));
+
+  const routes = (
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
@@ -27,6 +33,7 @@ function Router() {
       <Route path="/testimonials" component={Testimonials} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
+      <Route path="/admin/login" component={AdminLogin} />
 
       <Route path="/order">
         <ProtectedRoute>
@@ -49,6 +56,9 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+
+  if (isStandalone) return routes;
+  return <Layout>{routes}</Layout>;
 }
 
 function App() {
@@ -57,9 +67,7 @@ function App() {
       <AuthProvider>
         <TooltipProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Layout>
-              <Router />
-            </Layout>
+            <Router />
           </WouterRouter>
           <Toaster />
         </TooltipProvider>

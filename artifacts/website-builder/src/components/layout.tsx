@@ -34,23 +34,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
   if (isAdmin && isAdminPage) {
     return (
       <div className="min-h-screen flex flex-col bg-muted/30">
-        <header className="sticky top-0 z-50 w-full border-b bg-background shadow-sm">
+        <header className="sticky top-0 z-50 w-full border-b bg-[#0f172a] shadow-sm">
           <div className="container mx-auto px-4 h-14 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shadow shadow-primary/30">
                 <LayoutDashboard className="w-4 h-4" />
               </div>
-              <span className="font-bold text-base">لوحة تحكم الأدمن</span>
+              <div className="flex flex-col leading-tight">
+                <span className="font-extrabold text-base text-white tracking-wide">أركان</span>
+                <span className="text-[10px] text-white/40 font-medium">لوحة تحكم الإدارة</span>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <Link href="/">
-                <Button variant="outline" size="sm">موقع العملاء</Button>
+                <Button variant="outline" size="sm" className="border-white/20 text-white/70 hover:bg-white/10 hover:text-white bg-transparent">موقع العملاء</Button>
               </Link>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground border rounded-full px-3 py-1">
+              <div className="flex items-center gap-2 text-sm text-white/50 border border-white/10 rounded-full px-3 py-1">
                 <UserIcon className="w-3.5 h-3.5" />
                 <span>{user?.fullName}</span>
               </div>
-              <Button variant="ghost" size="icon" onClick={handleLogout} title="تسجيل الخروج">
+              <Button variant="ghost" size="icon" onClick={handleLogout} title="تسجيل الخروج" className="text-white/50 hover:text-white hover:bg-white/10">
                 <LogOut className="w-4 h-4" />
               </Button>
             </div>
