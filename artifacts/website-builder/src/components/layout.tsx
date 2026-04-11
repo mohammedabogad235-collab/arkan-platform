@@ -94,8 +94,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg">م</div>
-              <span className="font-bold text-lg hidden sm:inline-block">منصة بناء المواقع</span>
+              <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-base">A</div>
+              <span className="font-bold text-lg hidden sm:inline-block">Arkan</span>
             </Link>
             
             <nav className="hidden md:flex items-center gap-6 ms-6">
@@ -154,8 +154,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <footer className="border-t bg-white py-8 md:py-12 mt-auto">
         <div className="container mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">م</div>
-            <span className="font-semibold text-muted-foreground">منصة بناء المواقع &copy; {new Date().getFullYear()}</span>
+            <div className="w-6 h-6 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">A</div>
+            <span className="font-semibold text-muted-foreground">Arkan &copy; {new Date().getFullYear()}</span>
           </div>
           <div className="flex gap-4 text-sm text-muted-foreground">
             <Link href="/terms" className="hover:text-primary transition-colors">الشروط والأحكام</Link>
