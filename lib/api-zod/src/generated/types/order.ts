@@ -27,6 +27,7 @@ export interface Order {
   finalPaid: boolean;
   /** @nullable */
   totalAmount?: number | null;
+  depositPercentage: number;
   /** @nullable */
   notes?: string | null;
   createdAt: string;

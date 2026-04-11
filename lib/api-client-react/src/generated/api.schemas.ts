@@ -82,6 +82,7 @@ export interface Order {
   finalPaid: boolean;
   /** @nullable */
   totalAmount?: number | null;
+  depositPercentage: number;
   /** @nullable */
   notes?: string | null;
   createdAt: string;
@@ -117,6 +118,8 @@ export interface UpdateOrderBody {
   notes?: string | null;
   /** @nullable */
   totalAmount?: number | null;
+  /** @nullable */
+  depositPercentage?: number | null;
 }
 
 export interface Package {

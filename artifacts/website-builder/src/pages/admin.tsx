@@ -65,6 +65,7 @@ export default function Admin() {
   const { toast } = useToast();
 
   const [editingAmount, setEditingAmount] = useState<{ orderId: number; value: string } | null>(null);
+  const [editingPercent, setEditingPercent] = useState<{ orderId: number; value: string } | null>(null);
 
   const handleUpdateOrderStatus = (orderId: number, status: string) => {
     updateOrder.mutate({ id: orderId, data: { status } }, {
@@ -155,6 +156,25 @@ export default function Admin() {
     });
   };
 
+  const handleSavePercent = (orderId: number) => {
+    if (!editingPercent) return;
+    const pct = parseFloat(editingPercent.value);
+    if (isNaN(pct) || pct < 0 || pct > 100) {
+      toast({ variant: "destructive", title: "خطأ", description: "أدخل نسبة بين 0 و 100" });
+      return;
+    }
+    updateOrder.mutate({ id: orderId, data: { depositPercentage: pct } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        toast({ title: "تم التحديث", description: "تم تحديث نسبة المقدم بنجاح" });
+        setEditingPercent(null);
+      },
+      onError: () => {
+        toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث النسبة" });
+      }
+    });
+  };
+
   if (statsLoading || ordersLoading) {
     return <div className="p-8 text-center">جاري التحميل...</div>;
   }
@@ -238,7 +258,8 @@ export default function Admin() {
                       <TableHead>الموقع</TableHead>
                       <TableHead>التاريخ</TableHead>
                       <TableHead>المبلغ الإجمالي</TableHead>
-                      <TableHead>المقدم (50%)</TableHead>
+                      <TableHead>نسبة المقدم</TableHead>
+                      <TableHead>المقدم</TableHead>
                       <TableHead>الحالة</TableHead>
                       <TableHead>الدفع (مقدم / متبقي)</TableHead>
                     </TableRow>
@@ -246,7 +267,9 @@ export default function Admin() {
                   <TableBody>
                     {orders?.map(order => {
                       const isEditingThis = editingAmount?.orderId === order.id;
-                      const deposit = order.totalAmount ? order.totalAmount / 2 : null;
+                      const isEditingPct = editingPercent?.orderId === order.id;
+                      const pct = order.depositPercentage ?? 50;
+                      const deposit = order.totalAmount ? (order.totalAmount * pct) / 100 : null;
                       return (
                         <TableRow key={order.id}>
                           <TableCell className="font-medium">#{order.id}</TableCell>
@@ -297,8 +320,46 @@ export default function Admin() {
                             )}
                           </TableCell>
                           <TableCell>
+                            {isEditingPct ? (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  className="w-20 h-8 text-sm"
+                                  value={editingPercent.value}
+                                  onChange={e => setEditingPercent({ orderId: order.id, value: e.target.value })}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") handleSavePercent(order.id);
+                                    if (e.key === "Escape") setEditingPercent(null);
+                                  }}
+                                  autoFocus
+                                />
+                                <span className="text-sm">%</span>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleSavePercent(order.id)}>
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setEditingPercent(null)}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <span className="font-semibold">{pct}%</span>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                  onClick={() => setEditingPercent({ orderId: order.id, value: String(pct) })}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {deposit !== null ? (
-                              <span className="font-semibold text-primary">{deposit} {order.currency}</span>
+                              <span className="font-semibold text-primary">{deposit.toFixed(0)} {order.currency}</span>
                             ) : (
                               <span className="text-muted-foreground text-xs">—</span>
                             )}
@@ -342,7 +403,7 @@ export default function Admin() {
                     })}
                     {(!orders || orders.length === 0) && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           لا توجد طلبات
                         </TableCell>
                       </TableRow>

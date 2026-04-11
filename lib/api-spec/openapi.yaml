@@ -649,6 +649,8 @@ components:
           type: boolean
         totalAmount:
           type: ["number", "null"]
+        depositPercentage:
+          type: number
         notes:
           type: ["string", "null"]
         createdAt:
@@ -687,6 +689,7 @@ components:
         - status
         - depositPaid
         - finalPaid
+        - depositPercentage
         - createdAt
         - updatedAt
         - user
@@ -726,6 +729,8 @@ components:
         notes:
           type: ["string", "null"]
         totalAmount:
+          type: ["number", "null"]
+        depositPercentage:
           type: ["number", "null"]
 
     Package:

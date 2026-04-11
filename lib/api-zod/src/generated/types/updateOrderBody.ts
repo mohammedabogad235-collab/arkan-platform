@@ -17,4 +17,6 @@ export interface UpdateOrderBody {
   notes?: string | null;
   /** @nullable */
   totalAmount?: number | null;
+  /** @nullable */
+  depositPercentage?: number | null;
 }

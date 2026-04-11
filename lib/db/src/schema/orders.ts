@@ -16,6 +16,7 @@ export const ordersTable = pgTable("orders", {
   depositPaid: boolean("deposit_paid").notNull().default(false),
   finalPaid: boolean("final_paid").notNull().default(false),
   totalAmount: real("total_amount"),
+  depositPercentage: real("deposit_percentage").notNull().default(50),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
