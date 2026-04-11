@@ -58,6 +58,23 @@ router.patch("/users/:id/role", async (req, res): Promise<void> => {
   res.json(sanitizeUser(user));
 });
 
+router.patch("/admin/change-password", async (req, res): Promise<void> => {
+  const session = (req as any).session;
+  const userId = session?.userId;
+  if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
+
+  const { newPassword } = req.body as { newPassword?: string };
+  if (!newPassword || newPassword.length < 6) {
+    res.status(400).json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }); return;
+  }
+
+  const hashed = hashPassword(newPassword);
+  const [user] = await db.update(usersTable).set({ password: hashed }).where(eq(usersTable.id, userId)).returning();
+  if (!user) { res.status(404).json({ error: "المستخدم غير موجود" }); return; }
+
+  res.json({ success: true });
+});
+
 router.post("/admin/create-admin", async (req, res): Promise<void> => {
   const { fullName, phone, email, username, password } = req.body as Record<string, string>;
   if (!fullName || !phone || !email || !username || !password) {

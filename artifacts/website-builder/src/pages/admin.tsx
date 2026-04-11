@@ -3,6 +3,7 @@ import {
   useGetAdminStats, 
   useListOrders, 
   useUpdateOrder,
+  useDeleteOrder,
   useListPackages,
   useListTestimonials,
   useListPaymentMethods,
@@ -21,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
+import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
@@ -51,6 +52,7 @@ export default function Admin() {
   const { data: testimonials } = useListTestimonials();
   
   const updateOrder = useUpdateOrder();
+  const deleteOrder = useDeleteOrder();
   const deleteUser = useDeleteUser();
   const deletePackage = useDeletePackage();
   const deletePaymentMethod = useDeletePaymentMethod();
@@ -65,6 +67,10 @@ export default function Admin() {
   const [createAdminOpen, setCreateAdminOpen] = useState(false);
   const [adminForm, setAdminForm] = useState({ fullName: "", phone: "", email: "", username: "", password: "" });
   const [adminFormLoading, setAdminFormLoading] = useState(false);
+  const [pwForm, setPwForm] = useState({ newPassword: "", confirm: "" });
+  const [pwLoading, setPwLoading] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
   const handleUpdateOrderStatus = (orderId: number, status: string) => {
     updateOrder.mutate({ id: orderId, data: { status } }, {
@@ -91,6 +97,21 @@ export default function Admin() {
     });
   };
 
+  const handleDeleteOrder = (orderId: number) => {
+    if(confirm("هل أنت متأكد من حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.")) {
+      deleteOrder.mutate({ id: orderId }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+          toast({ title: "تم الحذف", description: "تم حذف الطلب بنجاح" });
+        },
+        onError: () => {
+          toast({ variant: "destructive", title: "خطأ", description: "تعذر حذف الطلب" });
+        }
+      });
+    }
+  };
+
   const handleDeleteUser = (userId: number) => {
     if(confirm("هل أنت متأكد من حذف هذا المستخدم؟ لا يمكن التراجع عن هذا الإجراء.")) {
       deleteUser.mutate({ id: userId }, {
@@ -100,6 +121,32 @@ export default function Admin() {
           toast({ title: "تم الحذف", description: "تم حذف المستخدم بنجاح" });
         }
       });
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwForm.newPassword !== pwForm.confirm) {
+      toast({ variant: "destructive", title: "خطأ", description: "كلمتا المرور غير متطابقتين" });
+      return;
+    }
+    if (pwForm.newPassword.length < 6) {
+      toast({ variant: "destructive", title: "خطأ", description: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" });
+      return;
+    }
+    setPwLoading(true);
+    try {
+      await apiFetch("/api/admin/change-password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword: pwForm.newPassword }),
+      });
+      toast({ title: "تم التحديث", description: "تم تغيير كلمة المرور بنجاح" });
+      setPwForm({ newPassword: "", confirm: "" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر تغيير كلمة المرور" });
+    } finally {
+      setPwLoading(false);
     }
   };
 
@@ -292,12 +339,13 @@ export default function Admin() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 mb-8 h-auto p-1 gap-2 bg-muted/50">
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 mb-8 h-auto p-1 gap-2 bg-muted/50">
           <TabsTrigger value="orders" className="text-base h-10">الطلبات</TabsTrigger>
           <TabsTrigger value="users" className="text-base h-10">المستخدمين</TabsTrigger>
           <TabsTrigger value="packages" className="text-base h-10">الباقات</TabsTrigger>
           <TabsTrigger value="payment-methods" className="text-base h-10">طرق الدفع</TabsTrigger>
           <TabsTrigger value="testimonials" className="text-base h-10">الآراء</TabsTrigger>
+          <TabsTrigger value="settings" className="text-base h-10 flex items-center gap-1"><Settings className="w-4 h-4" />الإعدادات</TabsTrigger>
         </TabsList>
         
         <TabsContent value="orders" className="space-y-4">
@@ -320,6 +368,7 @@ export default function Admin() {
                       <TableHead>المقدم</TableHead>
                       <TableHead>الحالة</TableHead>
                       <TableHead>الدفع (مقدم / متبقي)</TableHead>
+                      <TableHead className="w-14">حذف</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -455,6 +504,11 @@ export default function Admin() {
                                 <Label className="text-xs text-muted-foreground">متبقي</Label>
                               </div>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="destructive" size="icon" onClick={() => handleDeleteOrder(order.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       );
@@ -687,6 +741,66 @@ export default function Admin() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="settings">
+          <div className="max-w-md">
+            <Card>
+              <CardHeader>
+                <CardTitle>تغيير كلمة المرور</CardTitle>
+                <CardDescription>يمكنك تغيير كلمة مرور حسابك من هنا</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleChangePassword} className="space-y-4">
+                  <div className="space-y-1">
+                    <Label>كلمة المرور الجديدة</Label>
+                    <div className="relative">
+                      <Input
+                        type={showNewPw ? "text" : "password"}
+                        value={pwForm.newPassword}
+                        onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
+                        required
+                        placeholder="أدخل كلمة المرور الجديدة"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPw(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        tabIndex={-1}
+                      >
+                        {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>تأكيد كلمة المرور</Label>
+                    <div className="relative">
+                      <Input
+                        type={showConfirmPw ? "text" : "password"}
+                        value={pwForm.confirm}
+                        onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
+                        required
+                        placeholder="أعد إدخال كلمة المرور الجديدة"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPw(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <Button type="submit" disabled={pwLoading} className="w-full">
+                    {pwLoading ? "جاري الحفظ..." : "حفظ كلمة المرور"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

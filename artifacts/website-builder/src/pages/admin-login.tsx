@@ -107,12 +107,12 @@ export default function AdminLogin() {
                   placeholder="أدخل كلمة المرور"
                   required
                   autoComplete="current-password"
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/30 focus:border-primary focus-visible:ring-primary/30 h-11 pl-10"
+                  className="bg-white/10 border-white/20 text-white placeholder:text-white/30 focus:border-primary focus-visible:ring-primary/30 h-11 pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
                   tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
