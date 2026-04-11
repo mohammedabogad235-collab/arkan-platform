@@ -115,8 +115,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span className="font-semibold text-muted-foreground">منصة بناء المواقع &copy; {new Date().getFullYear()}</span>
           </div>
           <div className="flex gap-4 text-sm text-muted-foreground">
-            <Link href="/" className="hover:text-primary">الشروط والأحكام</Link>
-            <Link href="/" className="hover:text-primary">سياسة الخصوصية</Link>
+            <Link href="/terms" className="hover:text-primary transition-colors">الشروط والأحكام</Link>
+            <Link href="/privacy" className="hover:text-primary transition-colors">سياسة الخصوصية</Link>
           </div>
         </div>
       </footer>

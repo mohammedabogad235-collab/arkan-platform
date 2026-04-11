@@ -12,6 +12,8 @@ import Order from "@/pages/order";
 import MyOrders from "@/pages/my-orders";
 import Testimonials from "@/pages/testimonials";
 import Admin from "@/pages/admin";
+import Terms from "@/pages/terms";
+import Privacy from "@/pages/privacy";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -23,13 +25,15 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/testimonials" component={Testimonials} />
-      
+      <Route path="/terms" component={Terms} />
+      <Route path="/privacy" component={Privacy} />
+
       <Route path="/order">
         <ProtectedRoute>
           <Order />
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/my-orders">
         <ProtectedRoute>
           <MyOrders />

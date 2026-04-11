@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { useState } from "react";
 import * as z from "zod";
 import { useRegister, getGetMeQueryKey } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
@@ -16,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { Eye, EyeOff } from "lucide-react";
 
 const registerSchema = z.object({
   fullName: z.string().min(5, { message: "الاسم الكامل مطلوب" }),
@@ -30,6 +32,7 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
@@ -119,34 +122,48 @@ export default function Register() {
                   )}
                 />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>اسم المستخدم</FormLabel>
-                      <FormControl>
-                        <Input placeholder="user123" {...field} className="h-11" dir="ltr" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>كلمة المرور</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="******" {...field} className="h-11" dir="ltr" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <FormField
+                control={form.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>اسم المستخدم</FormLabel>
+                    <FormControl>
+                      <Input placeholder="user123" {...field} className="h-11" dir="ltr" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>كلمة المرور</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="على الأقل 6 أحرف"
+                          {...field}
+                          className="h-11 pe-12"
+                          dir="ltr"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute inset-y-0 end-0 flex items-center pe-3 text-muted-foreground hover:text-foreground transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <Button type="submit" className="w-full h-12 text-lg mt-6" disabled={register.isPending}>
                 {register.isPending ? "جاري إنشاء الحساب..." : "إنشاء حساب"}
               </Button>

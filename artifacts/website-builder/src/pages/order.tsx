@@ -1,14 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { useCreateOrder, useListPackages, useListPaymentMethods, getListOrdersQueryKey } from "@workspace/api-client-react";
+import { useCreateOrder, useListPaymentMethods, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -17,33 +16,26 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const orderSchema = z.object({
   siteName: z.string().min(2, { message: "اسم الموقع مطلوب" }),
   siteType: z.string().min(1, { message: "يرجى اختيار نوع الموقع" }),
   details: z.string().min(10, { message: "يرجى كتابة تفاصيل كافية عن موقعك" }),
-  packageId: z.coerce.number().nullable().optional(),
-  customBudget: z.coerce.number().nullable().optional(),
   currency: z.string().min(1, { message: "يرجى اختيار العملة" }),
   paymentMethodId: z.coerce.number().nullable().optional(),
-}).refine(data => data.packageId || data.customBudget, {
-  message: "يجب اختيار باقة أو تحديد ميزانية مخصصة",
-  path: ["packageId"],
 });
 
 export default function Order() {
   const createOrder = useCreateOrder();
-  const { data: packages, isLoading: packagesLoading } = useListPackages();
   const { data: paymentMethods, isLoading: paymentsLoading } = useListPaymentMethods();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const activePackages = packages?.filter(p => p.isActive) || [];
   const activePaymentMethods = paymentMethods?.filter(p => p.isActive) || [];
 
   const form = useForm<z.infer<typeof orderSchema>>({
@@ -52,16 +44,10 @@ export default function Order() {
       siteName: "",
       siteType: "",
       details: "",
-      packageId: null,
-      customBudget: null,
       currency: "EGP",
       paymentMethodId: null,
     },
   });
-
-  const currency = form.watch("currency");
-  const selectedPackageId = form.watch("packageId");
-  const selectedPackage = activePackages.find(p => p.id === selectedPackageId);
 
   function onSubmit(values: z.infer<typeof orderSchema>) {
     createOrder.mutate(
@@ -71,7 +57,7 @@ export default function Order() {
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           toast({
             title: "تم استلام طلبك بنجاح",
-            description: "سيتم التواصل معك قريباً للبدء في التنفيذ.",
+            description: "سيتم التواصل معك قريباً لتحديد الباقة المناسبة والبدء في التنفيذ.",
           });
           setLocation("/my-orders");
         },
@@ -87,17 +73,28 @@ export default function Order() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    <div className="container mx-auto px-4 py-12 max-w-3xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-foreground mb-2">طلب موقع جديد</h1>
-        <p className="text-muted-foreground text-lg">املأ البيانات التالية لنبدأ رحلة تصميم موقعك معاً.</p>
+        <p className="text-muted-foreground text-lg">
+          أخبرنا عن موقعك وسنتواصل معك لتحديد الباقة والسعر المناسب.
+        </p>
       </div>
+
+      <Alert className="mb-6 bg-blue-50 border-blue-200 text-blue-800">
+        <Info className="h-5 w-5 text-blue-600" />
+        <AlertTitle className="font-bold mb-1">كيف تسير العملية؟</AlertTitle>
+        <AlertDescription className="space-y-1 text-sm">
+          <p>بعد إرسال طلبك، سيقوم فريقنا بمراجعته وتحديد الباقة والسعر المناسب ثم التواصل معك.</p>
+          <p>يتم دفع <strong>50% كمقدم</strong> للبدء، و50% المتبقية عند التسليم.</p>
+        </AlertDescription>
+      </Alert>
 
       <Card className="shadow-lg border-t-4 border-t-primary">
         <CardContent className="pt-8">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              
+
               <div className="space-y-4">
                 <h3 className="text-xl font-semibold border-b pb-2">معلومات الموقع</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
@@ -146,12 +143,12 @@ export default function Order() {
                   name="details"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-base">تفاصيل ومميزات الموقع المطلوبة</FormLabel>
+                      <FormLabel className="text-base">تفاصيل ومتطلبات الموقع</FormLabel>
                       <FormControl>
-                        <Textarea 
-                          placeholder="اشرح لنا الفكرة، الصفحات المطلوبة، وأي ألوان أو تصاميم تفضلها..." 
-                          className="min-h-[120px] resize-y" 
-                          {...field} 
+                        <Textarea
+                          placeholder="اشرح لنا الفكرة والصفحات المطلوبة وأي تفضيلات خاصة (ألوان، تصميم، مميزات...)&#10;كلما كانت التفاصيل أكثر، كلما كان التنفيذ أدق."
+                          className="min-h-[140px] resize-y"
+                          {...field}
                         />
                       </FormControl>
                       <FormMessage />
@@ -160,112 +157,39 @@ export default function Order() {
                 />
               </div>
 
-              <div className="space-y-4 pt-4">
-                <h3 className="text-xl font-semibold border-b pb-2">التسعير والباقات</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-                  <FormField
-                    control={form.control}
-                    name="currency"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base">العملة المفضلة للدفع</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="h-12">
-                              <SelectValue placeholder="اختر العملة" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="EGP">جنيه مصري 🇪🇬</SelectItem>
-                            <SelectItem value="SAR">ريال سعودي 🇸🇦</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+              <div className="space-y-4 pt-2">
+                <h3 className="text-xl font-semibold border-b pb-2">تفضيلات الدفع</h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="packageId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base">اختر الباقة (اختياري)</FormLabel>
-                        <Select 
-                          onValueChange={(val) => {
-                            field.onChange(val ? Number(val) : null);
-                            if (val) form.setValue("customBudget", null);
-                          }} 
-                          value={field.value ? field.value.toString() : ""}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="h-12">
-                              <SelectValue placeholder="اختر باقة جاهزة" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {!packagesLoading && activePackages.map(p => (
-                              <SelectItem key={p.id} value={p.id.toString()}>
-                                {p.name} - {currency === 'EGP' ? `${p.priceEgp} جنيه` : `${p.priceSar} ريال`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>اختر إحدى باقاتنا المصممة مسبقاً</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="customBudget"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base">أو حدد ميزانيتك التقديرية</FormLabel>
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-base">العملة المفضلة للدفع</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <Input 
-                            type="number" 
-                            placeholder="مثال: 5000" 
-                            className="h-12"
-                            value={field.value || ""}
-                            onChange={(e) => {
-                              const val = e.target.value ? Number(e.target.value) : null;
-                              field.onChange(val);
-                              if (val) form.setValue("packageId", null);
-                            }}
-                          />
+                          <SelectTrigger className="h-12 max-w-xs">
+                            <SelectValue placeholder="اختر العملة" />
+                          </SelectTrigger>
                         </FormControl>
-                        <FormDescription>إذا كان طلبك خاصاً ولا يناسب الباقات</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4 pt-4">
-                <h3 className="text-xl font-semibold border-b pb-2">طريقة الدفع</h3>
-                
-                <Alert className="bg-primary/5 border-primary text-primary mb-6">
-                  <AlertCircle className="h-5 w-5" />
-                  <AlertTitle className="text-lg mb-1 font-bold">ملاحظة هامة حول الدفع</AlertTitle>
-                  <AlertDescription className="text-base">
-                    يتم دفع <strong>50% كمقدم</strong> للبدء في العمل، والـ 50% المتبقية بعد الانتهاء وتسليم الموقع.
-                  </AlertDescription>
-                </Alert>
+                        <SelectContent>
+                          <SelectItem value="EGP">جنيه مصري 🇪🇬</SelectItem>
+                          <SelectItem value="SAR">ريال سعودي 🇸🇦</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
                   name="paymentMethodId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-base">طريقة الدفع المناسبة لك</FormLabel>
-                      <Select 
-                        onValueChange={(val) => field.onChange(val ? Number(val) : null)} 
+                      <FormLabel className="text-base">طريقة الدفع المفضلة (اختياري)</FormLabel>
+                      <Select
+                        onValueChange={(val) => field.onChange(val ? Number(val) : null)}
                         value={field.value ? field.value.toString() : ""}
                       >
                         <FormControl>
@@ -285,17 +209,27 @@ export default function Order() {
                     </FormItem>
                   )}
                 />
+
                 {form.watch("paymentMethodId") && (
-                  <div className="p-4 bg-muted rounded-lg text-sm whitespace-pre-line text-muted-foreground mt-2 border">
+                  <div className="p-4 bg-muted rounded-lg text-sm whitespace-pre-line text-muted-foreground border">
+                    <p className="font-semibold text-foreground mb-1">تفاصيل الدفع:</p>
                     {activePaymentMethods.find(p => p.id === form.watch("paymentMethodId"))?.details}
                   </div>
                 )}
               </div>
 
-              <div className="pt-6 border-t flex justify-end">
+              <Alert className="bg-amber-50 border-amber-200">
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+                <AlertTitle className="text-amber-800 font-bold">ملاحظة</AlertTitle>
+                <AlertDescription className="text-amber-700">
+                  سيقوم فريقنا بتحديد الباقة والسعر المناسب بناءً على متطلباتك والتواصل معك خلال 24 ساعة.
+                </AlertDescription>
+              </Alert>
+
+              <div className="pt-4 border-t flex justify-end">
                 <Button type="submit" size="lg" className="h-14 px-12 text-lg" disabled={createOrder.isPending}>
-                  <CheckCircle2 className="mr-2 h-5 w-5" />
-                  {createOrder.isPending ? "جاري الإرسال..." : "تأكيد وإرسال الطلب"}
+                  <CheckCircle2 className="ms-2 h-5 w-5" />
+                  {createOrder.isPending ? "جاري الإرسال..." : "إرسال الطلب"}
                 </Button>
               </div>
             </form>
