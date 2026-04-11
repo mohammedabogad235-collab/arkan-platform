@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey } from "@workspace/api-client-react";
-import { LogOut, User as UserIcon, Menu } from "lucide-react";
+import { LogOut, User as UserIcon, Menu, LayoutDashboard } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState, useEffect } from "react";
 
@@ -28,6 +28,42 @@ export function Layout({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const isAdmin = user?.role === "admin";
+  const isAdminPage = location.startsWith("/admin");
+
+  if (isAdmin && isAdminPage) {
+    return (
+      <div className="min-h-screen flex flex-col bg-muted/30">
+        <header className="sticky top-0 z-50 w-full border-b bg-background shadow-sm">
+          <div className="container mx-auto px-4 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground">
+                <LayoutDashboard className="w-4 h-4" />
+              </div>
+              <span className="font-bold text-base">لوحة تحكم الأدمن</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link href="/">
+                <Button variant="outline" size="sm">موقع العملاء</Button>
+              </Link>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground border rounded-full px-3 py-1">
+                <UserIcon className="w-3.5 h-3.5" />
+                <span>{user?.fullName}</span>
+              </div>
+              <Button variant="ghost" size="icon" onClick={handleLogout} title="تسجيل الخروج">
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 flex flex-col">
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   const NavLinks = () => (
     <>
       <Link href="/" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
@@ -41,7 +77,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           طلباتي
         </Link>
       )}
-      {user?.role === "admin" && (
+      {isAdmin && (
         <Link href="/admin" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
           لوحة التحكم
         </Link>

@@ -8,14 +8,8 @@ import {
   useListPaymentMethods,
   useListUsers,
   useDeleteUser,
-  useCreatePackage,
-  useUpdatePackage,
   useDeletePackage,
-  useCreatePaymentMethod,
-  useUpdatePaymentMethod,
   useDeletePaymentMethod,
-  useCreateTestimonial,
-  useUpdateTestimonial,
   useDeleteTestimonial
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -23,9 +17,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X } from "lucide-react";
+import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
@@ -38,7 +34,6 @@ import {
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 
 const statusMap: Record<string, string> = {
   pending: "قيد الانتظار",
@@ -51,9 +46,9 @@ export default function Admin() {
   const { data: stats, isLoading: statsLoading } = useGetAdminStats();
   const { data: orders, isLoading: ordersLoading } = useListOrders();
   const { data: users, isLoading: usersLoading } = useListUsers();
-  const { data: packages, isLoading: packagesLoading } = useListPackages();
-  const { data: paymentMethods, isLoading: paymentMethodsLoading } = useListPaymentMethods();
-  const { data: testimonials, isLoading: testimonialsLoading } = useListTestimonials();
+  const { data: packages } = useListPackages();
+  const { data: paymentMethods } = useListPaymentMethods();
+  const { data: testimonials } = useListTestimonials();
   
   const updateOrder = useUpdateOrder();
   const deleteUser = useDeleteUser();
@@ -64,8 +59,12 @@ export default function Admin() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const [activeTab, setActiveTab] = useState("orders");
   const [editingAmount, setEditingAmount] = useState<{ orderId: number; value: string } | null>(null);
   const [editingPercent, setEditingPercent] = useState<{ orderId: number; value: string } | null>(null);
+  const [createAdminOpen, setCreateAdminOpen] = useState(false);
+  const [adminForm, setAdminForm] = useState({ fullName: "", phone: "", email: "", username: "", password: "" });
+  const [adminFormLoading, setAdminFormLoading] = useState(false);
 
   const handleUpdateOrderStatus = (orderId: number, status: string) => {
     updateOrder.mutate({ id: orderId, data: { status } }, {
@@ -101,6 +100,50 @@ export default function Admin() {
           toast({ title: "تم الحذف", description: "تم حذف المستخدم بنجاح" });
         }
       });
+    }
+  };
+
+  const apiFetch = async (url: string, options: RequestInit) => {
+    const res = await fetch(url, { ...options, credentials: "include" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    return data;
+  };
+
+  const handleToggleRole = async (userId: number, currentRole: string) => {
+    const newRole = currentRole === "admin" ? "user" : "admin";
+    const label = newRole === "admin" ? "مدير" : "مستخدم";
+    try {
+      await apiFetch(`/api/users/${userId}/role`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole }),
+      });
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      toast({ title: "تم التحديث", description: `تم تغيير الصلاحية إلى ${label}` });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر تغيير الصلاحية" });
+    }
+  };
+
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminFormLoading(true);
+    try {
+      await apiFetch("/api/admin/create-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(adminForm),
+      });
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+      toast({ title: "تم الإنشاء", description: "تم إنشاء حساب الأدمن الجديد بنجاح" });
+      setCreateAdminOpen(false);
+      setAdminForm({ fullName: "", phone: "", email: "", username: "", password: "" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر إنشاء الحساب" });
+    } finally {
+      setAdminFormLoading(false);
     }
   };
 
@@ -187,7 +230,10 @@ export default function Admin() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card className="border-none shadow-md bg-gradient-to-br from-primary/5 to-transparent">
+        <Card
+          className="border-none shadow-md bg-gradient-to-br from-primary/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => setActiveTab("orders")}
+        >
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground mb-1">إجمالي الإيرادات</p>
@@ -198,7 +244,11 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-none shadow-md bg-gradient-to-br from-blue-500/5 to-transparent">
+
+        <Card
+          className="border-none shadow-md bg-gradient-to-br from-blue-500/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => setActiveTab("orders")}
+        >
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground mb-1">إجمالي الطلبات</p>
@@ -209,7 +259,11 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-none shadow-md bg-gradient-to-br from-green-500/5 to-transparent">
+
+        <Card
+          className="border-none shadow-md bg-gradient-to-br from-green-500/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => setActiveTab("orders")}
+        >
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground mb-1">الطلبات المكتملة</p>
@@ -220,7 +274,11 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-none shadow-md bg-gradient-to-br from-orange-500/5 to-transparent">
+
+        <Card
+          className="border-none shadow-md bg-gradient-to-br from-orange-500/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => setActiveTab("users")}
+        >
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground mb-1">إجمالي المستخدمين</p>
@@ -233,7 +291,7 @@ export default function Admin() {
         </Card>
       </div>
 
-      <Tabs defaultValue="orders" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 mb-8 h-auto p-1 gap-2 bg-muted/50">
           <TabsTrigger value="orders" className="text-base h-10">الطلبات</TabsTrigger>
           <TabsTrigger value="users" className="text-base h-10">المستخدمين</TabsTrigger>
@@ -417,8 +475,46 @@ export default function Admin() {
 
         <TabsContent value="users">
           <Card>
-            <CardHeader>
-              <CardTitle>المستخدمين</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>المستخدمين</CardTitle>
+                <CardDescription>إدارة المستخدمين وصلاحياتهم</CardDescription>
+              </div>
+              <Dialog open={createAdminOpen} onOpenChange={setCreateAdminOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm"><UserPlus className="h-4 w-4 ms-2" /> إضافة أدمن جديد</Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md" dir="rtl">
+                  <DialogHeader>
+                    <DialogTitle>إنشاء حساب أدمن جديد</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCreateAdmin} className="space-y-4 mt-2">
+                    <div className="space-y-1">
+                      <Label>الاسم الكامل</Label>
+                      <Input value={adminForm.fullName} onChange={e => setAdminForm(f => ({...f, fullName: e.target.value}))} required placeholder="أدخل الاسم الكامل" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>رقم الهاتف</Label>
+                      <Input value={adminForm.phone} onChange={e => setAdminForm(f => ({...f, phone: e.target.value}))} required placeholder="أدخل رقم الهاتف" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>البريد الإلكتروني</Label>
+                      <Input type="email" value={adminForm.email} onChange={e => setAdminForm(f => ({...f, email: e.target.value}))} required placeholder="أدخل البريد الإلكتروني" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>اسم المستخدم</Label>
+                      <Input value={adminForm.username} onChange={e => setAdminForm(f => ({...f, username: e.target.value}))} required placeholder="أدخل اسم المستخدم" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>كلمة المرور</Label>
+                      <Input type="password" value={adminForm.password} onChange={e => setAdminForm(f => ({...f, password: e.target.value}))} required placeholder="كلمة مرور قوية (6 أحرف على الأقل)" />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={adminFormLoading}>
+                      {adminFormLoading ? "جاري الإنشاء..." : "إنشاء الحساب"}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </CardHeader>
             <CardContent>
                <Table>
@@ -443,9 +539,19 @@ export default function Admin() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteUser(user.id)} disabled={user.role === 'admin'}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              title={user.role === 'admin' ? 'تحويل لمستخدم' : 'ترقية لمدير'}
+                              onClick={() => handleToggleRole(user.id, user.role)}
+                            >
+                              {user.role === 'admin' ? <ShieldOff className="h-4 w-4 text-orange-500" /> : <ShieldCheck className="h-4 w-4 text-green-600" />}
+                            </Button>
+                            <Button variant="destructive" size="icon" onClick={() => handleDeleteUser(user.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -462,7 +568,7 @@ export default function Admin() {
                 <CardTitle>الباقات</CardTitle>
                 <CardDescription>إدارة باقات تصميم المواقع</CardDescription>
               </div>
-              <Button disabled><Plus className="h-4 w-4 mr-2"/> إضافة باقة (قريباً)</Button>
+              <Button disabled><Plus className="h-4 w-4 ms-2"/> إضافة باقة (قريباً)</Button>
             </CardHeader>
             <CardContent>
               <Table>
@@ -504,7 +610,7 @@ export default function Admin() {
                 <CardTitle>طرق الدفع</CardTitle>
                 <CardDescription>إدارة طرق الدفع المتاحة للعملاء</CardDescription>
               </div>
-              <Button disabled><Plus className="h-4 w-4 mr-2"/> إضافة طريقة دفع (قريباً)</Button>
+              <Button disabled><Plus className="h-4 w-4 ms-2"/> إضافة طريقة دفع (قريباً)</Button>
             </CardHeader>
             <CardContent>
               <Table>
@@ -546,7 +652,7 @@ export default function Admin() {
                 <CardTitle>آراء العملاء</CardTitle>
                 <CardDescription>إدارة التقييمات والآراء</CardDescription>
               </div>
-              <Button disabled><Plus className="h-4 w-4 mr-2"/> إضافة تقييم (قريباً)</Button>
+              <Button disabled><Plus className="h-4 w-4 ms-2"/> إضافة تقييم (قريباً)</Button>
             </CardHeader>
             <CardContent>
               <Table>
