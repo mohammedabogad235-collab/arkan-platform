@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff, ToggleLeft, ToggleRight } from "lucide-react";
+import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff, ToggleLeft, ToggleRight, TrendingUp, Banknote, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
@@ -293,7 +293,7 @@ export default function Admin() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card
           className="border-none shadow-md bg-gradient-to-br from-primary/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => setActiveTab("orders")}
+          onClick={() => setActiveTab("finances")}
         >
           <CardContent className="p-6 flex items-center justify-between">
             <div>
@@ -353,7 +353,8 @@ export default function Admin() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 mb-8 h-auto p-1 gap-2 bg-muted/50">
+        <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 mb-8 h-auto p-1 gap-2 bg-muted/50">
+          <TabsTrigger value="finances" className="text-base h-10 flex items-center gap-1"><TrendingUp className="w-4 h-4" />المالية</TabsTrigger>
           <TabsTrigger value="orders" className="text-base h-10">الطلبات</TabsTrigger>
           <TabsTrigger value="users" className="text-base h-10">المستخدمين</TabsTrigger>
           <TabsTrigger value="packages" className="text-base h-10">الباقات</TabsTrigger>
@@ -362,6 +363,143 @@ export default function Admin() {
           <TabsTrigger value="settings" className="text-base h-10 flex items-center gap-1"><Settings className="w-4 h-4" />الإعدادات</TabsTrigger>
         </TabsList>
         
+        <TabsContent value="finances" className="space-y-6">
+          {(() => {
+            const allOrders = orders || [];
+            const totalRevenue = allOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+            const depositCollected = allOrders.filter(o => o.depositPaid).reduce((sum, o) => {
+              const pct = o.depositPercentage ?? 50;
+              return sum + ((o.totalAmount || 0) * pct / 100);
+            }, 0);
+            const finalCollected = allOrders.filter(o => o.finalPaid).reduce((sum, o) => {
+              const pct = o.depositPercentage ?? 50;
+              return sum + ((o.totalAmount || 0) * (100 - pct) / 100);
+            }, 0);
+            const pendingDeposits = allOrders.filter(o => !o.depositPaid && o.totalAmount).reduce((sum, o) => {
+              const pct = o.depositPercentage ?? 50;
+              return sum + ((o.totalAmount || 0) * pct / 100);
+            }, 0);
+
+            return (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card className="border-none shadow-sm bg-gradient-to-br from-primary/5 to-transparent">
+                    <CardContent className="p-5 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">إجمالي قيمة الطلبات</p>
+                        <h3 className="text-2xl font-bold">{totalRevenue.toLocaleString()}</h3>
+                      </div>
+                      <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center text-primary">
+                        <TrendingUp className="w-5 h-5" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-none shadow-sm bg-gradient-to-br from-green-500/5 to-transparent">
+                    <CardContent className="p-5 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">مقدّمات تم تحصيلها</p>
+                        <h3 className="text-2xl font-bold text-green-600">{depositCollected.toLocaleString()}</h3>
+                      </div>
+                      <div className="w-10 h-10 rounded-full bg-green-500/15 flex items-center justify-center text-green-600">
+                        <Banknote className="w-5 h-5" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-none shadow-sm bg-gradient-to-br from-blue-500/5 to-transparent">
+                    <CardContent className="p-5 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">مبالغ نهائية تم تحصيلها</p>
+                        <h3 className="text-2xl font-bold text-blue-600">{finalCollected.toLocaleString()}</h3>
+                      </div>
+                      <div className="w-10 h-10 rounded-full bg-blue-500/15 flex items-center justify-center text-blue-600">
+                        <CheckCircle className="w-5 h-5" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-none shadow-sm bg-gradient-to-br from-orange-500/5 to-transparent">
+                    <CardContent className="p-5 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">مقدّمات لم تُحصَّل بعد</p>
+                        <h3 className="text-2xl font-bold text-orange-500">{pendingDeposits.toLocaleString()}</h3>
+                      </div>
+                      <div className="w-10 h-10 rounded-full bg-orange-500/15 flex items-center justify-center text-orange-500">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>تفاصيل مالية لكل طلب</CardTitle>
+                    <CardDescription>عرض المبالغ والمقدّمات والمستحقات لكل طلب</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>رقم</TableHead>
+                            <TableHead>العميل</TableHead>
+                            <TableHead>الموقع</TableHead>
+                            <TableHead>إجمالي</TableHead>
+                            <TableHead>المقدّم</TableHead>
+                            <TableHead>المتبقي</TableHead>
+                            <TableHead>الحالة المالية</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {allOrders.filter(o => o.totalAmount).map(order => {
+                            const pct = order.depositPercentage ?? 50;
+                            const deposit = (order.totalAmount! * pct) / 100;
+                            const remaining = order.totalAmount! - deposit;
+                            const fullyPaid = order.depositPaid && order.finalPaid;
+                            const partiallyPaid = order.depositPaid && !order.finalPaid;
+                            return (
+                              <TableRow key={order.id}>
+                                <TableCell className="font-medium">#{order.id}</TableCell>
+                                <TableCell>{order.user.fullName}</TableCell>
+                                <TableCell>{order.siteName}</TableCell>
+                                <TableCell className="font-bold">{order.totalAmount?.toLocaleString()} {order.currency}</TableCell>
+                                <TableCell>
+                                  <span className={order.depositPaid ? "text-green-600 font-semibold" : "text-muted-foreground"}>
+                                    {deposit.toFixed(0)} {order.currency}
+                                    {order.depositPaid ? " ✓" : ""}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <span className={order.finalPaid ? "text-green-600 font-semibold" : "text-muted-foreground"}>
+                                    {remaining.toFixed(0)} {order.currency}
+                                    {order.finalPaid ? " ✓" : ""}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  {fullyPaid ? (
+                                    <Badge className="bg-green-100 text-green-700 border-green-200">مدفوع بالكامل</Badge>
+                                  ) : partiallyPaid ? (
+                                    <Badge className="bg-blue-100 text-blue-700 border-blue-200">دُفع المقدّم</Badge>
+                                  ) : (
+                                    <Badge variant="outline">لم يُدفع</Badge>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                          {allOrders.filter(o => o.totalAmount).length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">لا توجد طلبات بمبالغ محددة</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            );
+          })()}
+        </TabsContent>
+
         <TabsContent value="orders" className="space-y-4">
           <Card>
             <CardHeader>
