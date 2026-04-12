@@ -1,11 +1,14 @@
 import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
-import { db, couponsTable } from "@workspace/db";
+import { db, couponsTable, usersTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
-function isAdmin(req: any): boolean {
-  return req.session?.role === "admin";
+async function isAdmin(req: any): Promise<boolean> {
+  const userId = (req.session as Record<string, unknown>)?.userId as number | undefined;
+  if (!userId) return false;
+  const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
+  return user?.role === "admin";
 }
 
 function formatCoupon(c: typeof couponsTable.$inferSelect) {
@@ -17,7 +20,7 @@ function formatCoupon(c: typeof couponsTable.$inferSelect) {
 }
 
 router.get("/coupons", async (req, res): Promise<void> => {
-  if (!isAdmin(req)) {
+  if (!await isAdmin(req)) {
     res.status(403).json({ error: "غير مصرح" });
     return;
   }
@@ -26,7 +29,7 @@ router.get("/coupons", async (req, res): Promise<void> => {
 });
 
 router.post("/coupons", async (req, res): Promise<void> => {
-  if (!isAdmin(req)) {
+  if (!await isAdmin(req)) {
     res.status(403).json({ error: "غير مصرح" });
     return;
   }
@@ -67,7 +70,7 @@ router.post("/coupons", async (req, res): Promise<void> => {
 });
 
 router.put("/coupons/:id", async (req, res): Promise<void> => {
-  if (!isAdmin(req)) {
+  if (!await isAdmin(req)) {
     res.status(403).json({ error: "غير مصرح" });
     return;
   }
@@ -103,7 +106,7 @@ router.put("/coupons/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/coupons/:id", async (req, res): Promise<void> => {
-  if (!isAdmin(req)) {
+  if (!await isAdmin(req)) {
     res.status(403).json({ error: "غير مصرح" });
     return;
   }
