@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 > nul
 echo ===================================
 echo    اعداد مشروع اركان
 echo ===================================
@@ -17,7 +18,7 @@ if not exist ".env" (
 )
 
 echo [1/2] تثبيت الباقات...
-call pnpm install
+call pnpm install --force
 if %errorlevel% neq 0 (
     echo [خطأ] فشل التثبيت
     pause

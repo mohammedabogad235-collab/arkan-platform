@@ -76,5 +76,9 @@
   },
   "dependencies": {
     "radix-ui": "^1.4.3"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "4.59.0",
+    "@rollup/rollup-linux-x64-gnu": "4.59.0"
   }
 }
