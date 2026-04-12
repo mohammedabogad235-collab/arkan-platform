@@ -160,7 +160,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
             {/* Left: Details */}
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">تفاصيل الطلب</h4>
-              <p className="text-sm leading-relaxed bg-white p-3 rounded-xl border whitespace-pre-line">{order.details}</p>
+              <p className="text-sm leading-relaxed bg-white p-3 rounded-xl border whitespace-pre-line break-words overflow-hidden">{order.details}</p>
               {order.package && (
                 <div className="flex items-center gap-2 text-sm">
                   <Package className="w-4 h-4 text-muted-foreground" />
