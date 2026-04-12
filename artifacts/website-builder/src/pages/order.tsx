@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, CheckCircle2, Info, Upload, ArrowLeft, FileCheck, ShieldAlert } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, Upload, ArrowLeft, FileCheck, ShieldAlert, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -161,6 +161,7 @@ export default function Order() {
   const [createdOrderId, setCreatedOrderId] = useState<number | null>(null);
   const [selectedCurrency, setSelectedCurrency] = useState("EGP");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(true);
 
   const requireDeposit = settings?.requireDeposit ?? true;
   const depositPct = settings?.depositPercentageValue ?? 50;
@@ -437,12 +438,24 @@ export default function Order() {
                 </div>
 
                 {/* Terms & Conditions */}
-                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-4 space-y-3">
-                  <div className="flex gap-2 items-start text-sm text-red-800">
-                    <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
-                    <div className="space-y-1">
-                      <p className="font-semibold">يُرجى قراءة الشروط والأحكام قبل الإرسال:</p>
-                      <ul className="list-disc list-inside space-y-0.5 text-xs text-red-700">
+                <div className="rounded-xl bg-red-50 border border-red-200 overflow-hidden">
+                  {/* Header — always visible */}
+                  <button
+                    type="button"
+                    onClick={() => setTermsOpen(o => !o)}
+                    className="w-full flex items-center justify-between gap-2 px-4 py-3 text-sm text-red-800 hover:bg-red-100/50 transition-colors"
+                  >
+                    <span className="flex items-center gap-2 font-semibold">
+                      <ShieldAlert className="w-4 h-4 shrink-0 text-red-500" />
+                      الشروط والأحكام
+                    </span>
+                    {termsOpen ? <ChevronUp className="w-4 h-4 text-red-400" /> : <ChevronDown className="w-4 h-4 text-red-400" />}
+                  </button>
+
+                  {/* Collapsible body */}
+                  {termsOpen && (
+                    <div className="px-4 pb-4 space-y-3">
+                      <ul className="list-disc list-inside space-y-1 text-xs text-red-700">
                         <li>
                           يُدفع مقدّم بنسبة <strong>{depositPct}%</strong> من قيمة الطلب — وهو <strong>غير قابل للاسترداد</strong> بعد بدء التنفيذ.
                         </li>
@@ -451,15 +464,30 @@ export default function Order() {
                         </li>
                         <li>بإرسالك للطلب فأنت توافق على هذه الشروط.</li>
                       </ul>
+                      <a
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setTermsOpen(false)}
+                        className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 underline underline-offset-2"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        اقرأ الشروط والأحكام كاملة
+                      </a>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2.5">
+                  )}
+
+                  {/* Checkbox — always visible */}
+                  <div className="flex items-center gap-2.5 px-4 py-3 border-t border-red-200/60">
                     <Checkbox
                       id="terms"
                       checked={agreedToTerms}
-                      onCheckedChange={(v) => setAgreedToTerms(!!v)}
+                      onCheckedChange={(v) => {
+                        setAgreedToTerms(!!v);
+                        if (v) setTermsOpen(false);
+                      }}
                     />
-                    <Label htmlFor="terms" className="text-sm font-medium cursor-pointer select-none">
+                    <Label htmlFor="terms" className="text-sm font-medium cursor-pointer select-none text-red-800">
                       قرأت الشروط والأحكام وأوافق عليها
                     </Label>
                   </div>

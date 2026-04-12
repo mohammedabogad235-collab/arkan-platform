@@ -81,6 +81,57 @@ function ReceiptUploader({ orderId }: { orderId: number }) {
   );
 }
 
+function FinalReceiptUploader({ orderId }: { orderId: number }) {
+  const { uploadFile, isUploading, error } = useReceiptUpload();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "الملف كبير جداً", description: "الحد الأقصى 10 ميجابايت" });
+      return;
+    }
+
+    const result = await uploadFile(file);
+    if (!result) return;
+
+    const res = await fetch(`/api/orders/${orderId}/final-receipt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ receiptUrl: result.url }),
+    });
+
+    if (res.ok) {
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      toast({ title: "تم رفع إيصال الدفع النهائي", description: "سيتم مراجعته من قِبل الإدارة وتسليم الصلاحيات" });
+    } else {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ الإيصال، حاول مرة أخرى" });
+    }
+
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  return (
+    <div className="space-y-2">
+      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFile} />
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full border-dashed border-blue-500 text-blue-600 hover:bg-blue-50"
+        disabled={isUploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        <Upload className="w-4 h-4 me-2" />
+        {isUploading ? "جاري الرفع..." : "رفع إيصال سداد المبلغ المتبقي"}
+      </Button>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 function CancelOrderButton({ order }: { order: any }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -283,20 +334,33 @@ export default function MyOrders() {
                   </div>
                 )}
 
-                {/* Completed: Remaining payment notice */}
+                {/* Completed: Remaining payment notice + receipt upload */}
                 {order.status === "completed" && !order.finalPaid && remainingAmount !== null && (
-                  <div className="px-6 py-4 border-b bg-blue-50 border-blue-100 flex items-start gap-3 text-sm text-blue-800">
-                    <Lock className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
-                    <div>
-                      <p className="font-semibold mb-1">الموقع مكتمل — يُرجى سداد المبلغ المتبقي لاستلام كافة الصلاحيات</p>
-                      <p>
-                        المبلغ المتبقي: <strong>{remainingAmount.toFixed(0)} {currencyLabel}</strong>
-                        {order.paymentMethod && <span className="text-blue-700"> — عبر {order.paymentMethod.name}</span>}
-                      </p>
-                      {order.paymentMethod?.details && (
-                        <p className="mt-1 text-xs text-blue-600 whitespace-pre-line">{order.paymentMethod.details}</p>
-                      )}
+                  <div className="px-6 py-4 border-b bg-blue-50 border-blue-100 text-sm text-blue-800 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <Lock className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
+                      <div>
+                        <p className="font-semibold mb-1">الموقع مكتمل — يُرجى سداد المبلغ المتبقي لاستلام كافة الصلاحيات</p>
+                        <p>
+                          المبلغ المتبقي: <strong>{remainingAmount.toFixed(0)} {currencyLabel}</strong>
+                          {order.paymentMethod && <span className="text-blue-700"> — عبر {order.paymentMethod.name}</span>}
+                        </p>
+                        {order.paymentMethod?.details && (
+                          <p className="mt-1 text-xs text-blue-600 whitespace-pre-line">{order.paymentMethod.details}</p>
+                        )}
+                      </div>
                     </div>
+                    {order.finalReceiptUrl ? (
+                      <div className="flex items-center gap-2 bg-blue-100 rounded-lg px-3 py-2 text-blue-700">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>تم رفع إيصال السداد — بانتظار تأكيد الإدارة وتسليم الصلاحيات.</span>
+                        <a href={order.finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="ms-auto text-xs underline underline-offset-2 hover:text-blue-900 shrink-0">
+                          <Image className="w-3.5 h-3.5 inline me-0.5" />عرض الإيصال
+                        </a>
+                      </div>
+                    ) : (
+                      <FinalReceiptUploader orderId={order.id} />
+                    )}
                   </div>
                 )}
 

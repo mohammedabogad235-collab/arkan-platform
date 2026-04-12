@@ -169,7 +169,12 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
               <StatusBadge status={order.status} />
               {order.receiptUrl && !order.depositPaid && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200">
-                  <FileImage className="w-3 h-3" /> إيصال بانتظار التأكيد
+                  <FileImage className="w-3 h-3" /> إيصال مقدّم بانتظار التأكيد
+                </span>
+              )}
+              {order.finalReceiptUrl && !order.finalPaid && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                  <FileImage className="w-3 h-3" /> إيصال متبقي بانتظار التأكيد
                 </span>
               )}
             </div>
@@ -319,12 +324,12 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
               {/* Delivered URL */}
               <DeliveredUrlInput order={order} />
 
-              {/* Receipt */}
+              {/* Deposit Receipt */}
               {order.receiptUrl && (
                 <div className="bg-white rounded-xl border p-3 flex items-center justify-between">
                   <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
                     <FileImage className="w-4 h-4" />
-                    عرض إيصال الدفع
+                    إيصال الدفع المقدّم
                   </a>
                   {!order.depositPaid && (
                     <Button size="sm" className="bg-green-600 hover:bg-green-700 h-7 text-xs gap-1" onClick={() => onConfirmReceipt(order.id)}>
@@ -334,6 +339,25 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                   )}
                   {order.depositPaid && (
                     <Badge className="bg-green-50 text-green-700 border-green-200 text-xs">✓ مؤكد</Badge>
+                  )}
+                </div>
+              )}
+
+              {/* Final Receipt */}
+              {order.finalReceiptUrl && (
+                <div className="bg-white rounded-xl border border-blue-200 p-3 flex items-center justify-between">
+                  <a href={order.finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
+                    <FileImage className="w-4 h-4" />
+                    إيصال سداد المبلغ المتبقي
+                  </a>
+                  {!order.finalPaid && (
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 h-7 text-xs gap-1" onClick={() => onPaymentChange(order.id, "finalPaid", true)}>
+                      <BadgeCheck className="w-3.5 h-3.5" />
+                      تأكيد الدفع الكامل
+                    </Button>
+                  )}
+                  {order.finalPaid && (
+                    <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">✓ مؤكد</Badge>
                   )}
                 </div>
               )}
