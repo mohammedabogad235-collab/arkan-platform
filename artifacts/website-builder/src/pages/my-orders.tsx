@@ -14,7 +14,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CalendarDays, Package as PackageIcon, CreditCard, Upload, CheckCircle2, Image, AlertCircle, XCircle, Hash, Info, ExternalLink, PartyPopper, Lock } from "lucide-react";
+import { CalendarDays, Package as PackageIcon, CreditCard, Upload, CheckCircle2, Image, AlertCircle, XCircle, Hash, Info, ExternalLink, PartyPopper, Lock, Tag } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { useReceiptUpload } from "@/lib/use-receipt-upload";
@@ -161,8 +162,8 @@ function CancelOrderButton({ order }: { order: any }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/5">
-          <XCircle className="w-4 h-4 me-2" />
+        <Button variant="ghost" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/5 hover:text-destructive border gap-1.5">
+          <XCircle className="w-4 h-4" />
           إلغاء الطلب
         </Button>
       </AlertDialogTrigger>
@@ -187,6 +188,82 @@ function CancelOrderButton({ order }: { order: any }) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+function CouponApplier({ orderId, onApplied }: { orderId: number; onApplied: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+  const { toast } = useToast();
+
+  const handleApply = async () => {
+    if (!code.trim()) return;
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const res = await fetch(`/api/orders/${orderId}/apply-coupon`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ code: code.trim().toUpperCase() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus("error");
+        setErrorMsg(data.error || "كود غير صحيح");
+      } else {
+        toast({ title: "تم تطبيق الكوبون بنجاح!" });
+        onApplied();
+        setOpen(false);
+        setCode("");
+        setStatus("idle");
+      }
+    } catch {
+      setStatus("error");
+      setErrorMsg("حدث خطأ، حاول مرة أخرى");
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="border-t pt-4">
+        <button
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+        >
+          <Tag className="w-3.5 h-3.5" />
+          هل لديك كود خصم؟ أضفه الآن
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t pt-4 space-y-2">
+      <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+        <Tag className="w-3.5 h-3.5" />
+        إضافة كود خصم
+      </p>
+      <div className="flex gap-2">
+        <Input
+          value={code}
+          onChange={e => { setCode(e.target.value.toUpperCase()); setStatus("idle"); setErrorMsg(""); }}
+          placeholder="أدخل الكود"
+          dir="ltr"
+          className="font-mono tracking-widest uppercase flex-1 h-9 text-sm"
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleApply(); } }}
+        />
+        <Button size="sm" onClick={handleApply} disabled={!code.trim() || status === "loading"} className="h-9 shrink-0">
+          {status === "loading" ? "..." : "تطبيق"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setCode(""); setStatus("idle"); setErrorMsg(""); }} className="h-9 shrink-0 text-muted-foreground">
+          إلغاء
+        </Button>
+      </div>
+      {status === "error" && <p className="text-xs text-destructive">{errorMsg}</p>}
+    </div>
   );
 }
 
@@ -502,6 +579,11 @@ export default function MyOrders() {
                           )}
                         </div>
                       </div>
+
+                      {/* Apply Coupon (only if no coupon applied yet and order not cancelled) */}
+                      {!order.couponCode && order.status !== "cancelled" && (
+                        <CouponApplier orderId={order.id} onApplied={() => queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() })} />
+                      )}
 
                       {/* Receipt Upload */}
                       {showReceiptUpload && (

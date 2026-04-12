@@ -195,6 +195,80 @@ router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
+router.post("/orders/:id/apply-coupon", async (req, res): Promise<void> => {
+  const session = req.session as { userId?: number } | undefined;
+  if (!session?.userId) {
+    res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
+    return;
+  }
+
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "معرف الطلب غير صالح" });
+    return;
+  }
+
+  const body = req.body as { code?: string };
+  if (!body.code) {
+    res.status(400).json({ error: "كود الكوبون مطلوب" });
+    return;
+  }
+
+  // Verify order belongs to user
+  const [existingOrder] = await db.select().from(ordersTable)
+    .where(and(eq(ordersTable.id, id), eq(ordersTable.userId, session.userId)));
+  if (!existingOrder) {
+    res.status(404).json({ error: "الطلب غير موجود" });
+    return;
+  }
+
+  if (existingOrder.couponCode) {
+    res.status(409).json({ error: "تم تطبيق كوبون على هذا الطلب مسبقاً" });
+    return;
+  }
+
+  const code = body.code.trim().toUpperCase();
+  const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, code));
+
+  if (!coupon || !coupon.isActive) {
+    res.status(400).json({ error: "الكود غير صحيح أو غير نشط" });
+    return;
+  }
+
+  if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
+    res.status(400).json({ error: "انتهت صلاحية هذا الكود" });
+    return;
+  }
+
+  if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
+    res.status(400).json({ error: "تجاوز هذا الكود الحد الأقصى للاستخدام" });
+    return;
+  }
+
+  const orderAmount = existingOrder.totalAmount ? Number(existingOrder.totalAmount) : 0;
+  if (coupon.minOrderAmount && orderAmount && orderAmount < coupon.minOrderAmount) {
+    res.status(400).json({ error: `الحد الأدنى للطلب هو ${coupon.minOrderAmount} لاستخدام هذا الكود` });
+    return;
+  }
+
+  let discountAmount = 0;
+  if (coupon.discountType === "percentage") {
+    discountAmount = Math.round((orderAmount * coupon.discountValue) / 100);
+  } else {
+    discountAmount = coupon.discountValue;
+  }
+
+  await db.update(couponsTable).set({ usedCount: sql`${couponsTable.usedCount} + 1` }).where(eq(couponsTable.id, coupon.id));
+  const [order] = await db.update(ordersTable)
+    .set({ couponCode: code, discountAmount })
+    .where(eq(ordersTable.id, id))
+    .returning();
+
+  const enriched = await enrichOrder(order);
+  res.json(enriched);
+});
+
 router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
   const session = req.session as { userId?: number } | undefined;
   if (!session?.userId) {
