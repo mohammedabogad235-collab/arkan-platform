@@ -88,7 +88,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange, onDelete, onConfirmReceipt, globalDepositPct }: {
+function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange, onDelete, onConfirmReceipt, globalDepositPct, onAmountSave }: {
   order: any;
   expanded: boolean;
   onToggle: (id: number) => void;
@@ -97,10 +97,13 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   onDelete: (id: number) => void;
   onConfirmReceipt: (id: number) => void;
   globalDepositPct?: number;
+  onAmountSave: (id: number, amount: number | null) => void;
 }) {
   const pct = order.depositPercentage ?? globalDepositPct ?? 50;
   const deposit = order.totalAmount ? (order.totalAmount * pct) / 100 : null;
   const remaining = order.totalAmount && deposit !== null ? order.totalAmount - deposit : null;
+  const [amountInput, setAmountInput] = useState(order.totalAmount?.toString() ?? "");
+  const [savingAmount, setSavingAmount] = useState(false);
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden">
@@ -189,13 +192,36 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">الحالة المالية</h4>
               <div className="bg-white rounded-xl border p-4 space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">إجمالي المبلغ</span>
-                  <span className="font-bold">{order.totalAmount ? `${order.totalAmount.toLocaleString()} ${order.currency}` : "—"}</span>
+                {/* Amount input */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">إجمالي المبلغ ({order.currency})</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="أدخل المبلغ..."
+                      value={amountInput}
+                      onChange={e => setAmountInput(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-9 px-3 text-xs shrink-0"
+                      disabled={savingAmount}
+                      onClick={async () => {
+                        setSavingAmount(true);
+                        const val = amountInput === "" ? null : Number(amountInput);
+                        await onAmountSave(order.id, val);
+                        setSavingAmount(false);
+                      }}
+                    >
+                      {savingAmount ? "..." : "حفظ"}
+                    </Button>
+                  </div>
                 </div>
                 {deposit !== null && (
                   <>
-                    <div className="flex justify-between items-center text-sm">
+                    <div className="flex justify-between items-center text-sm pt-1 border-t">
                       <span className="text-muted-foreground">المقدم ({pct}%)</span>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-amber-600">{deposit.toFixed(0)} {order.currency}</span>
@@ -212,7 +238,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                   </>
                 )}
                 {!order.totalAmount && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-1 border-t">
                     <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
                     <Label className="text-xs text-muted-foreground">مقدم</Label>
                     <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75 ms-3" />
@@ -366,6 +392,23 @@ export default function Admin() {
     updateOrder.mutate({ id: orderId, data: { [field]: value } }, {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() }),
       onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث الدفع" }),
+    });
+  };
+
+  const handleAmountSave = (orderId: number, amount: number | null): Promise<void> => {
+    return new Promise((resolve) => {
+      updateOrder.mutate({ id: orderId, data: { totalAmount: amount } }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+          toast({ title: "تم حفظ المبلغ" });
+          resolve();
+        },
+        onError: () => {
+          toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ المبلغ" });
+          resolve();
+        },
+      });
     });
   };
 
@@ -637,6 +680,7 @@ export default function Admin() {
                       onDelete={handleDeleteOrder}
                       onConfirmReceipt={handleConfirmReceipt}
                       globalDepositPct={siteSettings?.depositPercentageValue}
+                      onAmountSave={handleAmountSave}
                     />
                   ))}
                 </div>
