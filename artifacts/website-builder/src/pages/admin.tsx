@@ -242,7 +242,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
           <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">الحالة:</span>
-              <Select defaultValue={order.status} onValueChange={v => onStatusChange(order.id, v)}>
+              <Select value={order.status} onValueChange={v => onStatusChange(order.id, v)}>
                 <SelectTrigger className="h-8 w-40 text-sm">
                   <SelectValue />
                 </SelectTrigger>
