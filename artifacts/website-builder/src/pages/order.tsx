@@ -161,10 +161,6 @@ export default function Order() {
 
   const requireDeposit = settings?.requireDeposit ?? true;
   const depositPct = settings?.depositPercentageValue ?? 50;
-  const allActivePaymentMethods = paymentMethods?.filter(p => p.isActive) || [];
-  const activePaymentMethods = allActivePaymentMethods.filter(
-    p => (p as any).currency === watchedCurrency || (p as any).currency === "both" || !(p as any).currency
-  );
 
   const form = useForm<z.infer<typeof orderSchema>>({
     resolver: zodResolver(orderSchema),
@@ -179,6 +175,10 @@ export default function Order() {
 
   const watchedPaymentMethodId = form.watch("paymentMethodId");
   const watchedCurrency = form.watch("currency");
+  const allActivePaymentMethods = paymentMethods?.filter(p => p.isActive) || [];
+  const activePaymentMethods = allActivePaymentMethods.filter(
+    p => (p as any).currency === watchedCurrency || (p as any).currency === "both" || !(p as any).currency
+  );
   const selectedPaymentMethod = activePaymentMethods.find(p => p.id === watchedPaymentMethodId) || null;
 
   function onSubmit(values: z.infer<typeof orderSchema>) {
@@ -242,7 +242,7 @@ export default function Order() {
           <AlertDescription className="space-y-1 text-sm">
             <p>١. أرسل طلبك بتفاصيل موقعك.</p>
             {requireDeposit
-              ? <p>٢. ادفع <strong>{depositPct}% كمقدم</strong> وارفع الإيصال لبدء التنفيذ.</p>
+              ? <p>٢. يتم دفع <strong>{depositPct}% كمقدم</strong> للبدء، و<strong>{100 - depositPct}% المتبقية</strong> عند التسليم.</p>
               : <p>٢. سيتواصل معك فريقنا خلال 24 ساعة لتحديد الباقة والسعر.</p>}
             <p>٣. يبدأ التنفيذ بعد تأكيد الدفع والتسليم عند الاكتمال.</p>
           </AlertDescription>
