@@ -51,13 +51,23 @@ async function ensureAdminExists() {
   }
 }
 
-app.listen(port, async (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
+async function startServer() {
+  try {
+    await ensureSessionTable();
+    logger.info("Session table ready");
+  } catch (e) {
+    logger.error({ err: e }, "Failed to ensure session table — continuing anyway");
   }
 
-  logger.info({ port }, "Server listening");
-  await ensureSessionTable().catch(e => logger.error({ err: e }, "Failed to ensure session table"));
-  await ensureAdminExists().catch(e => logger.error({ err: e }, "Failed to ensure admin"));
-});
+  try {
+    await ensureAdminExists();
+  } catch (e) {
+    logger.error({ err: e }, "Failed to ensure admin");
+  }
+
+  app.listen(port, () => {
+    logger.info({ port }, "Server listening");
+  });
+}
+
+startServer();
