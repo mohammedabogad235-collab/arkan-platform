@@ -52,6 +52,7 @@ router.patch("/payment-methods/:id", async (req, res): Promise<void> => {
   if (parsed.data.name != null) updateData.name = parsed.data.name;
   if (parsed.data.details != null) updateData.details = parsed.data.details;
   if (parsed.data.isActive != null) updateData.isActive = parsed.data.isActive;
+  if (parsed.data.currency != null) updateData.currency = parsed.data.currency;
 
   const [method] = await db.update(paymentMethodsTable).set(updateData).where(eq(paymentMethodsTable.id, params.data.id)).returning();
   if (!method) {

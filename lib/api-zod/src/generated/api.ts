@@ -367,6 +367,7 @@ export const CreatePaymentMethodBody = zod.object({
   name: zod.string(),
   details: zod.string(),
   isActive: zod.boolean().optional(),
+  currency: zod.string().optional(),
 });
 
 /**
@@ -380,6 +381,7 @@ export const UpdatePaymentMethodBody = zod.object({
   name: zod.string().nullish(),
   details: zod.string().nullish(),
   isActive: zod.boolean().nullish(),
+  currency: zod.string().nullish(),
 });
 
 export const UpdatePaymentMethodResponse = zod.object({
