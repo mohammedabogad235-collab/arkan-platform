@@ -12,3 +12,9 @@ id = "yjq4fvQGZYar8S7KJzitG"
 uri = "file://arkan-source.tar.gz"
 type = "unspecified"
 title = "Arkan - نسخة Windows نهائية"
+
+[[outputs]]
+id = "4G6xyP4inNfPbGM5v4e2z"
+uri = "file://arkan-windows-v3.tar.gz"
+type = "unspecified"
+title = "أركان - نسخة Windows v3 الجديدة"
