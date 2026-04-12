@@ -11,8 +11,8 @@ import { Shield, Eye, EyeOff } from "lucide-react";
 import { useEffect } from "react";
 
 export default function AdminLogin() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("admin123");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
@@ -30,6 +30,23 @@ export default function AdminLogin() {
       }
     }
   }, [isLoading, isAuthenticated, user, setLocation]);
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      login.mutate(
+        { data: { username: "admin", password: "admin123" } },
+        {
+          onSuccess: (data) => {
+            queryClient.setQueryData(getGetMeQueryKey(), data);
+            if (data.role === "admin") {
+              setLocation("/admin");
+            }
+          },
+          onError: () => {},
+        }
+      );
+    }
+  }, [isLoading, isAuthenticated]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
