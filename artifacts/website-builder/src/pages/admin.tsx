@@ -338,7 +338,7 @@ export default function Admin() {
   const [pkgForm, setPkgForm] = useState(emptyPkg);
 
   // Payment methods
-  const emptyPm = { name: "", details: "", isActive: true };
+  const emptyPm = { name: "", details: "", isActive: true, currency: "both" };
   const [pmDialogOpen, setPmDialogOpen] = useState(false);
   const [pmEditTarget, setPmEditTarget] = useState<{ id: number } | null>(null);
   const [pmForm, setPmForm] = useState(emptyPm);
@@ -465,7 +465,7 @@ export default function Admin() {
   };
 
   const openAddPm = () => { setPmEditTarget(null); setPmForm(emptyPm); setPmDialogOpen(true); };
-  const openEditPm = (pm: any) => { setPmEditTarget({ id: pm.id }); setPmForm({ name: pm.name, details: pm.details, isActive: pm.isActive }); setPmDialogOpen(true); };
+  const openEditPm = (pm: any) => { setPmEditTarget({ id: pm.id }); setPmForm({ name: pm.name, details: pm.details, isActive: pm.isActive, currency: pm.currency || "both" }); setPmDialogOpen(true); };
 
   const handleSavePm = (e: React.FormEvent) => {
     e.preventDefault();
@@ -818,9 +818,14 @@ export default function Admin() {
                         </div>
                         <div>
                           <p className="font-bold">{pm.name}</p>
-                          <Badge variant={pm.isActive ? "default" : "outline"} className="text-xs mt-0.5">
-                            {pm.isActive ? "مفعّلة" : "غير مفعّلة"}
-                          </Badge>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <Badge variant={pm.isActive ? "default" : "outline"} className="text-xs">
+                              {pm.isActive ? "مفعّلة" : "غير مفعّلة"}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {(pm as any).currency === "EGP" ? "🇪🇬 مصري" : (pm as any).currency === "SAR" ? "🇸🇦 سعودي" : "🌍 الاثنين"}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-1.5">
@@ -1033,6 +1038,25 @@ export default function Admin() {
             <div className="space-y-1.5">
               <Label>التفاصيل والمعلومات</Label>
               <textarea value={pmForm.details} onChange={e => setPmForm(f => ({ ...f, details: e.target.value }))} required placeholder="رقم المحفظة، رقم الحساب، اسم المستلم..." rows={4} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>العملة المدعومة</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { val: "EGP", label: "🇪🇬 مصري فقط" },
+                  { val: "SAR", label: "🇸🇦 سعودي فقط" },
+                  { val: "both", label: "🌍 الاثنين" },
+                ].map(opt => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setPmForm(f => ({ ...f, currency: opt.val }))}
+                    className={`border rounded-xl py-2.5 text-sm font-medium transition-all ${pmForm.currency === opt.val ? "bg-primary text-white border-primary shadow-sm" : "bg-muted/30 text-muted-foreground hover:border-primary/50"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex items-center gap-3"><Switch id="pm-active" checked={pmForm.isActive} onCheckedChange={v => setPmForm(f => ({ ...f, isActive: v }))} /><Label htmlFor="pm-active">{pmForm.isActive ? "مفعّلة" : "غير مفعّلة"}</Label></div>
             <Button type="submit" className="w-full" disabled={createPaymentMethod.isPending || updatePaymentMethod.isPending}>{createPaymentMethod.isPending || updatePaymentMethod.isPending ? "جاري الحفظ..." : pmEditTarget ? "حفظ التعديلات" : "إضافة طريقة الدفع"}</Button>

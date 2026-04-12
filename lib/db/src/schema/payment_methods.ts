@@ -7,6 +7,7 @@ export const paymentMethodsTable = pgTable("payment_methods", {
   name: text("name").notNull(),
   details: text("details").notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  currency: text("currency").notNull().default("both"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

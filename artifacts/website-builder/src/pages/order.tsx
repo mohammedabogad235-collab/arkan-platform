@@ -161,7 +161,10 @@ export default function Order() {
 
   const requireDeposit = settings?.requireDeposit ?? true;
   const depositPct = settings?.depositPercentageValue ?? 50;
-  const activePaymentMethods = paymentMethods?.filter(p => p.isActive) || [];
+  const allActivePaymentMethods = paymentMethods?.filter(p => p.isActive) || [];
+  const activePaymentMethods = allActivePaymentMethods.filter(
+    p => (p as any).currency === watchedCurrency || (p as any).currency === "both" || !(p as any).currency
+  );
 
   const form = useForm<z.infer<typeof orderSchema>>({
     resolver: zodResolver(orderSchema),
@@ -340,7 +343,13 @@ export default function Order() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-base">العملة المفضلة للدفع</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select
+                          onValueChange={(val) => {
+                            field.onChange(val);
+                            form.setValue("paymentMethodId", null);
+                          }}
+                          defaultValue={field.value}
+                        >
                           <FormControl>
                             <SelectTrigger className="h-12 max-w-xs">
                               <SelectValue placeholder="اختر العملة" />
@@ -361,24 +370,33 @@ export default function Order() {
                     name="paymentMethodId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base">طريقة الدفع المفضلة {requireDeposit ? "(مطلوبة للمقدم)" : "(اختياري)"}</FormLabel>
-                        <Select
-                          onValueChange={(val) => field.onChange(val ? Number(val) : null)}
-                          value={field.value ? field.value.toString() : ""}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="h-12">
-                              <SelectValue placeholder="اختر طريقة الدفع" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {!paymentsLoading && activePaymentMethods.map(p => (
-                              <SelectItem key={p.id} value={p.id.toString()}>
-                                {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormLabel className="text-base">
+                          طريقة الدفع {requireDeposit ? <span className="text-amber-600">(مطلوبة للمقدم)</span> : "(اختياري)"}
+                          {watchedCurrency && <span className="text-xs text-muted-foreground ms-2">— حسابات {watchedCurrency === "EGP" ? "🇪🇬 مصر" : "🇸🇦 السعودية"}</span>}
+                        </FormLabel>
+                        {!paymentsLoading && activePaymentMethods.length === 0 ? (
+                          <div className="h-12 flex items-center px-4 rounded-xl border border-dashed text-sm text-muted-foreground bg-muted/20">
+                            لا توجد طرق دفع متاحة لهذه العملة حالياً
+                          </div>
+                        ) : (
+                          <Select
+                            onValueChange={(val) => field.onChange(val ? Number(val) : null)}
+                            value={field.value ? field.value.toString() : ""}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="h-12">
+                                <SelectValue placeholder="اختر طريقة الدفع" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {activePaymentMethods.map(p => (
+                                <SelectItem key={p.id} value={p.id.toString()}>
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
