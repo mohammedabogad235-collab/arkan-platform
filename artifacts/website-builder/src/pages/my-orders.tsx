@@ -183,7 +183,7 @@ export default function MyOrders() {
         <div className="space-y-6">
           {orders.map((order) => {
             const requireDeposit = settings?.requireDeposit ?? true;
-            const depositPct = settings?.depositPercentageValue ?? order.depositPercentage ?? 50;
+            const depositPct = order.depositPercentage ?? settings?.depositPercentageValue ?? 50;
             const totalAmount = order.totalAmount ? Number(order.totalAmount) : null;
             const depositAmount = totalAmount ? Math.round(totalAmount * depositPct / 100) : null;
             const remainingAmount = totalAmount && depositAmount !== null ? totalAmount - depositAmount : null;
