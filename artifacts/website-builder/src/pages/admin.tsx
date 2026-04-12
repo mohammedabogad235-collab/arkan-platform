@@ -38,7 +38,7 @@ import {
   TrendingUp, FileImage, BadgeCheck, Percent, MessageSquare,
   CreditCard, Package, BarChart3, Globe, Phone, Mail, MapPin,
   Facebook, Instagram, Twitter, ChevronDown, ChevronUp, Check, X,
-  Clock, Banknote, Star, ArrowUpRight,
+  Clock, Banknote, Star, ArrowUpRight, Tag, ToggleLeft, ToggleRight, Calendar,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -60,6 +60,7 @@ const NAV = [
   { id: "packages", label: "الباقات",    icon: Package },
   { id: "payments", label: "طرق الدفع", icon: CreditCard },
   { id: "reviews",  label: "الآراء",     icon: MessageSquare },
+  { id: "coupons",  label: "الكوبونات",  icon: Tag },
   { id: "settings", label: "الإعدادات", icon: Settings },
 ];
 
@@ -207,6 +208,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
           <span className="text-muted-foreground text-xs">لم يُحدَّد المبلغ بعد</span>
         )}
         <div className="flex items-center gap-2 ms-auto">
+          {order.couponCode && <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-mono">{order.couponCode}</Badge>}
           {order.depositPaid && <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">✓ مقدم</Badge>}
           {order.finalPaid && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">✓ متبقي</Badge>}
         </div>
@@ -320,6 +322,19 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                   );
                 })()}
               </div>
+
+              {/* Coupon */}
+              {order.couponCode && (
+                <div className="bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5 text-purple-700">
+                    <Tag className="w-3.5 h-3.5" />
+                    كوبون مطبّق: <span className="font-mono font-bold">{order.couponCode}</span>
+                  </span>
+                  {order.discountAmount ? (
+                    <span className="text-purple-600 font-semibold text-xs">خصم {order.discountAmount.toLocaleString()} {order.currency}</span>
+                  ) : null}
+                </div>
+              )}
 
               {/* Delivered URL */}
               <DeliveredUrlInput order={order} />
@@ -445,6 +460,10 @@ export default function Admin() {
     }
   }, [siteSettings]);
 
+  useEffect(() => {
+    if (activeTab === "coupons") fetchCoupons();
+  }, [activeTab]);
+
   // Auth
   const [createAdminOpen, setCreateAdminOpen] = useState(false);
   const [adminForm, setAdminForm] = useState({ fullName: "", phone: "", email: "", username: "", password: "" });
@@ -465,6 +484,14 @@ export default function Admin() {
   const [pmDialogOpen, setPmDialogOpen] = useState(false);
   const [pmEditTarget, setPmEditTarget] = useState<{ id: number } | null>(null);
   const [pmForm, setPmForm] = useState(emptyPm);
+
+  // Coupons
+  const emptyCoupon = { code: "", discountType: "percentage", discountValue: 10, minOrderAmount: "" as string | number, maxUses: "" as string | number, isActive: true, expiresAt: "" };
+  const [couponDialogOpen, setCouponDialogOpen] = useState(false);
+  const [couponEditId, setCouponEditId] = useState<number | null>(null);
+  const [couponForm, setCouponForm] = useState<typeof emptyCoupon>(emptyCoupon);
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState(false);
 
   const apiFetch = async (url: string, options: RequestInit) => {
     const res = await fetch(url, { ...options, credentials: "include" });
@@ -626,6 +653,63 @@ export default function Admin() {
       onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTestimonialsQueryKey() }); toast({ title: current ? "تم الإخفاء" : "تم النشر" }); },
       onError: () => toast({ variant: "destructive", title: "خطأ" }),
     });
+  };
+
+  const fetchCoupons = async () => {
+    setCouponsLoading(true);
+    try {
+      const res = await fetch("/api/coupons", { credentials: "include" });
+      if (res.ok) setCoupons(await res.json());
+    } finally { setCouponsLoading(false); }
+  };
+
+  const handleOpenCouponDialog = (coupon?: any) => {
+    if (coupon) {
+      setCouponEditId(coupon.id);
+      setCouponForm({ code: coupon.code, discountType: coupon.discountType, discountValue: coupon.discountValue, minOrderAmount: coupon.minOrderAmount ?? "", maxUses: coupon.maxUses ?? "", isActive: coupon.isActive, expiresAt: coupon.expiresAt ? coupon.expiresAt.split("T")[0] : "" });
+    } else {
+      setCouponEditId(null);
+      setCouponForm(emptyCoupon);
+    }
+    setCouponDialogOpen(true);
+  };
+
+  const handleSaveCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const body = { ...couponForm, minOrderAmount: couponForm.minOrderAmount === "" ? null : Number(couponForm.minOrderAmount), maxUses: couponForm.maxUses === "" ? null : Number(couponForm.maxUses), expiresAt: couponForm.expiresAt || null };
+      if (couponEditId) {
+        await apiFetch(`/api/coupons/${couponEditId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        toast({ title: "تم تحديث الكوبون" });
+      } else {
+        await apiFetch("/api/coupons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        toast({ title: "تم إنشاء الكوبون" });
+      }
+      setCouponDialogOpen(false);
+      fetchCoupons();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err.message });
+    }
+  };
+
+  const handleDeleteCoupon = async (id: number) => {
+    if (!confirm("حذف هذا الكوبون؟")) return;
+    try {
+      await apiFetch(`/api/coupons/${id}`, { method: "DELETE" });
+      toast({ title: "تم الحذف" });
+      fetchCoupons();
+    } catch {
+      toast({ variant: "destructive", title: "خطأ في الحذف" });
+    }
+  };
+
+  const handleToggleCoupon = async (id: number, current: boolean) => {
+    try {
+      await apiFetch(`/api/coupons/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !current }) });
+      fetchCoupons();
+    } catch {
+      toast({ variant: "destructive", title: "خطأ" });
+    }
   };
 
   const handleSaveContact = async (e: React.FormEvent) => {
@@ -1037,6 +1121,75 @@ export default function Admin() {
             </div>
           )}
 
+          {/* ─── Coupons ─── */}
+          {activeTab === "coupons" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold">كوبونات الخصم</h1>
+                  <p className="text-muted-foreground text-sm mt-1">{coupons.length} كوبون</p>
+                </div>
+                <Button size="sm" onClick={() => handleOpenCouponDialog()} className="gap-1.5">
+                  <Plus className="w-4 h-4" /> كوبون جديد
+                </Button>
+              </div>
+
+              {couponsLoading ? (
+                <div className="text-center py-12 text-muted-foreground text-sm">جاري التحميل...</div>
+              ) : coupons.length === 0 ? (
+                <div className="bg-white rounded-2xl border p-16 text-center">
+                  <Tag className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground text-sm">لا توجد كوبونات حتى الآن</p>
+                  <Button size="sm" variant="outline" className="mt-4 gap-1" onClick={() => handleOpenCouponDialog()}>
+                    <Plus className="w-4 h-4" /> أضف أول كوبون
+                  </Button>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+                  <div className="divide-y">
+                    {coupons.map((coupon: any) => (
+                      <div key={coupon.id} className={`px-5 py-4 flex items-center gap-4 ${!coupon.isActive ? "opacity-60" : ""}`}>
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                          <Tag className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold font-mono text-lg tracking-widest">{coupon.code}</span>
+                            <Badge className={coupon.isActive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-500 border-gray-200"}>
+                              {coupon.isActive ? "نشط" : "موقوف"}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {coupon.discountType === "percentage"
+                                ? `خصم ${coupon.discountValue}%`
+                                : `خصم ${coupon.discountValue} ثابت`}
+                            </Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
+                            {coupon.minOrderAmount && <span>حد أدنى: {coupon.minOrderAmount}</span>}
+                            {coupon.maxUses && <span>الاستخدام: {coupon.usedCount}/{coupon.maxUses}</span>}
+                            {!coupon.maxUses && <span>مستخدم: {coupon.usedCount} مرة</span>}
+                            {coupon.expiresAt && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />ينتهي: {format(new Date(coupon.expiresAt), "dd/MM/yyyy")}</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button variant="outline" size="icon" className="h-8 w-8" title={coupon.isActive ? "إيقاف" : "تفعيل"} onClick={() => handleToggleCoupon(coupon.id, coupon.isActive)}>
+                            {coupon.isActive ? <EyeOff className="h-3.5 w-3.5 text-orange-500" /> : <Eye className="h-3.5 w-3.5 text-green-600" />}
+                          </Button>
+                          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleOpenCouponDialog(coupon)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteCoupon(coupon.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ─── Settings ─── */}
           {activeTab === "settings" && (
             <div className="space-y-6 max-w-2xl">
@@ -1228,6 +1381,76 @@ export default function Admin() {
             </div>
             <div className="flex items-center gap-3"><Switch id="pm-active" checked={pmForm.isActive} onCheckedChange={v => setPmForm(f => ({ ...f, isActive: v }))} /><Label htmlFor="pm-active">{pmForm.isActive ? "مفعّلة" : "غير مفعّلة"}</Label></div>
             <Button type="submit" className="w-full" disabled={createPaymentMethod.isPending || updatePaymentMethod.isPending}>{createPaymentMethod.isPending || updatePaymentMethod.isPending ? "جاري الحفظ..." : pmEditTarget ? "حفظ التعديلات" : "إضافة طريقة الدفع"}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Coupon dialog */}
+      <Dialog open={couponDialogOpen} onOpenChange={setCouponDialogOpen}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{couponEditId ? "تعديل كوبون" : "إنشاء كوبون خصم جديد"}</DialogTitle>
+            <DialogDescription>{couponEditId ? "عدّل بيانات الكوبون ثم احفظ." : "أدخل تفاصيل الكوبون الجديد."}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveCoupon} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label>كود الخصم</Label>
+              <Input
+                value={couponForm.code}
+                onChange={e => setCouponForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                required
+                placeholder="SAVE20"
+                dir="ltr"
+                className="font-mono tracking-widest uppercase"
+                disabled={!!couponEditId}
+              />
+              {!couponEditId && <p className="text-xs text-muted-foreground">الكود بالأحرف الكبيرة — سيُطبَّق تلقائياً</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>نوع الخصم</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[{ val: "percentage", label: "نسبة مئوية (%)" }, { val: "fixed", label: "مبلغ ثابت" }].map(opt => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setCouponForm(f => ({ ...f, discountType: opt.val }))}
+                    className={`border rounded-xl py-2.5 text-sm font-medium transition-all ${couponForm.discountType === opt.val ? "bg-primary text-white border-primary shadow-sm" : "bg-muted/30 text-muted-foreground hover:border-primary/50"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>{couponForm.discountType === "percentage" ? "قيمة الخصم (%)" : "قيمة الخصم"}</Label>
+                <Input type="number" min={0} max={couponForm.discountType === "percentage" ? 100 : undefined} value={couponForm.discountValue} onChange={e => setCouponForm(f => ({ ...f, discountValue: Number(e.target.value) }))} required />
+              </div>
+              <div className="space-y-1.5">
+                <Label>الحد الأدنى للطلب</Label>
+                <Input type="number" min={0} value={couponForm.minOrderAmount} onChange={e => setCouponForm(f => ({ ...f, minOrderAmount: e.target.value }))} placeholder="اختياري" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>الحد الأقصى للاستخدام</Label>
+                <Input type="number" min={1} value={couponForm.maxUses} onChange={e => setCouponForm(f => ({ ...f, maxUses: e.target.value }))} placeholder="غير محدود" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>تاريخ انتهاء الصلاحية</Label>
+                <Input type="date" value={couponForm.expiresAt} onChange={e => setCouponForm(f => ({ ...f, expiresAt: e.target.value }))} dir="ltr" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Switch id="coupon-active" checked={couponForm.isActive} onCheckedChange={v => setCouponForm(f => ({ ...f, isActive: v }))} />
+              <Label htmlFor="coupon-active">{couponForm.isActive ? "نشط (يمكن استخدامه)" : "موقوف"}</Label>
+            </div>
+
+            <Button type="submit" className="w-full">{couponEditId ? "حفظ التعديلات" : "إنشاء الكوبون"}</Button>
           </form>
         </DialogContent>
       </Dialog>

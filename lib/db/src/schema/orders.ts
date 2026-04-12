@@ -18,6 +18,8 @@ export const ordersTable = pgTable("orders", {
   totalAmount: real("total_amount"),
   depositPercentage: real("deposit_percentage").notNull().default(50),
   notes: text("notes"),
+  couponCode: text("coupon_code"),
+  discountAmount: real("discount_amount"),
   receiptUrl: text("receipt_url"),
   finalReceiptUrl: text("final_receipt_url"),
   deliveredUrl: text("delivered_url"),

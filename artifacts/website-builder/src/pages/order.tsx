@@ -162,6 +162,10 @@ export default function Order() {
   const [selectedCurrency, setSelectedCurrency] = useState("EGP");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [termsOpen, setTermsOpen] = useState(true);
+  const [couponInput, setCouponInput] = useState("");
+  const [couponStatus, setCouponStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
+  const [couponData, setCouponData] = useState<{ discountType: string; discountValue: number; discountAmount: number } | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
 
   const requireDeposit = settings?.requireDeposit ?? true;
   const depositPct = settings?.depositPercentageValue ?? 50;
@@ -185,10 +189,37 @@ export default function Order() {
   );
   const selectedPaymentMethod = activePaymentMethods.find(p => p.id === watchedPaymentMethodId) || null;
 
+  const validateCoupon = async () => {
+    if (!couponInput.trim()) return;
+    setCouponStatus("checking");
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ code: couponInput.trim().toUpperCase() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        setCouponStatus("valid");
+        setCouponData({ discountType: data.coupon.discountType, discountValue: data.coupon.discountValue, discountAmount: data.discountAmount });
+        setAppliedCoupon(couponInput.trim().toUpperCase());
+      } else {
+        setCouponStatus("invalid");
+        setCouponData(null);
+        setAppliedCoupon(null);
+        toast({ variant: "destructive", title: "كود غير صالح", description: data.error || "الكود غير موجود أو منتهي" });
+      }
+    } catch {
+      setCouponStatus("invalid");
+    }
+  };
+
   function onSubmit(values: z.infer<typeof orderSchema>) {
     setSelectedCurrency(values.currency);
+    const dataWithCoupon = appliedCoupon ? { ...values, couponCode: appliedCoupon } : values;
     createOrder.mutate(
-      { data: values },
+      { data: dataWithCoupon as any },
       {
         onSuccess: (data: any) => {
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
@@ -435,6 +466,56 @@ export default function Order() {
                   <span>
                     <strong>ملاحظة:</strong> بعد إرسال الطلب، سيقوم فريقنا بقراءة التفاصيل وتحديد المبلغ المطلوب للدفع، وسيتم التواصل معك قريباً.
                   </span>
+                </div>
+
+                {/* Coupon code */}
+                <div className="rounded-xl bg-muted/20 border px-4 py-4 space-y-3">
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-primary" />
+                    كود خصم (اختياري)
+                  </p>
+                  {couponStatus === "valid" && appliedCoupon ? (
+                    <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2 text-green-700 text-sm font-medium">
+                        <CheckCircle2 className="w-4 h-4" />
+                        تم تطبيق الكود: <span className="font-mono font-bold">{appliedCoupon}</span>
+                        {couponData && (
+                          <span className="text-xs text-green-600">
+                            — {couponData.discountType === "percentage" ? `خصم ${couponData.discountValue}%` : `خصم ${couponData.discountValue} ثابت`}
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700 h-7 text-xs"
+                        onClick={() => { setAppliedCoupon(null); setCouponStatus("idle"); setCouponInput(""); setCouponData(null); }}
+                      >
+                        إزالة
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Input
+                        value={couponInput}
+                        onChange={e => { setCouponInput(e.target.value.toUpperCase()); if (couponStatus !== "idle") setCouponStatus("idle"); }}
+                        placeholder="أدخل كود الخصم"
+                        dir="ltr"
+                        className="font-mono tracking-widest uppercase flex-1"
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); validateCoupon(); } }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={validateCoupon}
+                        disabled={!couponInput.trim() || couponStatus === "checking"}
+                        className="shrink-0"
+                      >
+                        {couponStatus === "checking" ? "جاري التحقق..." : "تطبيق"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Terms & Conditions */}

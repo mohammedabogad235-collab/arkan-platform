@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
-import { db, ordersTable, usersTable, packagesTable, paymentMethodsTable, siteSettingsTable } from "@workspace/db";
+import { eq, and, sql } from "drizzle-orm";
+import { db, ordersTable, usersTable, packagesTable, paymentMethodsTable, siteSettingsTable, couponsTable } from "@workspace/db";
 import {
   CreateOrderBody,
   UpdateOrderBody,
@@ -77,11 +77,33 @@ router.post("/orders", async (req, res): Promise<void> => {
   const [settings] = await db.select().from(siteSettingsTable).limit(1);
   const depositPct = settings?.depositPercentageValue ?? 50;
 
+  // Validate coupon if provided
+  let appliedCouponCode: string | null = null;
+  let appliedDiscountAmount: number | null = null;
+  const couponCodeRaw = (parsed.data as any).couponCode as string | undefined;
+  if (couponCodeRaw) {
+    const code = couponCodeRaw.trim().toUpperCase();
+    const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, code));
+    if (coupon && coupon.isActive && !(coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) && !(coupon.expiresAt && new Date(coupon.expiresAt) < new Date())) {
+      const orderAmount = (parsed.data as any).totalAmount ?? 0;
+      if (!coupon.minOrderAmount || orderAmount >= coupon.minOrderAmount) {
+        appliedCouponCode = code;
+        if (coupon.discountType === "percentage") {
+          appliedDiscountAmount = Math.round((orderAmount * coupon.discountValue) / 100);
+        } else {
+          appliedDiscountAmount = coupon.discountValue;
+        }
+        await db.update(couponsTable).set({ usedCount: sql`${couponsTable.usedCount} + 1` }).where(eq(couponsTable.id, coupon.id));
+      }
+    }
+  }
+
   const [order] = await db.insert(ordersTable).values({
     userId: sessionUserId,
     ...parsed.data,
     status: "pending",
     depositPercentage: depositPct,
+    ...(appliedCouponCode ? { couponCode: appliedCouponCode, discountAmount: appliedDiscountAmount } : {}),
   }).returning();
 
   const enriched = await enrichOrder(order);

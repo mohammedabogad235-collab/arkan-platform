@@ -438,6 +438,14 @@ export default function MyOrders() {
                       <div className="border-t pt-4">
                         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">ملخص مالي</h4>
                         <div className="space-y-2 text-sm">
+                          {order.couponCode && (
+                            <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
+                              <span className="text-purple-700 flex items-center gap-1 text-xs">
+                                🎟 كوبون: <span className="font-mono font-bold">{order.couponCode}</span>
+                              </span>
+                              {order.discountAmount ? <span className="text-purple-600 font-semibold text-xs">وفّرت {order.discountAmount} {currencyLabel}</span> : null}
+                            </div>
+                          )}
                           {totalAmount ? (
                             <>
                               <div className="flex justify-between items-center">
