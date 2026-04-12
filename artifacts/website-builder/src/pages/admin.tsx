@@ -8,6 +8,8 @@ import {
   useListTestimonials,
   useUpdateTestimonial,
   useListPaymentMethods,
+  useCreatePaymentMethod,
+  useUpdatePaymentMethod,
   useListUsers,
   useDeleteUser,
   useDeletePackage,
@@ -20,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff, ToggleLeft, ToggleRight, TrendingUp, Banknote, Clock } from "lucide-react";
@@ -57,6 +59,8 @@ export default function Admin() {
   const deleteUser = useDeleteUser();
   const deletePackage = useDeletePackage();
   const deletePaymentMethod = useDeletePaymentMethod();
+  const createPaymentMethod = useCreatePaymentMethod();
+  const updatePaymentMethod = useUpdatePaymentMethod();
   const deleteTestimonial = useDeleteTestimonial();
   const updateTestimonial = useUpdateTestimonial();
   
@@ -73,6 +77,11 @@ export default function Admin() {
   const [pwLoading, setPwLoading] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+
+  const emptyPm = { name: "", details: "", isActive: true };
+  const [pmDialogOpen, setPmDialogOpen] = useState(false);
+  const [pmEditTarget, setPmEditTarget] = useState<{ id: number } | null>(null);
+  const [pmForm, setPmForm] = useState(emptyPm);
 
   const handleUpdateOrderStatus = (orderId: number, status: string) => {
     updateOrder.mutate({ id: orderId, data: { status } }, {
@@ -214,6 +223,41 @@ export default function Admin() {
           queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
           toast({ title: "تم الحذف", description: "تم الحذف بنجاح" });
         }
+      });
+    }
+  };
+
+  const openAddPm = () => {
+    setPmEditTarget(null);
+    setPmForm(emptyPm);
+    setPmDialogOpen(true);
+  };
+
+  const openEditPm = (pm: { id: number; name: string; details: string; isActive: boolean }) => {
+    setPmEditTarget({ id: pm.id });
+    setPmForm({ name: pm.name, details: pm.details, isActive: pm.isActive });
+    setPmDialogOpen(true);
+  };
+
+  const handleSavePm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pmEditTarget) {
+      updatePaymentMethod.mutate({ id: pmEditTarget.id, data: pmForm }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
+          toast({ title: "تم التحديث", description: "تم تحديث طريقة الدفع بنجاح" });
+          setPmDialogOpen(false);
+        },
+        onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر التحديث" }),
+      });
+    } else {
+      createPaymentMethod.mutate({ data: pmForm }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
+          toast({ title: "تمت الإضافة", description: "تمت إضافة طريقة الدفع بنجاح" });
+          setPmDialogOpen(false);
+        },
+        onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر الإضافة" }),
       });
     }
   };
@@ -810,45 +854,111 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="payment-methods">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>طرق الدفع</CardTitle>
-                <CardDescription>إدارة طرق الدفع المتاحة للعملاء</CardDescription>
-              </div>
-              <Button disabled><Plus className="h-4 w-4 ms-2"/> إضافة طريقة دفع (قريباً)</Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>الاسم</TableHead>
-                    <TableHead>التفاصيل</TableHead>
-                    <TableHead>الحالة</TableHead>
-                    <TableHead>إجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paymentMethods?.map(pm => (
-                    <TableRow key={pm.id}>
-                      <TableCell className="font-medium">{pm.name}</TableCell>
-                      <TableCell className="max-w-md truncate">{pm.details}</TableCell>
-                      <TableCell>
-                        <Badge variant={pm.isActive ? "default" : "outline"}>
-                          {pm.isActive ? 'مفعلة' : 'غير مفعلة'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="destructive" size="icon" onClick={() => handleDeletePaymentMethod(pm.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+          <Dialog open={pmDialogOpen} onOpenChange={setPmDialogOpen}>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>طرق الدفع</CardTitle>
+                  <CardDescription>إدارة طرق الدفع المتاحة للعملاء عند إتمام الطلب</CardDescription>
+                </div>
+                <Button size="sm" onClick={openAddPm}>
+                  <Plus className="h-4 w-4 ms-2" /> إضافة طريقة دفع
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>اسم الطريقة</TableHead>
+                      <TableHead>التفاصيل</TableHead>
+                      <TableHead>الحالة</TableHead>
+                      <TableHead>إجراءات</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentMethods?.map(pm => (
+                      <TableRow key={pm.id}>
+                        <TableCell className="font-bold">{pm.name}</TableCell>
+                        <TableCell className="max-w-md text-sm text-muted-foreground">{pm.details}</TableCell>
+                        <TableCell>
+                          <Badge variant={pm.isActive ? "default" : "outline"}>
+                            {pm.isActive ? 'مفعّلة' : 'غير مفعّلة'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button variant="outline" size="icon" title="تعديل" onClick={() => openEditPm(pm)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="destructive" size="icon" onClick={() => handleDeletePaymentMethod(pm.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {(!paymentMethods || paymentMethods.length === 0) && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          لا توجد طرق دفع — اضغط "إضافة طريقة دفع" للبدء
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <DialogContent className="max-w-md" dir="rtl">
+              <DialogHeader>
+                <DialogTitle>{pmEditTarget ? "تعديل طريقة الدفع" : "إضافة طريقة دفع جديدة"}</DialogTitle>
+                <DialogDescription>
+                  {pmEditTarget ? "عدّل تفاصيل طريقة الدفع ثم احفظ التغييرات." : "أدخل اسم طريقة الدفع وتفاصيلها ليراها العملاء عند إتمام الطلب."}
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSavePm} className="space-y-4 mt-2">
+                <div className="space-y-1.5">
+                  <Label>اسم الطريقة</Label>
+                  <Input
+                    value={pmForm.name}
+                    onChange={e => setPmForm(f => ({ ...f, name: e.target.value }))}
+                    required
+                    placeholder="مثال: فودافون كاش، إنستاباي، تحويل بنكي..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>التفاصيل والمعلومات</Label>
+                  <textarea
+                    value={pmForm.details}
+                    onChange={e => setPmForm(f => ({ ...f, details: e.target.value }))}
+                    required
+                    placeholder="أدخل تفاصيل الدفع (رقم المحفظة، رقم الحساب، اسم المستلم...)"
+                    rows={4}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="pm-active"
+                    checked={pmForm.isActive}
+                    onCheckedChange={val => setPmForm(f => ({ ...f, isActive: val }))}
+                  />
+                  <Label htmlFor="pm-active" className="cursor-pointer">
+                    {pmForm.isActive ? "مفعّلة (تظهر للعملاء)" : "غير مفعّلة (مخفية)"}
+                  </Label>
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={createPaymentMethod.isPending || updatePaymentMethod.isPending}
+                >
+                  {createPaymentMethod.isPending || updatePaymentMethod.isPending
+                    ? "جاري الحفظ..."
+                    : pmEditTarget ? "حفظ التعديلات" : "إضافة طريقة الدفع"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="testimonials">
