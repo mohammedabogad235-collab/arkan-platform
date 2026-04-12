@@ -426,6 +426,13 @@ export default function Order() {
                   </Alert>
                 )}
 
+                <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-3 items-start text-sm text-amber-800">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+                  <span>
+                    <strong>ملاحظة:</strong> بعد إرسال الطلب، سيقوم فريقنا بقراءة التفاصيل وتحديد المبلغ المطلوب للدفع، وسيتم التواصل معك قريباً.
+                  </span>
+                </div>
+
                 <div className="pt-4 border-t flex justify-end">
                   <Button type="submit" size="lg" className="h-14 px-12 text-lg gap-2" disabled={createOrder.isPending}>
                     <CheckCircle2 className="h-5 w-5" />
