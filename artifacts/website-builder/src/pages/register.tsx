@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import * as z from "zod";
 import { useRegister, getGetMeQueryKey } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 
 const registerSchema = z.object({
   fullName: z.string().min(5, { message: "الاسم الكامل مطلوب" }),
@@ -30,9 +31,16 @@ const registerSchema = z.object({
 export default function Register() {
   const register = useRegister();
   const [, setLocation] = useLocation();
+  const { isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      setLocation("/");
+    }
+  }, [isAuthenticated, isLoading, setLocation]);
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),

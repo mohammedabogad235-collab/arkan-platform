@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import * as z from "zod";
 import { useLogin, getGetMeQueryKey } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 
 const loginSchema = z.object({
   username: z.string().min(3, { message: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" }),
@@ -27,6 +28,13 @@ const loginSchema = z.object({
 export default function Login() {
   const login = useLogin();
   const [, setLocation] = useLocation();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      setLocation("/");
+    }
+  }, [isAuthenticated, isLoading, setLocation]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
