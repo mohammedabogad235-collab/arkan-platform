@@ -7,6 +7,7 @@ import packagesRouter from "./packages";
 import paymentMethodsRouter from "./payment-methods";
 import testimonialsRouter from "./testimonials";
 import adminRouter from "./admin";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(packagesRouter);
 router.use(paymentMethodsRouter);
 router.use(testimonialsRouter);
 router.use(adminRouter);
+router.use(settingsRouter);
 
 export default router;

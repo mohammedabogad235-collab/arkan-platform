@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSettings, useUpdateSettings, SETTINGS_KEY } from "@/lib/use-settings";
 import { 
   useGetAdminStats, 
   useListOrders, 
@@ -81,6 +82,42 @@ export default function Admin() {
   const [pwLoading, setPwLoading] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+
+  const { data: siteSettings } = useSettings();
+  const updateSettings = useUpdateSettings();
+  const [contactForm, setContactForm] = useState({ phone1: "", phone2: "", email: "", whatsapp: "", address: "", facebookUrl: "", instagramUrl: "", twitterUrl: "" });
+  const [contactSaving, setContactSaving] = useState(false);
+
+  useEffect(() => {
+    if (siteSettings) {
+      setContactForm({
+        phone1: siteSettings.phone1 || "",
+        phone2: siteSettings.phone2 || "",
+        email: siteSettings.email || "",
+        whatsapp: siteSettings.whatsapp || "",
+        address: siteSettings.address || "",
+        facebookUrl: siteSettings.facebookUrl || "",
+        instagramUrl: siteSettings.instagramUrl || "",
+        twitterUrl: siteSettings.twitterUrl || "",
+      });
+    }
+  }, [siteSettings]);
+
+  const handleSaveContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setContactSaving(true);
+    updateSettings.mutate(contactForm, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+        toast({ title: "تم الحفظ", description: "تم حفظ بيانات التواصل بنجاح" });
+        setContactSaving(false);
+      },
+      onError: () => {
+        toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ البيانات" });
+        setContactSaving(false);
+      },
+    });
+  };
 
   const emptyPkg = { name: "", description: "", priceEgp: 0, priceSar: 0, features: "", isActive: true };
   const [pkgDialogOpen, setPkgDialogOpen] = useState(false);
@@ -1171,8 +1208,61 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="settings">
-          <div className="max-w-md">
+          <div className="space-y-6 max-w-2xl">
             <Card>
+              <CardHeader>
+                <CardTitle>بيانات التواصل</CardTitle>
+                <CardDescription>هذه البيانات تظهر للعملاء في أسفل الصفحة (الفوتر) على الموقع</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveContact} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>رقم الهاتف الأول</Label>
+                      <Input value={contactForm.phone1} onChange={e => setContactForm(f => ({ ...f, phone1: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>رقم الهاتف الثاني (اختياري)</Label>
+                      <Input value={contactForm.phone2} onChange={e => setContactForm(f => ({ ...f, phone2: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>البريد الإلكتروني</Label>
+                      <Input value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} type="email" placeholder="info@example.com" dir="ltr" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>رقم واتساب</Label>
+                      <Input value={contactForm.whatsapp} onChange={e => setContactForm(f => ({ ...f, whatsapp: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label>العنوان</Label>
+                      <Input value={contactForm.address} onChange={e => setContactForm(f => ({ ...f, address: e.target.value }))} placeholder="القاهرة، مصر" />
+                    </div>
+                  </div>
+                  <div className="border-t pt-4">
+                    <p className="text-sm font-medium text-muted-foreground mb-3">روابط السوشيال ميديا (اختياري)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>فيسبوك</Label>
+                        <Input value={contactForm.facebookUrl} onChange={e => setContactForm(f => ({ ...f, facebookUrl: e.target.value }))} placeholder="https://facebook.com/..." dir="ltr" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>إنستغرام</Label>
+                        <Input value={contactForm.instagramUrl} onChange={e => setContactForm(f => ({ ...f, instagramUrl: e.target.value }))} placeholder="https://instagram.com/..." dir="ltr" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>تويتر / X</Label>
+                        <Input value={contactForm.twitterUrl} onChange={e => setContactForm(f => ({ ...f, twitterUrl: e.target.value }))} placeholder="https://x.com/..." dir="ltr" />
+                      </div>
+                    </div>
+                  </div>
+                  <Button type="submit" disabled={contactSaving} className="w-full sm:w-auto px-8">
+                    {contactSaving ? "جاري الحفظ..." : "حفظ بيانات التواصل"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card className="max-w-md">
               <CardHeader>
                 <CardTitle>تغيير كلمة المرور</CardTitle>
                 <CardDescription>يمكنك تغيير كلمة مرور حسابك من هنا</CardDescription>
