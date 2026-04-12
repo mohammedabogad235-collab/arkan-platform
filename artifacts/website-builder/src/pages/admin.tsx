@@ -513,27 +513,28 @@ export default function Admin() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" dir="rtl">
       {/* Top header */}
-      <header className="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+      <header className="bg-white border-b px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <ShieldCheck className="w-4 h-4 text-white" />
           </div>
           <div>
             <span className="font-bold text-base">أركان</span>
-            <span className="text-xs text-muted-foreground ms-2">لوحة التحكم</span>
+            <span className="text-xs text-muted-foreground ms-2 hidden sm:inline">لوحة التحكم</span>
           </div>
         </div>
         {pendingReceipts > 0 && (
-          <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 text-orange-700 text-xs px-3 py-1.5 rounded-full cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => setActiveTab("orders")}>
-            <FileImage className="w-3.5 h-3.5" />
-            {pendingReceipts} إيصال بانتظار التأكيد
+          <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs px-2.5 py-1.5 rounded-full cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => setActiveTab("orders")}>
+            <FileImage className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">{pendingReceipts} إيصال بانتظار التأكيد</span>
+            <span className="sm:hidden">{pendingReceipts} إيصال</span>
           </div>
         )}
       </header>
 
       <div className="flex flex-1">
-        {/* Sidebar */}
-        <aside className="w-52 bg-white border-l sticky top-14 self-start h-[calc(100vh-3.5rem)] flex flex-col py-4 shadow-sm shrink-0">
+        {/* Sidebar — desktop only */}
+        <aside className="hidden md:flex w-52 bg-white border-l sticky top-14 self-start h-[calc(100vh-3.5rem)] flex-col py-4 shadow-sm shrink-0">
           <nav className="flex flex-col gap-1 px-3 flex-1">
             {NAV.map(item => {
               const Icon = item.icon;
@@ -553,7 +554,7 @@ export default function Admin() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 p-6 min-w-0">
+        <main className="flex-1 p-3 md:p-6 min-w-0 pb-20 md:pb-6">
 
           {/* ─── Overview ─── */}
           {activeTab === "overview" && (
@@ -1038,6 +1039,35 @@ export default function Admin() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Mobile bottom navigation */}
+      <nav className="md:hidden fixed bottom-0 right-0 left-0 z-30 bg-white border-t shadow-lg" dir="rtl">
+        <div className="flex overflow-x-auto scrollbar-hide">
+          {NAV.map(item => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            const hasBadge = item.id === "orders" && pendingReceipts > 0;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex flex-col items-center justify-center gap-0.5 min-w-[4rem] flex-1 py-2.5 px-1 relative transition-colors ${isActive ? "text-primary" : "text-muted-foreground"}`}
+              >
+                <div className="relative">
+                  <Icon className="w-5 h-5" />
+                  {hasBadge && (
+                    <span className="absolute -top-1 -left-1 w-4 h-4 bg-orange-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold">
+                      {pendingReceipts}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+                {isActive && <span className="absolute bottom-0 right-2 left-2 h-0.5 bg-primary rounded-full" />}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
