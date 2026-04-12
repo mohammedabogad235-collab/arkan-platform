@@ -3,12 +3,14 @@ import { Button } from "@/components/ui/button";
 import { useListPackages, useListTestimonials } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Star, MonitorSmartphone, Code, Zap, HeadphonesIcon } from "lucide-react";
+import { CheckCircle2, Star, MonitorSmartphone, Code, Zap, HeadphonesIcon, Phone, Mail, MapPin, MessageCircle, Facebook, Instagram, Twitter } from "lucide-react";
 import { motion } from "framer-motion";
+import { useSettings } from "@/lib/use-settings";
 
 export default function Home() {
   const { data: packages, isLoading: isLoadingPackages } = useListPackages();
   const { data: testimonials, isLoading: isLoadingTestimonials } = useListTestimonials();
+  const { data: settings } = useSettings();
 
   const activePackages = packages?.filter(p => p.isActive) || [];
   const activeTestimonials = testimonials?.filter(t => t.isActive) || [];
@@ -221,6 +223,122 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Contact Section */}
+      {(settings?.phone1 || settings?.phone2 || settings?.email || settings?.whatsapp || settings?.address) && (
+        <section className="py-20 bg-muted/30">
+          <div className="container px-4 mx-auto">
+            <div className="text-center max-w-2xl mx-auto mb-12">
+              <h2 className="text-3xl font-bold mb-4">تواصل معنا</h2>
+              <p className="text-muted-foreground text-lg">نحن هنا للإجابة على استفساراتك في أي وقت.</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+              {settings?.phone1 && (
+                <motion.a
+                  href={`tel:${settings.phone1}`}
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4 }}
+                  className="flex flex-col items-center gap-3 p-6 bg-background rounded-2xl border shadow-sm hover:shadow-md transition-shadow text-center group"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                    <Phone className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">هاتف</p>
+                    <p className="font-semibold" dir="ltr">{settings.phone1}</p>
+                    {settings.phone2 && <p className="font-semibold text-sm text-muted-foreground mt-0.5" dir="ltr">{settings.phone2}</p>}
+                  </div>
+                </motion.a>
+              )}
+
+              {settings?.whatsapp && (
+                <motion.a
+                  href={`https://wa.me/${settings.whatsapp.replace(/[^0-9]/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: 0.05 }}
+                  className="flex flex-col items-center gap-3 p-6 bg-background rounded-2xl border shadow-sm hover:shadow-md transition-shadow text-center group"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center text-green-600 group-hover:bg-green-500 group-hover:text-white transition-colors">
+                    <MessageCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">واتساب</p>
+                    <p className="font-semibold" dir="ltr">{settings.whatsapp}</p>
+                  </div>
+                </motion.a>
+              )}
+
+              {settings?.email && (
+                <motion.a
+                  href={`mailto:${settings.email}`}
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: 0.1 }}
+                  className="flex flex-col items-center gap-3 p-6 bg-background rounded-2xl border shadow-sm hover:shadow-md transition-shadow text-center group"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                    <Mail className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">البريد الإلكتروني</p>
+                    <p className="font-semibold text-sm break-all">{settings.email}</p>
+                  </div>
+                </motion.a>
+              )}
+
+              {settings?.address && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: 0.15 }}
+                  className="flex flex-col items-center gap-3 p-6 bg-background rounded-2xl border shadow-sm text-center"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                    <MapPin className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">العنوان</p>
+                    <p className="font-semibold text-sm leading-relaxed">{settings.address}</p>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
+            {/* Social Links */}
+            {(settings?.facebookUrl || settings?.instagramUrl || settings?.twitterUrl) && (
+              <div className="flex justify-center gap-4 mt-10">
+                {settings.facebookUrl && (
+                  <a href={settings.facebookUrl} target="_blank" rel="noopener noreferrer"
+                    className="w-11 h-11 rounded-xl bg-background border flex items-center justify-center text-muted-foreground hover:text-[#1877f2] hover:border-[#1877f2]/30 hover:bg-[#1877f2]/5 transition-all shadow-sm">
+                    <Facebook className="w-5 h-5" />
+                  </a>
+                )}
+                {settings.instagramUrl && (
+                  <a href={settings.instagramUrl} target="_blank" rel="noopener noreferrer"
+                    className="w-11 h-11 rounded-xl bg-background border flex items-center justify-center text-muted-foreground hover:text-[#e1306c] hover:border-[#e1306c]/30 hover:bg-[#e1306c]/5 transition-all shadow-sm">
+                    <Instagram className="w-5 h-5" />
+                  </a>
+                )}
+                {settings.twitterUrl && (
+                  <a href={settings.twitterUrl} target="_blank" rel="noopener noreferrer"
+                    className="w-11 h-11 rounded-xl bg-background border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/30 hover:bg-foreground/5 transition-all shadow-sm">
+                    <Twitter className="w-5 h-5" />
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* CTA Section */}
       <section className="py-24 relative overflow-hidden">

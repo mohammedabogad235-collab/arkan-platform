@@ -168,6 +168,48 @@ router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
+router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
+  const session = req.session as { userId?: number } | undefined;
+  if (!session?.userId) {
+    res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
+    return;
+  }
+
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "معرف الطلب غير صالح" });
+    return;
+  }
+
+  const [existing] = await db.select().from(ordersTable).where(
+    and(eq(ordersTable.id, id), eq(ordersTable.userId, session.userId))
+  );
+
+  if (!existing) {
+    res.status(404).json({ error: "الطلب غير موجود" });
+    return;
+  }
+
+  if (existing.status === "cancelled") {
+    res.status(400).json({ error: "الطلب ملغى بالفعل" });
+    return;
+  }
+
+  if (existing.status === "completed") {
+    res.status(400).json({ error: "لا يمكن إلغاء طلب مكتمل" });
+    return;
+  }
+
+  const [order] = await db.update(ordersTable)
+    .set({ status: "cancelled" })
+    .where(eq(ordersTable.id, id))
+    .returning();
+
+  const enriched = await enrichOrder(order);
+  res.json(enriched);
+});
+
 router.post("/orders/:id/confirm-receipt", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
