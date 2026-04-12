@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useSettings, useUpdateSettings, SETTINGS_KEY } from "@/lib/use-settings";
-import { 
-  useGetAdminStats, 
-  useListOrders, 
+import {
+  useGetAdminStats,
+  useListOrders,
   useUpdateOrder,
   useDeleteOrder,
   useListPackages,
@@ -17,46 +17,266 @@ import {
   useDeleteUser,
   useDeletePackage,
   useDeletePaymentMethod,
-  useDeleteTestimonial
+  useDeleteTestimonial,
+  getGetAdminStatsQueryKey,
+  getListOrdersQueryKey,
+  getListUsersQueryKey,
+  getListPackagesQueryKey,
+  getListPaymentMethodsQueryKey,
+  getListTestimonialsQueryKey,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff, ToggleLeft, ToggleRight, TrendingUp, Banknote, Clock, FileImage, BadgeCheck, Percent } from "lucide-react";
-import { format } from "date-fns";
-import { useQueryClient } from "@tanstack/react-query";
-import { 
-  getGetAdminStatsQueryKey, 
-  getListOrdersQueryKey, 
-  getListUsersQueryKey,
-  getListPackagesQueryKey,
-  getListPaymentMethodsQueryKey,
-  getListTestimonialsQueryKey
-} from "@workspace/api-client-react";
-import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
+import {
+  Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil,
+  ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff,
+  TrendingUp, FileImage, BadgeCheck, Percent, MessageSquare,
+  CreditCard, Package, BarChart3, Globe, Phone, Mail, MapPin,
+  Facebook, Instagram, Twitter, ChevronDown, ChevronUp, Check, X,
+  Clock, Banknote, Star, ArrowUpRight,
+} from "lucide-react";
+import { format } from "date-fns";
+import { ar } from "date-fns/locale";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
-const statusMap: Record<string, string> = {
-  pending: "قيد الانتظار",
-  in_progress: "جاري التنفيذ",
-  completed: "مكتمل",
-  cancelled: "ملغي",
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
+  pending:    { label: "قيد الانتظار", color: "text-amber-700", bg: "bg-amber-50 border-amber-200", dot: "bg-amber-500" },
+  in_progress:{ label: "جاري التنفيذ",  color: "text-blue-700",  bg: "bg-blue-50 border-blue-200",   dot: "bg-blue-500" },
+  completed:  { label: "مكتمل",         color: "text-green-700", bg: "bg-green-50 border-green-200", dot: "bg-green-500" },
+  cancelled:  { label: "ملغي",          color: "text-red-700",   bg: "bg-red-50 border-red-200",     dot: "bg-red-400" },
 };
 
+const NAV = [
+  { id: "overview", label: "الإحصائيات", icon: BarChart3 },
+  { id: "orders",   label: "الطلبات",    icon: ShoppingCart },
+  { id: "finances", label: "المالية",    icon: TrendingUp },
+  { id: "users",    label: "المستخدمين", icon: Users },
+  { id: "packages", label: "الباقات",    icon: Package },
+  { id: "payments", label: "طرق الدفع", icon: CreditCard },
+  { id: "reviews",  label: "الآراء",     icon: MessageSquare },
+  { id: "settings", label: "الإعدادات", icon: Settings },
+];
+
+function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
+  return (
+    <div className={`rounded-2xl p-5 border flex items-center gap-4 bg-white shadow-sm hover:shadow-md transition-shadow`}>
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+        <Icon className="w-6 h-6" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm text-muted-foreground mb-0.5 truncate">{label}</p>
+        <p className="text-2xl font-bold text-foreground leading-tight">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.bg} ${cfg.color}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
+function OrderCard({ order, onStatusChange, onPaymentChange, onDelete, onConfirmReceipt }: {
+  order: any;
+  onStatusChange: (id: number, status: string) => void;
+  onPaymentChange: (id: number, field: string, val: boolean) => void;
+  onDelete: (id: number) => void;
+  onConfirmReceipt: (id: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const pct = order.depositPercentage ?? 50;
+  const deposit = order.totalAmount ? (order.totalAmount * pct) / 100 : null;
+  const remaining = order.totalAmount && deposit !== null ? order.totalAmount - deposit : null;
+
+  return (
+    <div className="bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b bg-muted/20">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <Globe className="w-4 h-4 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-foreground truncate">{order.siteName}</span>
+              <StatusBadge status={order.status} />
+              {order.receiptUrl && !order.depositPaid && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200">
+                  <FileImage className="w-3 h-3" /> إيصال بانتظار التأكيد
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">{order.siteType} · #{order.id}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-muted-foreground hidden sm:block">
+            {format(new Date(order.createdAt), "dd MMM yyyy", { locale: ar })}
+          </span>
+          <button onClick={() => setExpanded(v => !v)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary row */}
+      <div className="px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+        <div className="flex items-center gap-2">
+          <Users className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="font-medium">{order.user?.fullName}</span>
+          <span className="text-muted-foreground">{order.user?.phone}</span>
+        </div>
+        {order.totalAmount ? (
+          <div className="flex items-center gap-1 font-semibold text-primary">
+            <DollarSign className="w-3.5 h-3.5" />
+            {order.totalAmount.toLocaleString()} {order.currency}
+          </div>
+        ) : (
+          <span className="text-muted-foreground text-xs">لم يُحدَّد المبلغ بعد</span>
+        )}
+        <div className="flex items-center gap-2 ms-auto">
+          {order.depositPaid && <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">✓ مقدم</Badge>}
+          {order.finalPaid && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">✓ متبقي</Badge>}
+        </div>
+      </div>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="border-t bg-muted/10 px-5 py-4 space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Left: Details */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">تفاصيل الطلب</h4>
+              <p className="text-sm leading-relaxed bg-white p-3 rounded-xl border whitespace-pre-line">{order.details}</p>
+              {order.package && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Package className="w-4 h-4 text-muted-foreground" />
+                  <span>الباقة: <strong>{order.package.name}</strong></span>
+                </div>
+              )}
+              {order.customBudget && (
+                <div className="flex items-center gap-2 text-sm">
+                  <DollarSign className="w-4 h-4 text-muted-foreground" />
+                  <span>ميزانية مخصصة: <strong>{order.customBudget} {order.currency}</strong></span>
+                </div>
+              )}
+              {order.paymentMethod && (
+                <div className="flex items-center gap-2 text-sm">
+                  <CreditCard className="w-4 h-4 text-muted-foreground" />
+                  <span>طريقة الدفع: <strong>{order.paymentMethod.name}</strong></span>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Financial */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">الحالة المالية</h4>
+              <div className="bg-white rounded-xl border p-4 space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">إجمالي المبلغ</span>
+                  <span className="font-bold">{order.totalAmount ? `${order.totalAmount.toLocaleString()} ${order.currency}` : "—"}</span>
+                </div>
+                {deposit !== null && (
+                  <>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">المقدم ({pct}%)</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-amber-600">{deposit.toFixed(0)} {order.currency}</span>
+                        <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">المتبقي ({100 - pct}%)</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-blue-600">{remaining?.toFixed(0)} {order.currency}</span>
+                        <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75" />
+                      </div>
+                    </div>
+                  </>
+                )}
+                {!order.totalAmount && (
+                  <div className="flex gap-2">
+                    <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
+                    <Label className="text-xs text-muted-foreground">مقدم</Label>
+                    <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75 ms-3" />
+                    <Label className="text-xs text-muted-foreground">متبقي</Label>
+                  </div>
+                )}
+              </div>
+
+              {/* Receipt */}
+              {order.receiptUrl && (
+                <div className="bg-white rounded-xl border p-3 flex items-center justify-between">
+                  <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                    <FileImage className="w-4 h-4" />
+                    عرض إيصال الدفع
+                  </a>
+                  {!order.depositPaid && (
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700 h-7 text-xs gap-1" onClick={() => onConfirmReceipt(order.id)}>
+                      <BadgeCheck className="w-3.5 h-3.5" />
+                      تأكيد الإيصال
+                    </Button>
+                  )}
+                  {order.depositPaid && (
+                    <Badge className="bg-green-50 text-green-700 border-green-200 text-xs">✓ مؤكد</Badge>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">الحالة:</span>
+              <Select defaultValue={order.status} onValueChange={v => onStatusChange(order.id, v)}>
+                <SelectTrigger className="h-8 w-40 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">قيد الانتظار</SelectItem>
+                  <SelectItem value="in_progress">جاري التنفيذ</SelectItem>
+                  <SelectItem value="completed">مكتمل</SelectItem>
+                  <SelectItem value="cancelled">ملغي</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="ms-auto h-8 text-xs gap-1"
+              onClick={() => onDelete(order.id)}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              حذف الطلب
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Admin() {
-  const { data: stats, isLoading: statsLoading } = useGetAdminStats();
-  const { data: orders, isLoading: ordersLoading } = useListOrders();
-  const { data: users, isLoading: usersLoading } = useListUsers();
+  const { data: stats } = useGetAdminStats();
+  const { data: orders } = useListOrders();
+  const { data: users } = useListUsers();
   const { data: packages } = useListPackages();
   const { data: paymentMethods } = useListPaymentMethods();
   const { data: testimonials } = useListTestimonials();
-  
+
   const updateOrder = useUpdateOrder();
   const deleteOrder = useDeleteOrder();
   const deleteUser = useDeleteUser();
@@ -68,13 +288,29 @@ export default function Admin() {
   const updatePaymentMethod = useUpdatePaymentMethod();
   const deleteTestimonial = useDeleteTestimonial();
   const updateTestimonial = useUpdateTestimonial();
-  
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("overview");
 
-  const [activeTab, setActiveTab] = useState("orders");
-  const [editingAmount, setEditingAmount] = useState<{ orderId: number; value: string } | null>(null);
-  const [editingPercent, setEditingPercent] = useState<{ orderId: number; value: string } | null>(null);
+  // Settings
+  const { data: siteSettings } = useSettings();
+  const updateSettings = useUpdateSettings();
+  const [contactForm, setContactForm] = useState({ phone1: "", phone2: "", email: "", whatsapp: "", address: "", facebookUrl: "", instagramUrl: "", twitterUrl: "" });
+  const [contactSaving, setContactSaving] = useState(false);
+  const [depositRequire, setDepositRequire] = useState(true);
+  const [depositPct, setDepositPct] = useState(50);
+  const [depositSaving, setDepositSaving] = useState(false);
+
+  useEffect(() => {
+    if (siteSettings) {
+      setContactForm({ phone1: siteSettings.phone1 || "", phone2: siteSettings.phone2 || "", email: siteSettings.email || "", whatsapp: siteSettings.whatsapp || "", address: siteSettings.address || "", facebookUrl: siteSettings.facebookUrl || "", instagramUrl: siteSettings.instagramUrl || "", twitterUrl: siteSettings.twitterUrl || "" });
+      setDepositRequire(siteSettings.requireDeposit ?? true);
+      setDepositPct(siteSettings.depositPercentageValue ?? 50);
+    }
+  }, [siteSettings]);
+
+  // Auth
   const [createAdminOpen, setCreateAdminOpen] = useState(false);
   const [adminForm, setAdminForm] = useState({ fullName: "", phone: "", email: "", username: "", password: "" });
   const [adminFormLoading, setAdminFormLoading] = useState(false);
@@ -83,150 +319,17 @@ export default function Admin() {
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
 
-  const { data: siteSettings } = useSettings();
-  const updateSettings = useUpdateSettings();
-  const [contactForm, setContactForm] = useState({ phone1: "", phone2: "", email: "", whatsapp: "", address: "", facebookUrl: "", instagramUrl: "", twitterUrl: "" });
-  const [depositRequire, setDepositRequire] = useState(true);
-  const [depositPct, setDepositPct] = useState(50);
-  const [depositSaving, setDepositSaving] = useState(false);
-  const [contactSaving, setContactSaving] = useState(false);
-
-  useEffect(() => {
-    if (siteSettings) {
-      setContactForm({
-        phone1: siteSettings.phone1 || "",
-        phone2: siteSettings.phone2 || "",
-        email: siteSettings.email || "",
-        whatsapp: siteSettings.whatsapp || "",
-        address: siteSettings.address || "",
-        facebookUrl: siteSettings.facebookUrl || "",
-        instagramUrl: siteSettings.instagramUrl || "",
-        twitterUrl: siteSettings.twitterUrl || "",
-      });
-      setDepositRequire(siteSettings.requireDeposit ?? true);
-      setDepositPct(siteSettings.depositPercentageValue ?? 50);
-    }
-  }, [siteSettings]);
-
-  const handleSaveDeposit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setDepositSaving(true);
-    updateSettings.mutate({ requireDeposit: depositRequire, depositPercentageValue: depositPct }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
-        toast({ title: "تم الحفظ", description: "تم حفظ إعدادات المقدّم بنجاح" });
-        setDepositSaving(false);
-      },
-      onError: () => {
-        toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ الإعدادات" });
-        setDepositSaving(false);
-      },
-    });
-  };
-
-  const handleSaveContact = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setContactSaving(true);
-    updateSettings.mutate(contactForm, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
-        toast({ title: "تم الحفظ", description: "تم حفظ بيانات التواصل بنجاح" });
-        setContactSaving(false);
-      },
-      onError: () => {
-        toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ البيانات" });
-        setContactSaving(false);
-      },
-    });
-  };
-
+  // Packages
   const emptyPkg = { name: "", description: "", priceEgp: 0, priceSar: 0, features: "", isActive: true };
   const [pkgDialogOpen, setPkgDialogOpen] = useState(false);
   const [pkgEditTarget, setPkgEditTarget] = useState<{ id: number } | null>(null);
   const [pkgForm, setPkgForm] = useState(emptyPkg);
 
+  // Payment methods
   const emptyPm = { name: "", details: "", isActive: true };
   const [pmDialogOpen, setPmDialogOpen] = useState(false);
   const [pmEditTarget, setPmEditTarget] = useState<{ id: number } | null>(null);
   const [pmForm, setPmForm] = useState(emptyPm);
-
-  const handleUpdateOrderStatus = (orderId: number, status: string) => {
-    updateOrder.mutate({ id: orderId, data: { status } }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
-        toast({ title: "تم التحديث", description: "تم تحديث حالة الطلب بنجاح" });
-      },
-      onError: () => {
-        toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث حالة الطلب" });
-      }
-    });
-  };
-
-  const handleUpdateOrderPayment = (orderId: number, field: "depositPaid" | "finalPaid", value: boolean) => {
-    updateOrder.mutate({ id: orderId, data: { [field]: value } }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-        toast({ title: "تم التحديث", description: "تم تحديث حالة الدفع بنجاح" });
-      },
-      onError: () => {
-        toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث حالة الدفع" });
-      }
-    });
-  };
-
-  const handleDeleteOrder = (orderId: number) => {
-    if(confirm("هل أنت متأكد من حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.")) {
-      deleteOrder.mutate({ id: orderId }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
-          toast({ title: "تم الحذف", description: "تم حذف الطلب بنجاح" });
-        },
-        onError: () => {
-          toast({ variant: "destructive", title: "خطأ", description: "تعذر حذف الطلب" });
-        }
-      });
-    }
-  };
-
-  const handleDeleteUser = (userId: number) => {
-    if(confirm("هل أنت متأكد من حذف هذا المستخدم؟ لا يمكن التراجع عن هذا الإجراء.")) {
-      deleteUser.mutate({ id: userId }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
-          toast({ title: "تم الحذف", description: "تم حذف المستخدم بنجاح" });
-        }
-      });
-    }
-  };
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pwForm.newPassword !== pwForm.confirm) {
-      toast({ variant: "destructive", title: "خطأ", description: "كلمتا المرور غير متطابقتين" });
-      return;
-    }
-    if (pwForm.newPassword.length < 6) {
-      toast({ variant: "destructive", title: "خطأ", description: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" });
-      return;
-    }
-    setPwLoading(true);
-    try {
-      await apiFetch("/api/admin/change-password", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newPassword: pwForm.newPassword }),
-      });
-      toast({ title: "تم التحديث", description: "تم تغيير كلمة المرور بنجاح" });
-      setPwForm({ newPassword: "", confirm: "" });
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر تغيير كلمة المرور" });
-    } finally {
-      setPwLoading(false);
-    }
-  };
 
   const apiFetch = async (url: string, options: RequestInit) => {
     const res = await fetch(url, { ...options, credentials: "include" });
@@ -235,19 +338,66 @@ export default function Admin() {
     return data;
   };
 
+  const handleUpdateOrderStatus = (orderId: number, status: string) => {
+    updateOrder.mutate({ id: orderId, data: { status } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+        toast({ title: "تم التحديث" });
+      },
+      onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث الحالة" }),
+    });
+  };
+
+  const handleUpdateOrderPayment = (orderId: number, field: string, value: boolean) => {
+    updateOrder.mutate({ id: orderId, data: { [field]: value } }, {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() }),
+      onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث الدفع" }),
+    });
+  };
+
+  const handleDeleteOrder = (orderId: number) => {
+    if (!confirm("هل أنت متأكد من حذف هذا الطلب؟")) return;
+    deleteOrder.mutate({ id: orderId }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+        toast({ title: "تم الحذف" });
+      },
+      onError: () => toast({ variant: "destructive", title: "خطأ" }),
+    });
+  };
+
+  const handleConfirmReceipt = async (orderId: number) => {
+    try {
+      await apiFetch(`/api/orders/${orderId}/confirm-receipt`, { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+      toast({ title: "تم التأكيد", description: "تم قبول الإيصال وبدء تنفيذ الطلب" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err?.message });
+    }
+  };
+
+  const handleDeleteUser = (userId: number) => {
+    if (!confirm("هل أنت متأكد من حذف هذا المستخدم؟")) return;
+    deleteUser.mutate({ id: userId }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+        toast({ title: "تم الحذف" });
+      },
+    });
+  };
+
   const handleToggleRole = async (userId: number, currentRole: string) => {
     const newRole = currentRole === "admin" ? "user" : "admin";
-    const label = newRole === "admin" ? "مدير" : "مستخدم";
     try {
-      await apiFetch(`/api/users/${userId}/role`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: newRole }),
-      });
+      await apiFetch(`/api/users/${userId}/role`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: newRole }) });
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
-      toast({ title: "تم التحديث", description: `تم تغيير الصلاحية إلى ${label}` });
+      toast({ title: "تم التحديث", description: `تم تغيير الصلاحية إلى ${newRole === "admin" ? "مدير" : "مستخدم"}` });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر تغيير الصلاحية" });
+      toast({ variant: "destructive", title: "خطأ", description: err?.message });
     }
   };
 
@@ -255,1174 +405,625 @@ export default function Admin() {
     e.preventDefault();
     setAdminFormLoading(true);
     try {
-      await apiFetch("/api/admin/create-admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(adminForm),
-      });
+      await apiFetch("/api/admin/create-admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(adminForm) });
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
-      toast({ title: "تم الإنشاء", description: "تم إنشاء حساب الأدمن الجديد بنجاح" });
+      toast({ title: "تم الإنشاء", description: "تم إنشاء حساب الأدمن بنجاح" });
       setCreateAdminOpen(false);
       setAdminForm({ fullName: "", phone: "", email: "", username: "", password: "" });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر إنشاء الحساب" });
-    } finally {
-      setAdminFormLoading(false);
-    }
+      toast({ variant: "destructive", title: "خطأ", description: err?.message });
+    } finally { setAdminFormLoading(false); }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwForm.newPassword !== pwForm.confirm) { toast({ variant: "destructive", title: "خطأ", description: "كلمتا المرور غير متطابقتين" }); return; }
+    if (pwForm.newPassword.length < 6) { toast({ variant: "destructive", title: "خطأ", description: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }); return; }
+    setPwLoading(true);
+    try {
+      await apiFetch("/api/admin/change-password", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newPassword: pwForm.newPassword }) });
+      toast({ title: "تم التحديث", description: "تم تغيير كلمة المرور بنجاح" });
+      setPwForm({ newPassword: "", confirm: "" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err?.message });
+    } finally { setPwLoading(false); }
   };
 
   const handleDeletePackage = (id: number) => {
-    if(confirm("هل أنت متأكد من حذف هذه الباقة؟")) {
-      deletePackage.mutate({ id }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() });
-          toast({ title: "تم الحذف", description: "تم حذف الباقة بنجاح" });
-        }
-      });
-    }
+    if (!confirm("هل أنت متأكد؟")) return;
+    deletePackage.mutate({ id }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() }); toast({ title: "تم الحذف" }); } });
   };
 
-  const openAddPkg = () => {
-    setPkgEditTarget(null);
-    setPkgForm(emptyPkg);
-    setPkgDialogOpen(true);
-  };
-
-  const openEditPkg = (pkg: typeof emptyPkg & { id: number }) => {
-    setPkgEditTarget({ id: pkg.id });
-    setPkgForm({ name: pkg.name, description: pkg.description, priceEgp: pkg.priceEgp, priceSar: pkg.priceSar, features: pkg.features, isActive: pkg.isActive });
-    setPkgDialogOpen(true);
-  };
+  const openAddPkg = () => { setPkgEditTarget(null); setPkgForm(emptyPkg); setPkgDialogOpen(true); };
+  const openEditPkg = (pkg: any) => { setPkgEditTarget({ id: pkg.id }); setPkgForm({ name: pkg.name, description: pkg.description, priceEgp: pkg.priceEgp, priceSar: pkg.priceSar, features: pkg.features, isActive: pkg.isActive }); setPkgDialogOpen(true); };
 
   const handleSavePkg = (e: React.FormEvent) => {
     e.preventDefault();
     const payload = { ...pkgForm, priceEgp: Number(pkgForm.priceEgp), priceSar: Number(pkgForm.priceSar) };
     if (pkgEditTarget) {
-      updatePackage.mutate({ id: pkgEditTarget.id, data: payload }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() });
-          toast({ title: "تم التحديث", description: "تم تحديث الباقة بنجاح" });
-          setPkgDialogOpen(false);
-        },
-        onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر التحديث" }),
-      });
+      updatePackage.mutate({ id: pkgEditTarget.id, data: payload }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() }); toast({ title: "تم التحديث" }); setPkgDialogOpen(false); }, onError: () => toast({ variant: "destructive", title: "خطأ" }) });
     } else {
-      createPackage.mutate({ data: payload }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() });
-          toast({ title: "تمت الإضافة", description: "تمت إضافة الباقة بنجاح" });
-          setPkgDialogOpen(false);
-        },
-        onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر الإضافة" }),
-      });
+      createPackage.mutate({ data: payload }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() }); toast({ title: "تمت الإضافة" }); setPkgDialogOpen(false); }, onError: () => toast({ variant: "destructive", title: "خطأ" }) });
     }
   };
 
   const handleDeletePaymentMethod = (id: number) => {
-    if(confirm("هل أنت متأكد من حذف طريقة الدفع؟")) {
-      deletePaymentMethod.mutate({ id }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
-          toast({ title: "تم الحذف", description: "تم الحذف بنجاح" });
-        }
-      });
-    }
+    if (!confirm("هل أنت متأكد؟")) return;
+    deletePaymentMethod.mutate({ id }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() }); toast({ title: "تم الحذف" }); } });
   };
 
-  const openAddPm = () => {
-    setPmEditTarget(null);
-    setPmForm(emptyPm);
-    setPmDialogOpen(true);
-  };
-
-  const openEditPm = (pm: { id: number; name: string; details: string; isActive: boolean }) => {
-    setPmEditTarget({ id: pm.id });
-    setPmForm({ name: pm.name, details: pm.details, isActive: pm.isActive });
-    setPmDialogOpen(true);
-  };
+  const openAddPm = () => { setPmEditTarget(null); setPmForm(emptyPm); setPmDialogOpen(true); };
+  const openEditPm = (pm: any) => { setPmEditTarget({ id: pm.id }); setPmForm({ name: pm.name, details: pm.details, isActive: pm.isActive }); setPmDialogOpen(true); };
 
   const handleSavePm = (e: React.FormEvent) => {
     e.preventDefault();
     if (pmEditTarget) {
-      updatePaymentMethod.mutate({ id: pmEditTarget.id, data: pmForm }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
-          toast({ title: "تم التحديث", description: "تم تحديث طريقة الدفع بنجاح" });
-          setPmDialogOpen(false);
-        },
-        onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر التحديث" }),
-      });
+      updatePaymentMethod.mutate({ id: pmEditTarget.id, data: pmForm }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() }); toast({ title: "تم التحديث" }); setPmDialogOpen(false); }, onError: () => toast({ variant: "destructive", title: "خطأ" }) });
     } else {
-      createPaymentMethod.mutate({ data: pmForm }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
-          toast({ title: "تمت الإضافة", description: "تمت إضافة طريقة الدفع بنجاح" });
-          setPmDialogOpen(false);
-        },
-        onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر الإضافة" }),
-      });
+      createPaymentMethod.mutate({ data: pmForm }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() }); toast({ title: "تمت الإضافة" }); setPmDialogOpen(false); }, onError: () => toast({ variant: "destructive", title: "خطأ" }) });
     }
   };
 
   const handleDeleteTestimonial = (id: number) => {
-    if(confirm("هل أنت متأكد من حذف الرأي؟")) {
-      deleteTestimonial.mutate({ id }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListTestimonialsQueryKey() });
-          toast({ title: "تم الحذف", description: "تم الحذف بنجاح" });
-        }
-      });
-    }
+    if (!confirm("هل أنت متأكد؟")) return;
+    deleteTestimonial.mutate({ id }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTestimonialsQueryKey() }); toast({ title: "تم الحذف" }); } });
   };
 
   const handleToggleTestimonial = (id: number, current: boolean) => {
     updateTestimonial.mutate({ id, data: { isActive: !current } }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListTestimonialsQueryKey() });
-        toast({ title: "تم التحديث", description: current ? "تم إخفاء الرأي" : "تم نشر الرأي بنجاح" });
-      },
-      onError: () => {
-        toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث الرأي" });
-      }
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTestimonialsQueryKey() }); toast({ title: current ? "تم الإخفاء" : "تم النشر" }); },
+      onError: () => toast({ variant: "destructive", title: "خطأ" }),
     });
   };
 
-  const handleSaveAmount = (orderId: number) => {
-    if (!editingAmount) return;
-    const amount = parseFloat(editingAmount.value);
-    if (isNaN(amount) || amount < 0) {
-      toast({ variant: "destructive", title: "خطأ", description: "أدخل مبلغاً صحيحاً" });
-      return;
-    }
-    updateOrder.mutate({ id: orderId, data: { totalAmount: amount } }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-        toast({ title: "تم التحديث", description: "تم تحديث المبلغ الإجمالي بنجاح" });
-        setEditingAmount(null);
-      },
-      onError: () => {
-        toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث المبلغ" });
-      }
+  const handleSaveContact = async (e: React.FormEvent) => {
+    e.preventDefault(); setContactSaving(true);
+    updateSettings.mutate(contactForm, {
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); toast({ title: "تم الحفظ" }); setContactSaving(false); },
+      onError: () => { toast({ variant: "destructive", title: "خطأ" }); setContactSaving(false); },
     });
   };
 
-  const handleConfirmReceipt = async (orderId: number) => {
-    try {
-      const res = await apiFetch(`/api/orders/${orderId}/confirm-receipt`, { method: "POST" });
-      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
-      toast({ title: "تم التأكيد", description: "تم قبول الإيصال وبدء تنفيذ الطلب" });
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر تأكيد الإيصال" });
-    }
-  };
-
-  const handleSavePercent = (orderId: number) => {
-    if (!editingPercent) return;
-    const pct = parseFloat(editingPercent.value);
-    if (isNaN(pct) || pct < 0 || pct > 100) {
-      toast({ variant: "destructive", title: "خطأ", description: "أدخل نسبة بين 0 و 100" });
-      return;
-    }
-    updateOrder.mutate({ id: orderId, data: { depositPercentage: pct } }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-        toast({ title: "تم التحديث", description: "تم تحديث نسبة المقدم بنجاح" });
-        setEditingPercent(null);
-      },
-      onError: () => {
-        toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث النسبة" });
-      }
+  const handleSaveDeposit = async (e: React.FormEvent) => {
+    e.preventDefault(); setDepositSaving(true);
+    updateSettings.mutate({ requireDeposit: depositRequire, depositPercentageValue: depositPct }, {
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); toast({ title: "تم الحفظ" }); setDepositSaving(false); },
+      onError: () => { toast({ variant: "destructive", title: "خطأ" }); setDepositSaving(false); },
     });
   };
 
-  if (statsLoading || ordersLoading) {
-    return <div className="p-8 text-center">جاري التحميل...</div>;
-  }
+  const allOrders = orders || [];
+  const totalRevenue = allOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const depositCollected = allOrders.filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + ((o.totalAmount || 0) * p / 100); }, 0);
+  const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + ((o.totalAmount || 0) * (100 - p) / 100); }, 0);
+  const pendingReceipts = allOrders.filter(o => o.receiptUrl && !o.depositPaid).length;
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">لوحة التحكم</h1>
-        <p className="text-muted-foreground mt-2">إدارة الموقع والطلبات والمستخدمين</p>
-      </div>
+    <div className="min-h-screen bg-gray-50 flex flex-col" dir="rtl">
+      {/* Top header */}
+      <header className="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+            <ShieldCheck className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <span className="font-bold text-base">أركان</span>
+            <span className="text-xs text-muted-foreground ms-2">لوحة التحكم</span>
+          </div>
+        </div>
+        {pendingReceipts > 0 && (
+          <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 text-orange-700 text-xs px-3 py-1.5 rounded-full cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => setActiveTab("orders")}>
+            <FileImage className="w-3.5 h-3.5" />
+            {pendingReceipts} إيصال بانتظار التأكيد
+          </div>
+        )}
+      </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card
-          className="border-none shadow-md bg-gradient-to-br from-primary/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => setActiveTab("finances")}
-        >
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">إجمالي الإيرادات</p>
-              <h3 className="text-3xl font-bold">{stats?.totalRevenue || 0}</h3>
-            </div>
-            <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-              <DollarSign className="w-6 h-6" />
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-1">
+        {/* Sidebar */}
+        <aside className="w-52 bg-white border-l sticky top-14 self-start h-[calc(100vh-3.5rem)] flex flex-col py-4 shadow-sm shrink-0">
+          <nav className="flex flex-col gap-1 px-3 flex-1">
+            {NAV.map(item => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full text-right ${isActive ? "bg-primary text-white shadow-sm shadow-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
-        <Card
-          className="border-none shadow-md bg-gradient-to-br from-blue-500/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => setActiveTab("orders")}
-        >
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">إجمالي الطلبات</p>
-              <h3 className="text-3xl font-bold">{stats?.totalOrders || 0}</h3>
-            </div>
-            <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-600">
-              <ShoppingCart className="w-6 h-6" />
-            </div>
-          </CardContent>
-        </Card>
+        {/* Main content */}
+        <main className="flex-1 p-6 min-w-0">
 
-        <Card
-          className="border-none shadow-md bg-gradient-to-br from-green-500/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => setActiveTab("orders")}
-        >
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">الطلبات المكتملة</p>
-              <h3 className="text-3xl font-bold">{stats?.completedOrders || 0}</h3>
-            </div>
-            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center text-green-600">
-              <CheckCircle className="w-6 h-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="border-none shadow-md bg-gradient-to-br from-orange-500/5 to-transparent cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => setActiveTab("users")}
-        >
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">إجمالي المستخدمين</p>
-              <h3 className="text-3xl font-bold">{stats?.totalUsers || 0}</h3>
-            </div>
-            <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-600">
-              <Users className="w-6 h-6" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 mb-8 h-auto p-1 gap-2 bg-muted/50">
-          <TabsTrigger value="finances" className="text-base h-10 flex items-center gap-1"><TrendingUp className="w-4 h-4" />المالية</TabsTrigger>
-          <TabsTrigger value="orders" className="text-base h-10">الطلبات</TabsTrigger>
-          <TabsTrigger value="users" className="text-base h-10">المستخدمين</TabsTrigger>
-          <TabsTrigger value="packages" className="text-base h-10">الباقات</TabsTrigger>
-          <TabsTrigger value="payment-methods" className="text-base h-10">طرق الدفع</TabsTrigger>
-          <TabsTrigger value="testimonials" className="text-base h-10">الآراء</TabsTrigger>
-          <TabsTrigger value="settings" className="text-base h-10 flex items-center gap-1"><Settings className="w-4 h-4" />الإعدادات</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="finances" className="space-y-6">
-          {(() => {
-            const allOrders = orders || [];
-            const totalRevenue = allOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-            const depositCollected = allOrders.filter(o => o.depositPaid).reduce((sum, o) => {
-              const pct = o.depositPercentage ?? 50;
-              return sum + ((o.totalAmount || 0) * pct / 100);
-            }, 0);
-            const finalCollected = allOrders.filter(o => o.finalPaid).reduce((sum, o) => {
-              const pct = o.depositPercentage ?? 50;
-              return sum + ((o.totalAmount || 0) * (100 - pct) / 100);
-            }, 0);
-            const pendingDeposits = allOrders.filter(o => !o.depositPaid && o.totalAmount).reduce((sum, o) => {
-              const pct = o.depositPercentage ?? 50;
-              return sum + ((o.totalAmount || 0) * pct / 100);
-            }, 0);
-
-            return (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Card className="border-none shadow-sm bg-gradient-to-br from-primary/5 to-transparent">
-                    <CardContent className="p-5 flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">إجمالي قيمة الطلبات</p>
-                        <h3 className="text-2xl font-bold">{totalRevenue.toLocaleString()}</h3>
-                      </div>
-                      <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center text-primary">
-                        <TrendingUp className="w-5 h-5" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-none shadow-sm bg-gradient-to-br from-green-500/5 to-transparent">
-                    <CardContent className="p-5 flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">مقدّمات تم تحصيلها</p>
-                        <h3 className="text-2xl font-bold text-green-600">{depositCollected.toLocaleString()}</h3>
-                      </div>
-                      <div className="w-10 h-10 rounded-full bg-green-500/15 flex items-center justify-center text-green-600">
-                        <Banknote className="w-5 h-5" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-none shadow-sm bg-gradient-to-br from-blue-500/5 to-transparent">
-                    <CardContent className="p-5 flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">مبالغ نهائية تم تحصيلها</p>
-                        <h3 className="text-2xl font-bold text-blue-600">{finalCollected.toLocaleString()}</h3>
-                      </div>
-                      <div className="w-10 h-10 rounded-full bg-blue-500/15 flex items-center justify-center text-blue-600">
-                        <CheckCircle className="w-5 h-5" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-none shadow-sm bg-gradient-to-br from-orange-500/5 to-transparent">
-                    <CardContent className="p-5 flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">مقدّمات لم تُحصَّل بعد</p>
-                        <h3 className="text-2xl font-bold text-orange-500">{pendingDeposits.toLocaleString()}</h3>
-                      </div>
-                      <div className="w-10 h-10 rounded-full bg-orange-500/15 flex items-center justify-center text-orange-500">
-                        <Clock className="w-5 h-5" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>تفاصيل مالية لكل طلب</CardTitle>
-                    <CardDescription>عرض المبالغ والمقدّمات والمستحقات لكل طلب</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>رقم</TableHead>
-                            <TableHead>العميل</TableHead>
-                            <TableHead>الموقع</TableHead>
-                            <TableHead>إجمالي</TableHead>
-                            <TableHead>المقدّم</TableHead>
-                            <TableHead>المتبقي</TableHead>
-                            <TableHead>الحالة المالية</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {allOrders.filter(o => o.totalAmount).map(order => {
-                            const pct = order.depositPercentage ?? 50;
-                            const deposit = (order.totalAmount! * pct) / 100;
-                            const remaining = order.totalAmount! - deposit;
-                            const fullyPaid = order.depositPaid && order.finalPaid;
-                            const partiallyPaid = order.depositPaid && !order.finalPaid;
-                            return (
-                              <TableRow key={order.id}>
-                                <TableCell className="font-medium">#{order.id}</TableCell>
-                                <TableCell>{order.user.fullName}</TableCell>
-                                <TableCell>{order.siteName}</TableCell>
-                                <TableCell className="font-bold">{order.totalAmount?.toLocaleString()} {order.currency}</TableCell>
-                                <TableCell>
-                                  <span className={order.depositPaid ? "text-green-600 font-semibold" : "text-muted-foreground"}>
-                                    {deposit.toFixed(0)} {order.currency}
-                                    {order.depositPaid ? " ✓" : ""}
-                                  </span>
-                                </TableCell>
-                                <TableCell>
-                                  <span className={order.finalPaid ? "text-green-600 font-semibold" : "text-muted-foreground"}>
-                                    {remaining.toFixed(0)} {order.currency}
-                                    {order.finalPaid ? " ✓" : ""}
-                                  </span>
-                                </TableCell>
-                                <TableCell>
-                                  {fullyPaid ? (
-                                    <Badge className="bg-green-100 text-green-700 border-green-200">مدفوع بالكامل</Badge>
-                                  ) : partiallyPaid ? (
-                                    <Badge className="bg-blue-100 text-blue-700 border-blue-200">دُفع المقدّم</Badge>
-                                  ) : (
-                                    <Badge variant="outline">لم يُدفع</Badge>
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                          {allOrders.filter(o => o.totalAmount).length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">لا توجد طلبات بمبالغ محددة</TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            );
-          })()}
-        </TabsContent>
-
-        <TabsContent value="orders" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>إدارة الطلبات</CardTitle>
-              <CardDescription>عرض وتحديث حالة جميع طلبات المواقع</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">رقم</TableHead>
-                      <TableHead>العميل</TableHead>
-                      <TableHead>الموقع</TableHead>
-                      <TableHead>التاريخ</TableHead>
-                      <TableHead>المبلغ الإجمالي</TableHead>
-                      <TableHead>نسبة المقدم</TableHead>
-                      <TableHead>المقدم</TableHead>
-                      <TableHead>الحالة</TableHead>
-                      <TableHead>الدفع (مقدم / متبقي)</TableHead>
-                      <TableHead>الإيصال</TableHead>
-                      <TableHead className="w-14">حذف</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {orders?.map(order => {
-                      const isEditingThis = editingAmount?.orderId === order.id;
-                      const isEditingPct = editingPercent?.orderId === order.id;
-                      const pct = order.depositPercentage ?? 50;
-                      const deposit = order.totalAmount ? (order.totalAmount * pct) / 100 : null;
-                      return (
-                        <TableRow key={order.id}>
-                          <TableCell className="font-medium">#{order.id}</TableCell>
-                          <TableCell>{order.user.fullName}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span className="font-semibold">{order.siteName}</span>
-                              <span className="text-xs text-muted-foreground">{order.siteType}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>{format(new Date(order.createdAt), "dd/MM/yyyy")}</TableCell>
-                          <TableCell>
-                            {isEditingThis ? (
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  className="w-28 h-8 text-sm"
-                                  value={editingAmount.value}
-                                  onChange={e => setEditingAmount({ orderId: order.id, value: e.target.value })}
-                                  onKeyDown={e => {
-                                    if (e.key === "Enter") handleSaveAmount(order.id);
-                                    if (e.key === "Escape") setEditingAmount(null);
-                                  }}
-                                  autoFocus
-                                />
-                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleSaveAmount(order.id)}>
-                                  <Check className="h-4 w-4" />
-                                </Button>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setEditingAmount(null)}>
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold">
-                                  {order.totalAmount ? `${order.totalAmount} ${order.currency}` : <span className="text-muted-foreground text-xs">غير محدد</span>}
-                                </span>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                  onClick={() => setEditingAmount({ orderId: order.id, value: String(order.totalAmount ?? "") })}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {isEditingPct ? (
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  className="w-20 h-8 text-sm"
-                                  value={editingPercent.value}
-                                  onChange={e => setEditingPercent({ orderId: order.id, value: e.target.value })}
-                                  onKeyDown={e => {
-                                    if (e.key === "Enter") handleSavePercent(order.id);
-                                    if (e.key === "Escape") setEditingPercent(null);
-                                  }}
-                                  autoFocus
-                                />
-                                <span className="text-sm">%</span>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleSavePercent(order.id)}>
-                                  <Check className="h-4 w-4" />
-                                </Button>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setEditingPercent(null)}>
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                <span className="font-semibold">{pct}%</span>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                  onClick={() => setEditingPercent({ orderId: order.id, value: String(pct) })}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {deposit !== null ? (
-                              <span className="font-semibold text-primary">{deposit.toFixed(0)} {order.currency}</span>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Select 
-                              defaultValue={order.status} 
-                              onValueChange={(val) => handleUpdateOrderStatus(order.id, val)}
-                            >
-                              <SelectTrigger className="w-[140px] h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">قيد الانتظار</SelectItem>
-                                <SelectItem value="in_progress">جاري التنفيذ</SelectItem>
-                                <SelectItem value="completed">مكتمل</SelectItem>
-                                <SelectItem value="cancelled">ملغي</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-4">
-                              <div className="flex items-center gap-1">
-                                <Switch 
-                                  checked={order.depositPaid} 
-                                  onCheckedChange={(val) => handleUpdateOrderPayment(order.id, "depositPaid", val)} 
-                                />
-                                <Label className="text-xs text-muted-foreground">مقدم</Label>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Switch 
-                                  checked={order.finalPaid} 
-                                  onCheckedChange={(val) => handleUpdateOrderPayment(order.id, "finalPaid", val)} 
-                                />
-                                <Label className="text-xs text-muted-foreground">متبقي</Label>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {order.receiptUrl ? (
-                              <div className="flex flex-col gap-1">
-                                <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline">
-                                  <FileImage className="h-3.5 w-3.5" />
-                                  عرض الإيصال
-                                </a>
-                                {order.status === "pending" && !order.depositPaid && (
-                                  <Button
-                                    size="sm"
-                                    variant="default"
-                                    className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700"
-                                    onClick={() => handleConfirmReceipt(order.id)}
-                                  >
-                                    <BadgeCheck className="h-3.5 w-3.5" />
-                                    تأكيد
-                                  </Button>
-                                )}
-                                {order.depositPaid && (
-                                  <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">مؤكد</Badge>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Button variant="destructive" size="icon" onClick={() => handleDeleteOrder(order.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {(!orders || orders.length === 0) && (
-                      <TableRow>
-                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                          لا توجد طلبات
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="users">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+          {/* ─── Overview ─── */}
+          {activeTab === "overview" && (
+            <div className="space-y-6">
               <div>
-                <CardTitle>المستخدمين</CardTitle>
-                <CardDescription>إدارة المستخدمين وصلاحياتهم</CardDescription>
+                <h1 className="text-2xl font-bold">مرحباً بك في لوحة التحكم</h1>
+                <p className="text-muted-foreground text-sm mt-1">نظرة عامة على أداء المنصة</p>
               </div>
-              <Dialog open={createAdminOpen} onOpenChange={setCreateAdminOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm"><UserPlus className="h-4 w-4 ms-2" /> إضافة أدمن جديد</Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md" dir="rtl">
-                  <DialogHeader>
-                    <DialogTitle>إنشاء حساب أدمن جديد</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleCreateAdmin} className="space-y-4 mt-2">
-                    <div className="space-y-1">
-                      <Label>الاسم الكامل</Label>
-                      <Input value={adminForm.fullName} onChange={e => setAdminForm(f => ({...f, fullName: e.target.value}))} required placeholder="أدخل الاسم الكامل" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>رقم الهاتف</Label>
-                      <Input value={adminForm.phone} onChange={e => setAdminForm(f => ({...f, phone: e.target.value}))} required placeholder="أدخل رقم الهاتف" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>البريد الإلكتروني</Label>
-                      <Input type="email" value={adminForm.email} onChange={e => setAdminForm(f => ({...f, email: e.target.value}))} required placeholder="أدخل البريد الإلكتروني" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>اسم المستخدم</Label>
-                      <Input value={adminForm.username} onChange={e => setAdminForm(f => ({...f, username: e.target.value}))} required placeholder="أدخل اسم المستخدم" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>كلمة المرور</Label>
-                      <Input type="password" value={adminForm.password} onChange={e => setAdminForm(f => ({...f, password: e.target.value}))} required placeholder="كلمة مرور قوية (6 أحرف على الأقل)" />
-                    </div>
-                    <Button type="submit" className="w-full" disabled={adminFormLoading}>
-                      {adminFormLoading ? "جاري الإنشاء..." : "إنشاء الحساب"}
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </CardHeader>
-            <CardContent>
-               <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>الاسم</TableHead>
-                      <TableHead>البريد</TableHead>
-                      <TableHead>رقم الهاتف</TableHead>
-                      <TableHead>الصلاحية</TableHead>
-                      <TableHead>إجراءات</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users?.map(user => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.fullName}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>{user.phone}</TableCell>
-                        <TableCell>
-                          <Badge variant={user.role === 'admin' ? "default" : "secondary"}>
-                            {user.role === 'admin' ? 'مدير' : 'مستخدم'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              title={user.role === 'admin' ? 'تحويل لمستخدم' : 'ترقية لمدير'}
-                              onClick={() => handleToggleRole(user.id, user.role)}
-                            >
-                              {user.role === 'admin' ? <ShieldOff className="h-4 w-4 text-orange-500" /> : <ShieldCheck className="h-4 w-4 text-green-600" />}
-                            </Button>
-                            <Button variant="destructive" size="icon" onClick={() => handleDeleteUser(user.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <StatCard icon={ShoppingCart} label="إجمالي الطلبات" value={stats?.totalOrders || 0} sub={`${stats?.pendingOrders || 0} قيد الانتظار`} color="bg-blue-100 text-blue-600" />
+                <StatCard icon={CheckCircle} label="طلبات مكتملة" value={stats?.completedOrders || 0} color="bg-green-100 text-green-600" />
+                <StatCard icon={Users} label="المستخدمين" value={stats?.totalUsers || 0} color="bg-purple-100 text-purple-600" />
+                <StatCard icon={DollarSign} label="إجمالي الإيرادات" value={`${totalRevenue.toLocaleString()}`} sub="قيمة جميع الطلبات" color="bg-amber-100 text-amber-600" />
+              </div>
 
-        <TabsContent value="packages">
-          <Dialog open={pkgDialogOpen} onOpenChange={setPkgDialogOpen}>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>الباقات</CardTitle>
-                  <CardDescription>إدارة باقات تصميم المواقع المعروضة للعملاء</CardDescription>
+              {/* Recent orders */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold">آخر الطلبات</h2>
+                  <Button variant="ghost" size="sm" onClick={() => setActiveTab("orders")} className="text-primary gap-1">
+                    عرض الكل <ArrowUpRight className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
-                <Button size="sm" onClick={openAddPkg}>
-                  <Plus className="h-4 w-4 ms-2" /> إضافة باقة
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>اسم الباقة</TableHead>
-                      <TableHead>الوصف</TableHead>
-                      <TableHead>السعر (مصر)</TableHead>
-                      <TableHead>السعر (السعودية)</TableHead>
-                      <TableHead>الحالة</TableHead>
-                      <TableHead>إجراءات</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {packages?.map(pkg => (
-                      <TableRow key={pkg.id}>
-                        <TableCell className="font-bold">{pkg.name}</TableCell>
-                        <TableCell className="max-w-xs text-sm text-muted-foreground truncate">{pkg.description}</TableCell>
-                        <TableCell>{pkg.priceEgp.toLocaleString()} ج.م</TableCell>
-                        <TableCell>{pkg.priceSar.toLocaleString()} ر.س</TableCell>
-                        <TableCell>
-                          <Badge variant={pkg.isActive ? "default" : "outline"}>
-                            {pkg.isActive ? 'مفعّلة' : 'غير مفعّلة'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button variant="outline" size="icon" title="تعديل" onClick={() => openEditPkg(pkg)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="destructive" size="icon" onClick={() => handleDeletePackage(pkg.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {(!packages || packages.length === 0) && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          لا توجد باقات — اضغط "إضافة باقة" للبدء
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <DialogContent className="max-w-lg" dir="rtl">
-              <DialogHeader>
-                <DialogTitle>{pkgEditTarget ? "تعديل الباقة" : "إضافة باقة جديدة"}</DialogTitle>
-                <DialogDescription>
-                  {pkgEditTarget ? "عدّل تفاصيل الباقة ثم احفظ التغييرات." : "أدخل تفاصيل الباقة الجديدة وأسعارها."}
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSavePkg} className="space-y-4 mt-2">
-                <div className="space-y-1.5">
-                  <Label>اسم الباقة</Label>
-                  <Input
-                    value={pkgForm.name}
-                    onChange={e => setPkgForm(f => ({ ...f, name: e.target.value }))}
-                    required
-                    placeholder="مثال: الباقة الأساسية، الباقة الاحترافية..."
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>وصف الباقة</Label>
-                  <Input
-                    value={pkgForm.description}
-                    onChange={e => setPkgForm(f => ({ ...f, description: e.target.value }))}
-                    required
-                    placeholder="وصف مختصر للباقة"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>السعر بالجنيه المصري (ج.م)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={pkgForm.priceEgp}
-                      onChange={e => setPkgForm(f => ({ ...f, priceEgp: Number(e.target.value) }))}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>السعر بالريال السعودي (ر.س)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={pkgForm.priceSar}
-                      onChange={e => setPkgForm(f => ({ ...f, priceSar: Number(e.target.value) }))}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>المميزات (افصل بينها بفاصلة)</Label>
-                  <textarea
-                    value={pkgForm.features}
-                    onChange={e => setPkgForm(f => ({ ...f, features: e.target.value }))}
-                    placeholder="مثال: تصميم احترافي، سرعة عالية، دعم فني..."
-                    rows={3}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    id="pkg-active"
-                    checked={pkgForm.isActive}
-                    onCheckedChange={val => setPkgForm(f => ({ ...f, isActive: val }))}
-                  />
-                  <Label htmlFor="pkg-active" className="cursor-pointer">
-                    {pkgForm.isActive ? "مفعّلة (تظهر للعملاء)" : "غير مفعّلة (مخفية)"}
-                  </Label>
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={createPackage.isPending || updatePackage.isPending}
-                >
-                  {createPackage.isPending || updatePackage.isPending
-                    ? "جاري الحفظ..."
-                    : pkgEditTarget ? "حفظ التعديلات" : "إضافة الباقة"}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </TabsContent>
-
-        <TabsContent value="payment-methods">
-          <Dialog open={pmDialogOpen} onOpenChange={setPmDialogOpen}>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>طرق الدفع</CardTitle>
-                  <CardDescription>إدارة طرق الدفع المتاحة للعملاء عند إتمام الطلب</CardDescription>
-                </div>
-                <Button size="sm" onClick={openAddPm}>
-                  <Plus className="h-4 w-4 ms-2" /> إضافة طريقة دفع
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>اسم الطريقة</TableHead>
-                      <TableHead>التفاصيل</TableHead>
-                      <TableHead>الحالة</TableHead>
-                      <TableHead>إجراءات</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paymentMethods?.map(pm => (
-                      <TableRow key={pm.id}>
-                        <TableCell className="font-bold">{pm.name}</TableCell>
-                        <TableCell className="max-w-md text-sm text-muted-foreground">{pm.details}</TableCell>
-                        <TableCell>
-                          <Badge variant={pm.isActive ? "default" : "outline"}>
-                            {pm.isActive ? 'مفعّلة' : 'غير مفعّلة'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button variant="outline" size="icon" title="تعديل" onClick={() => openEditPm(pm)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="destructive" size="icon" onClick={() => handleDeletePaymentMethod(pm.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {(!paymentMethods || paymentMethods.length === 0) && (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                          لا توجد طرق دفع — اضغط "إضافة طريقة دفع" للبدء
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <DialogContent className="max-w-md" dir="rtl">
-              <DialogHeader>
-                <DialogTitle>{pmEditTarget ? "تعديل طريقة الدفع" : "إضافة طريقة دفع جديدة"}</DialogTitle>
-                <DialogDescription>
-                  {pmEditTarget ? "عدّل تفاصيل طريقة الدفع ثم احفظ التغييرات." : "أدخل اسم طريقة الدفع وتفاصيلها ليراها العملاء عند إتمام الطلب."}
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSavePm} className="space-y-4 mt-2">
-                <div className="space-y-1.5">
-                  <Label>اسم الطريقة</Label>
-                  <Input
-                    value={pmForm.name}
-                    onChange={e => setPmForm(f => ({ ...f, name: e.target.value }))}
-                    required
-                    placeholder="مثال: فودافون كاش، إنستاباي، تحويل بنكي..."
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>التفاصيل والمعلومات</Label>
-                  <textarea
-                    value={pmForm.details}
-                    onChange={e => setPmForm(f => ({ ...f, details: e.target.value }))}
-                    required
-                    placeholder="أدخل تفاصيل الدفع (رقم المحفظة، رقم الحساب، اسم المستلم...)"
-                    rows={4}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    id="pm-active"
-                    checked={pmForm.isActive}
-                    onCheckedChange={val => setPmForm(f => ({ ...f, isActive: val }))}
-                  />
-                  <Label htmlFor="pm-active" className="cursor-pointer">
-                    {pmForm.isActive ? "مفعّلة (تظهر للعملاء)" : "غير مفعّلة (مخفية)"}
-                  </Label>
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={createPaymentMethod.isPending || updatePaymentMethod.isPending}
-                >
-                  {createPaymentMethod.isPending || updatePaymentMethod.isPending
-                    ? "جاري الحفظ..."
-                    : pmEditTarget ? "حفظ التعديلات" : "إضافة طريقة الدفع"}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </TabsContent>
-
-        <TabsContent value="testimonials">
-          <Card>
-            <CardHeader>
-              <CardTitle>آراء العملاء</CardTitle>
-              <CardDescription>آراء تُرسل من الموقع — وافق عليها أو احذفها. الآراء غير المفعّلة لا تظهر للزوار.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>العميل</TableHead>
-                    <TableHead>التقييم</TableHead>
-                    <TableHead>الرأي</TableHead>
-                    <TableHead>الحالة</TableHead>
-                    <TableHead>إجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {testimonials?.map(t => (
-                    <TableRow key={t.id} className={!t.isActive ? "bg-muted/30" : ""}>
-                      <TableCell className="font-medium">{t.clientName}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-0.5">
-                          {Array.from({ length: 5 }).map((_, j) => (
-                            <span key={j} className={`text-sm ${j < t.rating ? "text-yellow-400" : "text-muted-foreground"}`}>★</span>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-xs truncate">{t.comment}</TableCell>
-                      <TableCell>
-                        <Badge variant={t.isActive ? "default" : "outline"}>
-                          {t.isActive ? 'منشور' : 'بانتظار الموافقة'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            title={t.isActive ? "إيقاف النشر" : "نشر الرأي"}
-                            onClick={() => handleToggleTestimonial(t.id, t.isActive)}
-                          >
-                            {t.isActive
-                              ? <ToggleRight className="h-4 w-4 text-green-600" />
-                              : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
-                          </Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteTestimonial(t.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                <div className="space-y-3">
+                  {allOrders.slice(-5).reverse().map(order => (
+                    <div key={order.id} className="bg-white rounded-xl border px-4 py-3 flex items-center gap-4">
+                      <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <Globe className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{order.siteName}</p>
+                        <p className="text-xs text-muted-foreground">{order.user?.fullName} · {format(new Date(order.createdAt), "dd MMM", { locale: ar })}</p>
+                      </div>
+                      <StatusBadge status={order.status} />
+                    </div>
                   ))}
-                  {(!testimonials || testimonials.length === 0) && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">لا توجد آراء</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                  {allOrders.length === 0 && <p className="text-muted-foreground text-sm text-center py-8">لا توجد طلبات حتى الآن</p>}
+                </div>
+              </div>
+            </div>
+          )}
 
-        <TabsContent value="settings">
-          <div className="space-y-6 max-w-2xl">
-            <Card>
-              <CardHeader>
-                <CardTitle>بيانات التواصل</CardTitle>
-                <CardDescription>هذه البيانات تظهر للعملاء في أسفل الصفحة (الفوتر) على الموقع</CardDescription>
-              </CardHeader>
-              <CardContent>
+          {/* ─── Orders ─── */}
+          {activeTab === "orders" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold">الطلبات</h1>
+                  <p className="text-muted-foreground text-sm mt-1">{allOrders.length} طلب إجمالاً</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {[
+                    { label: "الكل", value: "" },
+                    { label: "انتظار", value: "pending" },
+                    { label: "تنفيذ", value: "in_progress" },
+                    { label: "مكتمل", value: "completed" },
+                  ].map(f => (
+                    <button key={f.value} onClick={() => {}} className="px-3 py-1.5 text-xs rounded-lg bg-white border text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {allOrders.length === 0 ? (
+                <div className="bg-white rounded-2xl border p-16 text-center">
+                  <ShoppingCart className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground">لا توجد طلبات حتى الآن</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {[...allOrders].reverse().map(order => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      onStatusChange={handleUpdateOrderStatus}
+                      onPaymentChange={handleUpdateOrderPayment}
+                      onDelete={handleDeleteOrder}
+                      onConfirmReceipt={handleConfirmReceipt}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Finances ─── */}
+          {activeTab === "finances" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-2xl font-bold">التقرير المالي</h1>
+                <p className="text-muted-foreground text-sm mt-1">ملخص الإيرادات والمدفوعات</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <StatCard icon={DollarSign}  label="إجمالي قيمة الطلبات"  value={totalRevenue.toLocaleString()}       color="bg-primary/10 text-primary" />
+                <StatCard icon={Banknote}    label="مقدمات محصلة"         value={depositCollected.toFixed(0)}          color="bg-amber-100 text-amber-600" />
+                <StatCard icon={CheckCircle} label="مبالغ نهائية محصلة"   value={finalCollected.toFixed(0)}            color="bg-green-100 text-green-600" />
+                <StatCard icon={Clock}       label="إيصالات بانتظار تأكيد" value={pendingReceipts}                     color="bg-orange-100 text-orange-600" />
+              </div>
+              <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b">
+                  <h2 className="font-bold text-base">تفاصيل الطلبات المالية</h2>
+                </div>
+                <div className="divide-y">
+                  {allOrders.filter(o => o.totalAmount).length === 0 && (
+                    <p className="text-center text-muted-foreground py-10 text-sm">لا توجد طلبات بمبالغ محددة</p>
+                  )}
+                  {allOrders.filter(o => o.totalAmount).map(order => {
+                    const p = order.depositPercentage ?? 50;
+                    const dep = (order.totalAmount! * p) / 100;
+                    const rem = order.totalAmount! - dep;
+                    return (
+                      <div key={order.id} className="px-6 py-4 flex flex-wrap items-center gap-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold">{order.siteName}</p>
+                          <p className="text-xs text-muted-foreground">{order.user?.fullName}</p>
+                        </div>
+                        <StatusBadge status={order.status} />
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">الإجمالي: </span>
+                          <strong>{order.totalAmount!.toLocaleString()} {order.currency}</strong>
+                        </div>
+                        <div className="flex gap-3 text-sm">
+                          <span className={`flex items-center gap-1 ${order.depositPaid ? "text-green-600" : "text-muted-foreground"}`}>
+                            {order.depositPaid ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                            مقدم {dep.toFixed(0)}
+                          </span>
+                          <span className={`flex items-center gap-1 ${order.finalPaid ? "text-green-600" : "text-muted-foreground"}`}>
+                            {order.finalPaid ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                            متبقي {rem.toFixed(0)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Users ─── */}
+          {activeTab === "users" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold">المستخدمين</h1>
+                  <p className="text-muted-foreground text-sm mt-1">{users?.length || 0} مستخدم</p>
+                </div>
+                <Button size="sm" onClick={() => setCreateAdminOpen(true)} className="gap-1.5">
+                  <UserPlus className="w-4 h-4" /> إضافة أدمن
+                </Button>
+              </div>
+              <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+                <div className="divide-y">
+                  {users?.map(user => (
+                    <div key={user.id} className="px-5 py-4 flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-base shrink-0">
+                        {user.fullName?.[0] || "U"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold">{user.fullName}</p>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                          <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{user.email}</span>
+                          {user.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{user.phone}</span>}
+                        </div>
+                      </div>
+                      <Badge variant={user.role === "admin" ? "default" : "outline"} className="shrink-0">
+                        {user.role === "admin" ? "مدير" : "مستخدم"}
+                      </Badge>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button variant="outline" size="icon" className="h-8 w-8" title={user.role === "admin" ? "إزالة من المديرين" : "ترقية لمدير"} onClick={() => handleToggleRole(user.id, user.role)}>
+                          {user.role === "admin" ? <ShieldOff className="h-3.5 w-3.5 text-orange-500" /> : <ShieldCheck className="h-3.5 w-3.5 text-green-600" />}
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteUser(user.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {(!users || users.length === 0) && (
+                    <p className="text-center text-muted-foreground py-10 text-sm">لا يوجد مستخدمون</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Packages ─── */}
+          {activeTab === "packages" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold">الباقات</h1>
+                  <p className="text-muted-foreground text-sm mt-1">إدارة باقات التصميم</p>
+                </div>
+                <Button size="sm" onClick={openAddPkg} className="gap-1.5"><Plus className="w-4 h-4" /> إضافة باقة</Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {packages?.map(pkg => (
+                  <div key={pkg.id} className={`bg-white rounded-2xl border shadow-sm p-5 flex flex-col gap-3 ${!pkg.isActive ? "opacity-60" : ""}`}>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-bold text-base">{pkg.name}</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">{pkg.description}</p>
+                      </div>
+                      <Badge variant={pkg.isActive ? "default" : "outline"} className="shrink-0 ms-2">
+                        {pkg.isActive ? "مفعّلة" : "غير مفعّلة"}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-3 text-sm">
+                      <div className="flex-1 bg-muted/30 rounded-lg p-2.5 text-center">
+                        <p className="text-xs text-muted-foreground">مصر</p>
+                        <p className="font-bold text-primary">{pkg.priceEgp.toLocaleString()} ج.م</p>
+                      </div>
+                      <div className="flex-1 bg-muted/30 rounded-lg p-2.5 text-center">
+                        <p className="text-xs text-muted-foreground">السعودية</p>
+                        <p className="font-bold text-primary">{pkg.priceSar.toLocaleString()} ر.س</p>
+                      </div>
+                    </div>
+                    {pkg.features && (
+                      <div className="text-xs text-muted-foreground">
+                        {pkg.features.split(",").slice(0, 3).map((f: string, i: number) => (
+                          <span key={i} className="inline-flex items-center gap-1 me-2"><Check className="w-3 h-3 text-green-500" />{f.trim()}</span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2 pt-1 border-t mt-1">
+                      <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => openEditPkg(pkg)}><Pencil className="w-3.5 h-3.5" />تعديل</Button>
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive gap-1" onClick={() => handleDeletePackage(pkg.id)}><Trash2 className="w-3.5 h-3.5" />حذف</Button>
+                    </div>
+                  </div>
+                ))}
+                {(!packages || packages.length === 0) && (
+                  <div className="col-span-3 bg-white rounded-2xl border p-16 text-center">
+                    <Package className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                    <p className="text-muted-foreground text-sm">لا توجد باقات — اضغط "إضافة باقة" للبدء</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Payment methods ─── */}
+          {activeTab === "payments" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold">طرق الدفع</h1>
+                  <p className="text-muted-foreground text-sm mt-1">إدارة طرق الدفع المتاحة للعملاء</p>
+                </div>
+                <Button size="sm" onClick={openAddPm} className="gap-1.5"><Plus className="w-4 h-4" /> إضافة طريقة</Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {paymentMethods?.map(pm => (
+                  <div key={pm.id} className={`bg-white rounded-2xl border shadow-sm p-5 ${!pm.isActive ? "opacity-60" : ""}`}>
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                          <CreditCard className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-bold">{pm.name}</p>
+                          <Badge variant={pm.isActive ? "default" : "outline"} className="text-xs mt-0.5">
+                            {pm.isActive ? "مفعّلة" : "غير مفعّلة"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => openEditPm(pm)}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeletePaymentMethod(pm.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground whitespace-pre-line bg-muted/20 rounded-lg p-3 leading-relaxed">{pm.details}</p>
+                  </div>
+                ))}
+                {(!paymentMethods || paymentMethods.length === 0) && (
+                  <div className="col-span-2 bg-white rounded-2xl border p-16 text-center">
+                    <CreditCard className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                    <p className="text-muted-foreground text-sm">لا توجد طرق دفع</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Reviews ─── */}
+          {activeTab === "reviews" && (
+            <div className="space-y-4">
+              <div>
+                <h1 className="text-2xl font-bold">آراء العملاء</h1>
+                <p className="text-muted-foreground text-sm mt-1">راجع وانشر آراء عملائك</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {testimonials?.map(t => (
+                  <div key={t.id} className={`bg-white rounded-2xl border shadow-sm p-5 ${!t.isActive ? "opacity-70 border-dashed" : ""}`}>
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                          {t.clientName?.[0] || "?"}
+                        </div>
+                        <div>
+                          <p className="font-bold">{t.clientName}</p>
+                          <div className="flex gap-0.5 mt-0.5">
+                            {Array.from({ length: 5 }).map((_, j) => (
+                              <Star key={j} className={`w-3.5 h-3.5 ${j < t.rating ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground/30"}`} />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant={t.isActive ? "default" : "outline"} className="text-xs">
+                          {t.isActive ? "منشور" : "بانتظار"}
+                        </Badge>
+                        <Button variant="outline" size="icon" className="h-7 w-7" title={t.isActive ? "إيقاف" : "نشر"} onClick={() => handleToggleTestimonial(t.id, t.isActive)}>
+                          {t.isActive ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleDeleteTestimonial(t.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed bg-muted/20 rounded-lg p-3">"{t.comment}"</p>
+                  </div>
+                ))}
+                {(!testimonials || testimonials.length === 0) && (
+                  <div className="col-span-2 bg-white rounded-2xl border p-16 text-center">
+                    <MessageSquare className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                    <p className="text-muted-foreground text-sm">لا توجد آراء حتى الآن</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Settings ─── */}
+          {activeTab === "settings" && (
+            <div className="space-y-6 max-w-2xl">
+              <div>
+                <h1 className="text-2xl font-bold">الإعدادات</h1>
+                <p className="text-muted-foreground text-sm mt-1">ضبط إعدادات الموقع والتواصل</p>
+              </div>
+
+              {/* Contact info */}
+              <div className="bg-white rounded-2xl border shadow-sm p-6">
+                <h2 className="font-bold mb-1 flex items-center gap-2"><Phone className="w-4 h-4 text-primary" />بيانات التواصل</h2>
+                <p className="text-sm text-muted-foreground mb-5">تظهر في أسفل الصفحة الرئيسية</p>
                 <form onSubmit={handleSaveContact} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>رقم الهاتف الأول</Label>
-                      <Input value={contactForm.phone1} onChange={e => setContactForm(f => ({ ...f, phone1: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>رقم الهاتف الثاني (اختياري)</Label>
-                      <Input value={contactForm.phone2} onChange={e => setContactForm(f => ({ ...f, phone2: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>البريد الإلكتروني</Label>
-                      <Input value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} type="email" placeholder="info@example.com" dir="ltr" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>رقم واتساب</Label>
-                      <Input value={contactForm.whatsapp} onChange={e => setContactForm(f => ({ ...f, whatsapp: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" />
-                    </div>
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label>العنوان</Label>
-                      <Input value={contactForm.address} onChange={e => setContactForm(f => ({ ...f, address: e.target.value }))} placeholder="القاهرة، مصر" />
-                    </div>
+                    <div className="space-y-1.5"><Label>رقم الهاتف الأول</Label><Input value={contactForm.phone1} onChange={e => setContactForm(f => ({ ...f, phone1: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" /></div>
+                    <div className="space-y-1.5"><Label>رقم الهاتف الثاني</Label><Input value={contactForm.phone2} onChange={e => setContactForm(f => ({ ...f, phone2: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" /></div>
+                    <div className="space-y-1.5"><Label>البريد الإلكتروني</Label><Input type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} placeholder="info@example.com" dir="ltr" /></div>
+                    <div className="space-y-1.5"><Label>واتساب</Label><Input value={contactForm.whatsapp} onChange={e => setContactForm(f => ({ ...f, whatsapp: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" /></div>
+                    <div className="space-y-1.5 sm:col-span-2"><Label className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />العنوان</Label><Input value={contactForm.address} onChange={e => setContactForm(f => ({ ...f, address: e.target.value }))} placeholder="القاهرة، مصر" /></div>
                   </div>
                   <div className="border-t pt-4">
-                    <p className="text-sm font-medium text-muted-foreground mb-3">روابط السوشيال ميديا (اختياري)</p>
+                    <p className="text-sm font-medium text-muted-foreground mb-3">روابط السوشيال ميديا</p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>فيسبوك</Label>
-                        <Input value={contactForm.facebookUrl} onChange={e => setContactForm(f => ({ ...f, facebookUrl: e.target.value }))} placeholder="https://facebook.com/..." dir="ltr" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>إنستغرام</Label>
-                        <Input value={contactForm.instagramUrl} onChange={e => setContactForm(f => ({ ...f, instagramUrl: e.target.value }))} placeholder="https://instagram.com/..." dir="ltr" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>تويتر / X</Label>
-                        <Input value={contactForm.twitterUrl} onChange={e => setContactForm(f => ({ ...f, twitterUrl: e.target.value }))} placeholder="https://x.com/..." dir="ltr" />
-                      </div>
+                      <div className="space-y-1.5"><Label className="flex items-center gap-1"><Facebook className="w-3.5 h-3.5 text-blue-600" />فيسبوك</Label><Input value={contactForm.facebookUrl} onChange={e => setContactForm(f => ({ ...f, facebookUrl: e.target.value }))} placeholder="https://facebook.com/..." dir="ltr" /></div>
+                      <div className="space-y-1.5"><Label className="flex items-center gap-1"><Instagram className="w-3.5 h-3.5 text-pink-500" />إنستغرام</Label><Input value={contactForm.instagramUrl} onChange={e => setContactForm(f => ({ ...f, instagramUrl: e.target.value }))} placeholder="https://instagram.com/..." dir="ltr" /></div>
+                      <div className="space-y-1.5"><Label className="flex items-center gap-1"><Twitter className="w-3.5 h-3.5" />تويتر / X</Label><Input value={contactForm.twitterUrl} onChange={e => setContactForm(f => ({ ...f, twitterUrl: e.target.value }))} placeholder="https://x.com/..." dir="ltr" /></div>
                     </div>
                   </div>
-                  <Button type="submit" disabled={contactSaving} className="w-full sm:w-auto px-8">
+                  <Button type="submit" disabled={contactSaving} className="gap-1.5">
                     {contactSaving ? "جاري الحفظ..." : "حفظ بيانات التواصل"}
                   </Button>
                 </form>
-              </CardContent>
-            </Card>
+              </div>
 
-            <Card className="max-w-md">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Percent className="w-5 h-5" />
-                  إعدادات دفع المقدّم
-                </CardTitle>
-                <CardDescription>تحكم في اشتراط دفع مقدّم وتحديد نسبته من قيمة الطلب</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSaveDeposit} className="space-y-5">
-                  <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border">
+              {/* Deposit settings */}
+              <div className="bg-white rounded-2xl border shadow-sm p-6">
+                <h2 className="font-bold mb-1 flex items-center gap-2"><Percent className="w-4 h-4 text-primary" />إعدادات المقدّم</h2>
+                <p className="text-sm text-muted-foreground mb-5">تحكم في اشتراط دفع مقدم ونسبته</p>
+                <form onSubmit={handleSaveDeposit} className="space-y-4">
+                  <div className="flex items-center justify-between bg-muted/20 rounded-xl p-4 border">
                     <div>
-                      <p className="font-medium">اشتراط دفع مقدّم</p>
-                      <p className="text-sm text-muted-foreground">عند التفعيل يُطلب من العميل رفع إيصال دفع قبل البدء</p>
+                      <p className="font-medium text-sm">اشتراط دفع مقدّم</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">يُطلب من العميل رفع إيصال قبل بدء التنفيذ</p>
                     </div>
-                    <Switch
-                      checked={depositRequire}
-                      onCheckedChange={setDepositRequire}
-                    />
+                    <Switch checked={depositRequire} onCheckedChange={setDepositRequire} />
                   </div>
                   {depositRequire && (
-                    <div className="space-y-2">
-                      <Label>نسبة المقدّم من قيمة الطلب</Label>
+                    <div className="space-y-1.5">
+                      <Label>نسبة المقدم</Label>
                       <div className="flex items-center gap-3">
-                        <Input
-                          type="number"
-                          min={1}
-                          max={100}
-                          value={depositPct}
-                          onChange={e => setDepositPct(Number(e.target.value))}
-                          className="w-28"
-                        />
-                        <span className="text-muted-foreground font-semibold">%</span>
+                        <Input type="number" min={1} max={100} value={depositPct} onChange={e => setDepositPct(Number(e.target.value))} className="w-28" />
+                        <span className="text-muted-foreground font-bold">%</span>
                         <span className="text-sm text-muted-foreground">من إجمالي قيمة الطلب</span>
                       </div>
                     </div>
                   )}
-                  <Button type="submit" disabled={depositSaving}>
+                  <Button type="submit" disabled={depositSaving} className="gap-1.5">
                     {depositSaving ? "جاري الحفظ..." : "حفظ إعدادات المقدّم"}
                   </Button>
                 </form>
-              </CardContent>
-            </Card>
+              </div>
 
-            <Card className="max-w-md">
-              <CardHeader>
-                <CardTitle>تغيير كلمة المرور</CardTitle>
-                <CardDescription>يمكنك تغيير كلمة مرور حسابك من هنا</CardDescription>
-              </CardHeader>
-              <CardContent>
+              {/* Change password */}
+              <div className="bg-white rounded-2xl border shadow-sm p-6 max-w-sm">
+                <h2 className="font-bold mb-1">تغيير كلمة المرور</h2>
+                <p className="text-sm text-muted-foreground mb-5">تغيير كلمة مرور حساب الأدمن</p>
                 <form onSubmit={handleChangePassword} className="space-y-4">
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <Label>كلمة المرور الجديدة</Label>
                     <div className="relative">
-                      <Input
-                        type={showNewPw ? "text" : "password"}
-                        value={pwForm.newPassword}
-                        onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
-                        required
-                        placeholder="أدخل كلمة المرور الجديدة"
-                        className="pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPw(v => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        tabIndex={-1}
-                      >
+                      <Input type={showNewPw ? "text" : "password"} value={pwForm.newPassword} onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))} required placeholder="6 أحرف على الأقل" className="pr-10" />
+                      <button type="button" onClick={() => setShowNewPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" tabIndex={-1}>
                         {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <Label>تأكيد كلمة المرور</Label>
                     <div className="relative">
-                      <Input
-                        type={showConfirmPw ? "text" : "password"}
-                        value={pwForm.confirm}
-                        onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
-                        required
-                        placeholder="أعد إدخال كلمة المرور الجديدة"
-                        className="pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPw(v => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        tabIndex={-1}
-                      >
+                      <Input type={showConfirmPw ? "text" : "password"} value={pwForm.confirm} onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))} required placeholder="أعد كتابة كلمة المرور" className="pr-10" />
+                      <button type="button" onClick={() => setShowConfirmPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" tabIndex={-1}>
                         {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
-                  <Button type="submit" disabled={pwLoading} className="w-full">
-                    {pwLoading ? "جاري الحفظ..." : "حفظ كلمة المرور"}
-                  </Button>
+                  <Button type="submit" disabled={pwLoading}>{pwLoading ? "جاري الحفظ..." : "حفظ كلمة المرور"}</Button>
                 </form>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* ─── Dialogs ─── */}
+
+      {/* Create admin dialog */}
+      <Dialog open={createAdminOpen} onOpenChange={setCreateAdminOpen}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader><DialogTitle>إنشاء حساب أدمن جديد</DialogTitle></DialogHeader>
+          <form onSubmit={handleCreateAdmin} className="space-y-4 mt-2">
+            {[{ label: "الاسم الكامل", key: "fullName", type: "text", ph: "أدخل الاسم" }, { label: "الهاتف", key: "phone", type: "text", ph: "أدخل رقم الهاتف" }, { label: "البريد الإلكتروني", key: "email", type: "email", ph: "example@email.com" }, { label: "اسم المستخدم", key: "username", type: "text", ph: "username" }, { label: "كلمة المرور", key: "password", type: "password", ph: "6 أحرف على الأقل" }].map(f => (
+              <div key={f.key} className="space-y-1">
+                <Label>{f.label}</Label>
+                <Input type={f.type} value={(adminForm as any)[f.key]} onChange={e => setAdminForm(fm => ({ ...fm, [f.key]: e.target.value }))} required placeholder={f.ph} />
+              </div>
+            ))}
+            <Button type="submit" className="w-full" disabled={adminFormLoading}>{adminFormLoading ? "جاري الإنشاء..." : "إنشاء الحساب"}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Package dialog */}
+      <Dialog open={pkgDialogOpen} onOpenChange={setPkgDialogOpen}>
+        <DialogContent className="max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{pkgEditTarget ? "تعديل الباقة" : "إضافة باقة جديدة"}</DialogTitle>
+            <DialogDescription>{pkgEditTarget ? "عدّل تفاصيل الباقة ثم احفظ." : "أدخل تفاصيل الباقة الجديدة."}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSavePkg} className="space-y-4 mt-2">
+            <div className="space-y-1.5"><Label>اسم الباقة</Label><Input value={pkgForm.name} onChange={e => setPkgForm(f => ({ ...f, name: e.target.value }))} required placeholder="الباقة الأساسية..." /></div>
+            <div className="space-y-1.5"><Label>وصف الباقة</Label><Input value={pkgForm.description} onChange={e => setPkgForm(f => ({ ...f, description: e.target.value }))} required placeholder="وصف مختصر" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><Label>السعر (جنيه)</Label><Input type="number" min={0} value={pkgForm.priceEgp} onChange={e => setPkgForm(f => ({ ...f, priceEgp: Number(e.target.value) }))} required /></div>
+              <div className="space-y-1.5"><Label>السعر (ريال)</Label><Input type="number" min={0} value={pkgForm.priceSar} onChange={e => setPkgForm(f => ({ ...f, priceSar: Number(e.target.value) }))} required /></div>
+            </div>
+            <div className="space-y-1.5"><Label>المميزات (مفصولة بفاصلة)</Label><Input value={pkgForm.features} onChange={e => setPkgForm(f => ({ ...f, features: e.target.value }))} placeholder="ميزة 1, ميزة 2, ميزة 3" /></div>
+            <div className="flex items-center gap-3"><Switch id="pkg-active" checked={pkgForm.isActive} onCheckedChange={v => setPkgForm(f => ({ ...f, isActive: v }))} /><Label htmlFor="pkg-active">{pkgForm.isActive ? "مفعّلة (تظهر للعملاء)" : "غير مفعّلة"}</Label></div>
+            <Button type="submit" className="w-full" disabled={createPackage.isPending || updatePackage.isPending}>{createPackage.isPending || updatePackage.isPending ? "جاري الحفظ..." : pkgEditTarget ? "حفظ التعديلات" : "إضافة الباقة"}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment method dialog */}
+      <Dialog open={pmDialogOpen} onOpenChange={setPmDialogOpen}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{pmEditTarget ? "تعديل طريقة الدفع" : "إضافة طريقة دفع جديدة"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSavePm} className="space-y-4 mt-2">
+            <div className="space-y-1.5"><Label>اسم الطريقة</Label><Input value={pmForm.name} onChange={e => setPmForm(f => ({ ...f, name: e.target.value }))} required placeholder="فودافون كاش، إنستاباي..." /></div>
+            <div className="space-y-1.5">
+              <Label>التفاصيل والمعلومات</Label>
+              <textarea value={pmForm.details} onChange={e => setPmForm(f => ({ ...f, details: e.target.value }))} required placeholder="رقم المحفظة، رقم الحساب، اسم المستلم..." rows={4} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none" />
+            </div>
+            <div className="flex items-center gap-3"><Switch id="pm-active" checked={pmForm.isActive} onCheckedChange={v => setPmForm(f => ({ ...f, isActive: v }))} /><Label htmlFor="pm-active">{pmForm.isActive ? "مفعّلة" : "غير مفعّلة"}</Label></div>
+            <Button type="submit" className="w-full" disabled={createPaymentMethod.isPending || updatePaymentMethod.isPending}>{createPaymentMethod.isPending || updatePaymentMethod.isPending ? "جاري الحفظ..." : pmEditTarget ? "حفظ التعديلات" : "إضافة طريقة الدفع"}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
