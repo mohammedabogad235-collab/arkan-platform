@@ -1,10 +1,16 @@
 import { useAuth } from "@/lib/auth";
-import { useListOrders } from "@workspace/api-client-react";
+import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Package as PackageIcon, CreditCard, ChevronLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CalendarDays, Package as PackageIcon, CreditCard, Upload, CheckCircle2, Image, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
+import { useReceiptUpload } from "@/lib/use-receipt-upload";
+import { useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/lib/use-settings";
 
 const statusMap: Record<string, { label: string, variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pending: { label: "قيد الانتظار", variant: "outline" },
@@ -13,9 +19,61 @@ const statusMap: Record<string, { label: string, variant: "default" | "secondary
   cancelled: { label: "ملغي", variant: "destructive" },
 };
 
+function ReceiptUploader({ orderId }: { orderId: number }) {
+  const { uploadFile, isUploading, error } = useReceiptUpload();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "الملف كبير جداً", description: "الحد الأقصى 10 ميجابايت" });
+      return;
+    }
+
+    const result = await uploadFile(file);
+    if (!result) return;
+
+    const res = await fetch(`/api/orders/${orderId}/receipt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ receiptUrl: result.url }),
+    });
+
+    if (res.ok) {
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      toast({ title: "تم رفع الإيصال", description: "سيتم مراجعته من قِبل الإدارة وتحديث حالة طلبك" });
+    } else {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ الإيصال، حاول مرة أخرى" });
+    }
+
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  return (
+    <div className="space-y-2">
+      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFile} />
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full border-dashed border-primary text-primary hover:bg-primary/5"
+        disabled={isUploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        <Upload className="w-4 h-4 me-2" />
+        {isUploading ? "جاري الرفع..." : "رفع إيصال الدفع"}
+      </Button>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 export default function MyOrders() {
   const { user } = useAuth();
   const { data: orders, isLoading } = useListOrders({ userId: user?.id });
+  const { data: settings } = useSettings();
 
   if (isLoading) {
     return (
@@ -54,87 +112,129 @@ export default function MyOrders() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {orders.map((order) => (
-            <Card key={order.id} className="overflow-hidden hover:shadow-md transition-shadow">
-              <CardHeader className="bg-muted/30 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4">
-                <div>
-                  <div className="flex items-center gap-3 mb-1">
-                    <CardTitle className="text-xl">{order.siteName}</CardTitle>
-                    <Badge variant={statusMap[order.status]?.variant || "outline"} className="text-sm px-3">
-                      {statusMap[order.status]?.label || order.status}
-                    </Badge>
-                  </div>
-                  <CardDescription className="text-base flex items-center gap-2">
-                    <CalendarDays className="w-4 h-4" />
-                    {format(new Date(order.createdAt), "dd MMMM yyyy", { locale: ar })}
-                  </CardDescription>
-                </div>
-                <div className="text-left sm:text-right w-full sm:w-auto flex flex-col gap-1">
-                  <span className="text-sm text-muted-foreground">نوع الموقع</span>
-                  <span className="font-semibold">{order.siteType}</span>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="col-span-2 space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-muted-foreground mb-1">التفاصيل</h4>
-                      <p className="text-base leading-relaxed whitespace-pre-line bg-muted/20 p-4 rounded-lg border">
-                        {order.details}
-                      </p>
+          {orders.map((order) => {
+            const requireDeposit = settings?.requireDeposit ?? true;
+            const depositPct = settings?.depositPercentageValue ?? 50;
+            const showReceiptUpload = requireDeposit && order.status === "pending" && !order.receiptUrl;
+            const receiptUploaded = !!order.receiptUrl;
+
+            return (
+              <Card key={order.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                <CardHeader className="bg-muted/30 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4">
+                  <div>
+                    <div className="flex items-center gap-3 mb-1">
+                      <CardTitle className="text-xl">{order.siteName}</CardTitle>
+                      <Badge variant={statusMap[order.status]?.variant || "outline"} className="text-sm px-3">
+                        {statusMap[order.status]?.label || order.status}
+                      </Badge>
                     </div>
-                    {order.notes && (
+                    <CardDescription className="text-base flex items-center gap-2">
+                      <CalendarDays className="w-4 h-4" />
+                      {format(new Date(order.createdAt), "dd MMMM yyyy", { locale: ar })}
+                    </CardDescription>
+                  </div>
+                  <div className="text-left sm:text-right w-full sm:w-auto flex flex-col gap-1">
+                    <span className="text-sm text-muted-foreground">نوع الموقع</span>
+                    <span className="font-semibold">{order.siteType}</span>
+                  </div>
+                </CardHeader>
+
+                {requireDeposit && order.status === "pending" && (
+                  <div className={`px-6 py-3 border-b text-sm flex items-start gap-3 ${receiptUploaded ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>
+                    {receiptUploaded ? (
+                      <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    )}
+                    <span>
+                      {receiptUploaded
+                        ? "تم رفع إيصال الدفع — بانتظار تأكيد الإدارة لبدء التنفيذ."
+                        : `يُطلب منك دفع مقدّم ${depositPct}% من قيمة الطلب ثم رفع الإيصال لبدء التنفيذ.`}
+                    </span>
+                  </div>
+                )}
+
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="col-span-2 space-y-4">
                       <div>
-                        <h4 className="text-sm font-semibold text-muted-foreground mb-1">ملاحظات الإدارة</h4>
-                        <p className="text-base leading-relaxed whitespace-pre-line bg-secondary/10 p-4 rounded-lg border border-secondary/20">
-                          {order.notes}
+                        <h4 className="text-sm font-semibold text-muted-foreground mb-1">التفاصيل</h4>
+                        <p className="text-base leading-relaxed whitespace-pre-line bg-muted/20 p-4 rounded-lg border">
+                          {order.details}
                         </p>
                       </div>
-                    )}
-                  </div>
-                  <div className="space-y-6 bg-muted/10 p-4 rounded-xl border border-border/50">
-                    <div>
-                      <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 mb-2">
-                        <PackageIcon className="w-4 h-4" />
-                        الباقة / الميزانية
-                      </h4>
-                      {order.package ? (
-                        <p className="font-semibold">{order.package.name}</p>
-                      ) : (
-                        <p className="font-semibold">
-                          ميزانية مخصصة: {order.customBudget} {order.currency === 'EGP' ? 'جنيه 🇪🇬' : 'ريال 🇸🇦'}
-                        </p>
+                      {order.notes && (
+                        <div>
+                          <h4 className="text-sm font-semibold text-muted-foreground mb-1">ملاحظات الإدارة</h4>
+                          <p className="text-base leading-relaxed whitespace-pre-line bg-secondary/10 p-4 rounded-lg border border-secondary/20">
+                            {order.notes}
+                          </p>
+                        </div>
                       )}
                     </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 mb-2">
-                        <CreditCard className="w-4 h-4" />
-                        طريقة الدفع
-                      </h4>
-                      <p className="font-semibold">{order.paymentMethod?.name || "لم يتم التحديد"}</p>
-                    </div>
-                    <div className="pt-4 border-t">
-                      <h4 className="text-sm font-semibold text-muted-foreground mb-3">حالة الدفع</h4>
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">المقدم (50%)</span>
-                          <Badge variant={order.depositPaid ? "default" : "outline"}>
-                            {order.depositPaid ? "تم الدفع" : "بانتظار الدفع"}
-                          </Badge>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">المتبقي</span>
-                          <Badge variant={order.finalPaid ? "default" : "outline"}>
-                            {order.finalPaid ? "تم الدفع" : "بانتظار الدفع"}
-                          </Badge>
+                    <div className="space-y-4 bg-muted/10 p-4 rounded-xl border border-border/50">
+                      <div>
+                        <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 mb-2">
+                          <PackageIcon className="w-4 h-4" />
+                          الباقة / الميزانية
+                        </h4>
+                        {order.package ? (
+                          <p className="font-semibold">{order.package.name}</p>
+                        ) : (
+                          <p className="font-semibold">
+                            ميزانية مخصصة: {order.customBudget} {order.currency === 'EGP' ? 'جنيه 🇪🇬' : 'ريال 🇸🇦'}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 mb-2">
+                          <CreditCard className="w-4 h-4" />
+                          طريقة الدفع
+                        </h4>
+                        <p className="font-semibold">{order.paymentMethod?.name || "لم يتم التحديد"}</p>
+                      </div>
+                      <div className="pt-3 border-t">
+                        <h4 className="text-sm font-semibold text-muted-foreground mb-3">حالة الدفع</h4>
+                        <div className="space-y-2">
+                          {requireDeposit && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm">المقدم ({depositPct}%)</span>
+                              <Badge variant={order.depositPaid ? "default" : "outline"} className="text-xs">
+                                {order.depositPaid ? "✓ تم الدفع" : "بانتظار الدفع"}
+                              </Badge>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm">المتبقي</span>
+                            <Badge variant={order.finalPaid ? "default" : "outline"} className="text-xs">
+                              {order.finalPaid ? "✓ تم الدفع" : "بانتظار الدفع"}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
+                      {showReceiptUpload && (
+                        <div className="pt-3 border-t">
+                          <h4 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                            <Image className="w-4 h-4" />
+                            إيصال الدفع
+                          </h4>
+                          <ReceiptUploader orderId={order.id} />
+                        </div>
+                      )}
+                      {receiptUploaded && order.status === "pending" && (
+                        <div className="pt-3 border-t">
+                          <a href={order.receiptUrl!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                            <Image className="w-4 h-4" />
+                            عرض الإيصال المرفوع
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

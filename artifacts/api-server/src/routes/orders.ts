@@ -134,6 +134,62 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
+router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
+  const session = req.session as { userId?: number } | undefined;
+  if (!session?.userId) {
+    res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
+    return;
+  }
+
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "معرف الطلب غير صالح" });
+    return;
+  }
+
+  const body = req.body as { receiptUrl?: unknown };
+  if (typeof body.receiptUrl !== "string" || !body.receiptUrl) {
+    res.status(400).json({ error: "رابط الإيصال مطلوب" });
+    return;
+  }
+
+  const [order] = await db.update(ordersTable)
+    .set({ receiptUrl: body.receiptUrl })
+    .where(eq(ordersTable.id, id))
+    .returning();
+
+  if (!order) {
+    res.status(404).json({ error: "الطلب غير موجود" });
+    return;
+  }
+
+  const enriched = await enrichOrder(order);
+  res.json(enriched);
+});
+
+router.post("/orders/:id/confirm-receipt", async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "معرف الطلب غير صالح" });
+    return;
+  }
+
+  const [order] = await db.update(ordersTable)
+    .set({ status: "in_progress", depositPaid: true })
+    .where(eq(ordersTable.id, id))
+    .returning();
+
+  if (!order) {
+    res.status(404).json({ error: "الطلب غير موجود" });
+    return;
+  }
+
+  const enriched = await enrichOrder(order);
+  res.json(enriched);
+});
+
 router.delete("/orders/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = DeleteOrderParams.safeParse({ id: parseInt(raw, 10) });

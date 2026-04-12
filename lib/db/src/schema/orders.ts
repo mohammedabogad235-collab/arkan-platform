@@ -18,6 +18,7 @@ export const ordersTable = pgTable("orders", {
   totalAmount: real("total_amount"),
   depositPercentage: real("deposit_percentage").notNull().default(50),
   notes: text("notes"),
+  receiptUrl: text("receipt_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

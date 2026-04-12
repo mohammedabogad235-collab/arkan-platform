@@ -19,17 +19,15 @@ router.get("/settings", async (_req, res): Promise<void> => {
 router.patch("/settings", async (req, res): Promise<void> => {
   const settings = await getOrCreateSettings();
 
-  const allowed = ["phone1", "phone2", "email", "whatsapp", "address", "facebookUrl", "instagramUrl", "twitterUrl"] as const;
-  type SettingsKey = typeof allowed[number];
-
   const body = req.body as Record<string, unknown>;
-  const update: Partial<Record<SettingsKey, string>> = {};
+  const update: Record<string, unknown> = {};
 
-  for (const key of allowed) {
-    if (typeof body[key] === "string") {
-      update[key] = body[key] as string;
-    }
+  const textFields = ["phone1", "phone2", "email", "whatsapp", "address", "facebookUrl", "instagramUrl", "twitterUrl"];
+  for (const key of textFields) {
+    if (typeof body[key] === "string") update[key] = body[key];
   }
+  if (typeof body.requireDeposit === "boolean") update.requireDeposit = body.requireDeposit;
+  if (typeof body.depositPercentageValue === "number") update.depositPercentageValue = body.depositPercentageValue;
 
   if (Object.keys(update).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات صالحة للتحديث" });

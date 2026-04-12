@@ -1,4 +1,4 @@
-import { pgTable, serial, text } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, real } from "drizzle-orm/pg-core";
 
 export const siteSettingsTable = pgTable("site_settings", {
   id: serial("id").primaryKey(),
@@ -10,6 +10,8 @@ export const siteSettingsTable = pgTable("site_settings", {
   facebookUrl: text("facebook_url").notNull().default(""),
   instagramUrl: text("instagram_url").notNull().default(""),
   twitterUrl: text("twitter_url").notNull().default(""),
+  requireDeposit: boolean("require_deposit").notNull().default(true),
+  depositPercentageValue: real("deposit_percentage_value").notNull().default(50),
 });
 
 export type SiteSettings = typeof siteSettingsTable.$inferSelect;

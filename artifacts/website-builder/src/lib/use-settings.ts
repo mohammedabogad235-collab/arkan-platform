@@ -10,6 +10,8 @@ export interface SiteSettings {
   facebookUrl: string;
   instagramUrl: string;
   twitterUrl: string;
+  requireDeposit: boolean;
+  depositPercentageValue: number;
 }
 
 const SETTINGS_KEY = ["site-settings"] as const;

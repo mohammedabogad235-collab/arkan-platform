@@ -28,7 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff, ToggleLeft, ToggleRight, TrendingUp, Banknote, Clock } from "lucide-react";
+import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff, ToggleLeft, ToggleRight, TrendingUp, Banknote, Clock, FileImage, BadgeCheck, Percent } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
@@ -86,6 +86,9 @@ export default function Admin() {
   const { data: siteSettings } = useSettings();
   const updateSettings = useUpdateSettings();
   const [contactForm, setContactForm] = useState({ phone1: "", phone2: "", email: "", whatsapp: "", address: "", facebookUrl: "", instagramUrl: "", twitterUrl: "" });
+  const [depositRequire, setDepositRequire] = useState(true);
+  const [depositPct, setDepositPct] = useState(50);
+  const [depositSaving, setDepositSaving] = useState(false);
   const [contactSaving, setContactSaving] = useState(false);
 
   useEffect(() => {
@@ -100,8 +103,26 @@ export default function Admin() {
         instagramUrl: siteSettings.instagramUrl || "",
         twitterUrl: siteSettings.twitterUrl || "",
       });
+      setDepositRequire(siteSettings.requireDeposit ?? true);
+      setDepositPct(siteSettings.depositPercentageValue ?? 50);
     }
   }, [siteSettings]);
+
+  const handleSaveDeposit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDepositSaving(true);
+    updateSettings.mutate({ requireDeposit: depositRequire, depositPercentageValue: depositPct }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+        toast({ title: "تم الحفظ", description: "تم حفظ إعدادات المقدّم بنجاح" });
+        setDepositSaving(false);
+      },
+      onError: () => {
+        toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ الإعدادات" });
+        setDepositSaving(false);
+      },
+    });
+  };
 
   const handleSaveContact = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -386,6 +407,17 @@ export default function Admin() {
     });
   };
 
+  const handleConfirmReceipt = async (orderId: number) => {
+    try {
+      const res = await apiFetch(`/api/orders/${orderId}/confirm-receipt`, { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+      toast({ title: "تم التأكيد", description: "تم قبول الإيصال وبدء تنفيذ الطلب" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر تأكيد الإيصال" });
+    }
+  };
+
   const handleSavePercent = (orderId: number) => {
     if (!editingPercent) return;
     const pct = parseFloat(editingPercent.value);
@@ -646,6 +678,7 @@ export default function Admin() {
                       <TableHead>المقدم</TableHead>
                       <TableHead>الحالة</TableHead>
                       <TableHead>الدفع (مقدم / متبقي)</TableHead>
+                      <TableHead>الإيصال</TableHead>
                       <TableHead className="w-14">حذف</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -784,6 +817,32 @@ export default function Admin() {
                             </div>
                           </TableCell>
                           <TableCell>
+                            {order.receiptUrl ? (
+                              <div className="flex flex-col gap-1">
+                                <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline">
+                                  <FileImage className="h-3.5 w-3.5" />
+                                  عرض الإيصال
+                                </a>
+                                {order.status === "pending" && !order.depositPaid && (
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700"
+                                    onClick={() => handleConfirmReceipt(order.id)}
+                                  >
+                                    <BadgeCheck className="h-3.5 w-3.5" />
+                                    تأكيد
+                                  </Button>
+                                )}
+                                {order.depositPaid && (
+                                  <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">مؤكد</Badge>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             <Button variant="destructive" size="icon" onClick={() => handleDeleteOrder(order.id)}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -793,7 +852,7 @@ export default function Admin() {
                     })}
                     {(!orders || orders.length === 0) && (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                           لا توجد طلبات
                         </TableCell>
                       </TableRow>
@@ -1257,6 +1316,50 @@ export default function Admin() {
                   </div>
                   <Button type="submit" disabled={contactSaving} className="w-full sm:w-auto px-8">
                     {contactSaving ? "جاري الحفظ..." : "حفظ بيانات التواصل"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card className="max-w-md">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Percent className="w-5 h-5" />
+                  إعدادات دفع المقدّم
+                </CardTitle>
+                <CardDescription>تحكم في اشتراط دفع مقدّم وتحديد نسبته من قيمة الطلب</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveDeposit} className="space-y-5">
+                  <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border">
+                    <div>
+                      <p className="font-medium">اشتراط دفع مقدّم</p>
+                      <p className="text-sm text-muted-foreground">عند التفعيل يُطلب من العميل رفع إيصال دفع قبل البدء</p>
+                    </div>
+                    <Switch
+                      checked={depositRequire}
+                      onCheckedChange={setDepositRequire}
+                    />
+                  </div>
+                  {depositRequire && (
+                    <div className="space-y-2">
+                      <Label>نسبة المقدّم من قيمة الطلب</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={depositPct}
+                          onChange={e => setDepositPct(Number(e.target.value))}
+                          className="w-28"
+                        />
+                        <span className="text-muted-foreground font-semibold">%</span>
+                        <span className="text-sm text-muted-foreground">من إجمالي قيمة الطلب</span>
+                      </div>
+                    </div>
+                  )}
+                  <Button type="submit" disabled={depositSaving}>
+                    {depositSaving ? "جاري الحفظ..." : "حفظ إعدادات المقدّم"}
                   </Button>
                 </form>
               </CardContent>

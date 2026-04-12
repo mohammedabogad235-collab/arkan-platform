@@ -8,6 +8,7 @@ import paymentMethodsRouter from "./payment-methods";
 import testimonialsRouter from "./testimonials";
 import adminRouter from "./admin";
 import settingsRouter from "./settings";
+import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(paymentMethodsRouter);
 router.use(testimonialsRouter);
 router.use(adminRouter);
 router.use(settingsRouter);
+router.use(storageRouter);
 
 export default router;
