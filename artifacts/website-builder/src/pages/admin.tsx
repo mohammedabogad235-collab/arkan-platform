@@ -97,12 +97,13 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   onDelete: (id: number) => void;
   onConfirmReceipt: (id: number) => void;
   globalDepositPct?: number;
-  onAmountSave: (id: number, amount: number | null) => void;
+  onAmountSave: (id: number, amount: number | null, depositPct: number) => void;
 }) {
   const pct = order.depositPercentage ?? globalDepositPct ?? 50;
   const deposit = order.totalAmount ? (order.totalAmount * pct) / 100 : null;
   const remaining = order.totalAmount && deposit !== null ? order.totalAmount - deposit : null;
   const [amountInput, setAmountInput] = useState(order.totalAmount?.toString() ?? "");
+  const [pctInput, setPctInput] = useState((order.depositPercentage ?? globalDepositPct ?? 50).toString());
   const [savingAmount, setSavingAmount] = useState(false);
 
   return (
@@ -192,31 +193,46 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">الحالة المالية</h4>
               <div className="bg-white rounded-xl border p-4 space-y-3">
-                {/* Amount input */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">إجمالي المبلغ ({order.currency})</Label>
-                  <div className="flex gap-2">
+                {/* Amount + deposit pct input */}
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">إجمالي المبلغ ({order.currency})</Label>
                     <Input
                       type="number"
                       min={0}
-                      placeholder="أدخل المبلغ..."
+                      placeholder="أدخل المبلغ الإجمالي..."
                       value={amountInput}
                       onChange={e => setAmountInput(e.target.value)}
                       className="h-9 text-sm"
                     />
-                    <Button
-                      size="sm"
-                      className="h-9 px-3 text-xs shrink-0"
-                      disabled={savingAmount}
-                      onClick={async () => {
-                        setSavingAmount(true);
-                        const val = amountInput === "" ? null : Number(amountInput);
-                        await onAmountSave(order.id, val);
-                        setSavingAmount(false);
-                      }}
-                    >
-                      {savingAmount ? "..." : "حفظ"}
-                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">نسبة المقدم (%)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={99}
+                        placeholder="50"
+                        value={pctInput}
+                        onChange={e => setPctInput(e.target.value)}
+                        className="h-9 text-sm"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-9 px-4 text-xs shrink-0"
+                        disabled={savingAmount}
+                        onClick={async () => {
+                          setSavingAmount(true);
+                          const amt = amountInput === "" ? null : Number(amountInput);
+                          const pct = Math.min(99, Math.max(1, Number(pctInput) || 50));
+                          await onAmountSave(order.id, amt, pct);
+                          setSavingAmount(false);
+                        }}
+                      >
+                        {savingAmount ? "..." : "حفظ"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 {deposit !== null && (
@@ -395,9 +411,9 @@ export default function Admin() {
     });
   };
 
-  const handleAmountSave = (orderId: number, amount: number | null): Promise<void> => {
+  const handleAmountSave = (orderId: number, amount: number | null, depositPct: number): Promise<void> => {
     return new Promise((resolve) => {
-      updateOrder.mutate({ id: orderId, data: { totalAmount: amount } }, {
+      updateOrder.mutate({ id: orderId, data: { totalAmount: amount, depositPercentage: depositPct } }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
