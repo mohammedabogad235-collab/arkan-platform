@@ -88,14 +88,15 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function OrderCard({ order, onStatusChange, onPaymentChange, onDelete, onConfirmReceipt }: {
+function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange, onDelete, onConfirmReceipt }: {
   order: any;
+  expanded: boolean;
+  onToggle: (id: number) => void;
   onStatusChange: (id: number, status: string) => void;
   onPaymentChange: (id: number, field: string, val: boolean) => void;
   onDelete: (id: number) => void;
   onConfirmReceipt: (id: number) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const pct = order.depositPercentage ?? 50;
   const deposit = order.totalAmount ? (order.totalAmount * pct) / 100 : null;
   const remaining = order.totalAmount && deposit !== null ? order.totalAmount - deposit : null;
@@ -125,7 +126,7 @@ function OrderCard({ order, onStatusChange, onPaymentChange, onDelete, onConfirm
           <span className="text-xs text-muted-foreground hidden sm:block">
             {format(new Date(order.createdAt), "dd MMM yyyy", { locale: ar })}
           </span>
-          <button onClick={() => setExpanded(v => !v)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+          <button onClick={() => onToggle(order.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
         </div>
@@ -292,6 +293,14 @@ export default function Admin() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
+  const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
+
+  const toggleOrder = (id: number) =>
+    setExpandedOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   // Settings
   const { data: siteSettings } = useSettings();
@@ -616,6 +625,8 @@ export default function Admin() {
                     <OrderCard
                       key={order.id}
                       order={order}
+                      expanded={expandedOrders.has(order.id)}
+                      onToggle={toggleOrder}
                       onStatusChange={handleUpdateOrderStatus}
                       onPaymentChange={handleUpdateOrderPayment}
                       onDelete={handleDeleteOrder}
