@@ -13,7 +13,7 @@ A full-stack Arabic-language platform where clients can order website creation s
 - **Frontend**: React + Vite (artifacts/website-builder) — RTL Arabic UI
 - **API framework**: Express 5 (artifacts/api-server)
 - **Database**: PostgreSQL + Drizzle ORM
-- **Session**: express-session (cookie-based auth)
+- **Session**: express-session + connect-pg-simple (PostgreSQL-backed, persistent across restarts)
 - **Validation**: Zod (zod/v4), drizzle-zod
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
