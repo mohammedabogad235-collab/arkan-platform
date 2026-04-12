@@ -127,6 +127,7 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   if (parsed.data.notes != null) updateData.notes = parsed.data.notes;
   if (parsed.data.totalAmount != null) updateData.totalAmount = parsed.data.totalAmount;
   if (parsed.data.depositPercentage != null) updateData.depositPercentage = parsed.data.depositPercentage;
+  if (parsed.data.deliveredUrl !== undefined) updateData.deliveredUrl = parsed.data.deliveredUrl;
 
   const [order] = await db.update(ordersTable).set(updateData).where(eq(ordersTable.id, params.data.id)).returning();
   if (!order) {

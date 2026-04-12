@@ -18,8 +18,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, CheckCircle2, Info, Upload, ArrowLeft, FileCheck } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, Upload, ArrowLeft, FileCheck, ShieldAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { useSettings } from "@/lib/use-settings";
 import { useReceiptUpload } from "@/lib/use-receipt-upload";
 import { useRef, useState } from "react";
@@ -158,6 +160,7 @@ export default function Order() {
   const [step, setStep] = useState<"form" | "receipt">("form");
   const [createdOrderId, setCreatedOrderId] = useState<number | null>(null);
   const [selectedCurrency, setSelectedCurrency] = useState("EGP");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const requireDeposit = settings?.requireDeposit ?? true;
   const depositPct = settings?.depositPercentageValue ?? 50;
@@ -433,8 +436,33 @@ export default function Order() {
                   </span>
                 </div>
 
+                {/* Terms & Conditions */}
+                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-4 space-y-3">
+                  <div className="flex gap-2 items-start text-sm text-red-800">
+                    <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
+                    <div className="space-y-1">
+                      <p className="font-semibold">يُرجى قراءة الشروط والأحكام قبل الإرسال:</p>
+                      <ul className="list-disc list-inside space-y-0.5 text-xs text-red-700">
+                        <li>المبلغ المدفوع كمقدّم <strong>غير قابل للاسترداد</strong> في حالة إلغاء الطلب بعد بدء التنفيذ.</li>
+                        <li>يتم دفع المبلغ المتبقي عند الانتهاء من تنفيذ الموقع وقبل استلام الصلاحيات الكاملة.</li>
+                        <li>بإرسالك للطلب فأنت توافق على هذه الشروط.</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Checkbox
+                      id="terms"
+                      checked={agreedToTerms}
+                      onCheckedChange={(v) => setAgreedToTerms(!!v)}
+                    />
+                    <Label htmlFor="terms" className="text-sm font-medium cursor-pointer select-none">
+                      قرأت الشروط والأحكام وأوافق عليها
+                    </Label>
+                  </div>
+                </div>
+
                 <div className="pt-4 border-t flex justify-end">
-                  <Button type="submit" size="lg" className="h-14 px-12 text-lg gap-2" disabled={createOrder.isPending}>
+                  <Button type="submit" size="lg" className="h-14 px-12 text-lg gap-2" disabled={createOrder.isPending || !agreedToTerms}>
                     <CheckCircle2 className="h-5 w-5" />
                     {createOrder.isPending ? "جاري الإرسال..." : requireDeposit ? "إرسال الطلب والانتقال للدفع" : "إرسال الطلب"}
                   </Button>

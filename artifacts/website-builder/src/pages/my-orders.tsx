@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CalendarDays, Package as PackageIcon, CreditCard, Upload, CheckCircle2, Image, AlertCircle, XCircle, Hash, Info } from "lucide-react";
+import { CalendarDays, Package as PackageIcon, CreditCard, Upload, CheckCircle2, Image, AlertCircle, XCircle, Hash, Info, ExternalLink, PartyPopper, Lock } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { useReceiptUpload } from "@/lib/use-receipt-upload";
@@ -242,6 +242,51 @@ export default function MyOrders() {
                           ? `يُطلب منك دفع مقدّم ${depositPct}% (${depositAmount} ${currencyLabel}) من قيمة الطلب ثم رفع الإيصال لبدء التنفيذ.`
                           : `يُطلب منك دفع مقدّم ${depositPct}% من قيمة الطلب ثم رفع الإيصال لبدء التنفيذ.`}
                     </span>
+                  </div>
+                )}
+
+                {/* Completed: Delivered URL */}
+                {order.status === "completed" && order.deliveredUrl && (
+                  <div className="px-6 py-4 border-b bg-gradient-to-l from-green-50 to-emerald-50 space-y-3">
+                    <div className="flex items-center gap-2 text-green-700 font-semibold text-sm">
+                      <PartyPopper className="w-4 h-4" />
+                      تم تسليم موقعك بنجاح! 🎉
+                    </div>
+                    <a
+                      href={order.deliveredUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 bg-white border border-green-200 rounded-xl px-4 py-3 text-sm font-medium text-green-700 hover:bg-green-50 transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{order.deliveredUrl}</span>
+                    </a>
+                    <p className="text-xs text-green-600">يمكنك زيارة موقعك والتحقق من كافة الصفحات.</p>
+                  </div>
+                )}
+
+                {/* Completed: Remaining payment notice */}
+                {order.status === "completed" && !order.finalPaid && remainingAmount !== null && (
+                  <div className="px-6 py-4 border-b bg-blue-50 border-blue-100 flex items-start gap-3 text-sm text-blue-800">
+                    <Lock className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
+                    <div>
+                      <p className="font-semibold mb-1">الموقع مكتمل — يُرجى سداد المبلغ المتبقي لاستلام كافة الصلاحيات</p>
+                      <p>
+                        المبلغ المتبقي: <strong>{remainingAmount.toFixed(0)} {currencyLabel}</strong>
+                        {order.paymentMethod && <span className="text-blue-700"> — عبر {order.paymentMethod.name}</span>}
+                      </p>
+                      {order.paymentMethod?.details && (
+                        <p className="mt-1 text-xs text-blue-600 whitespace-pre-line">{order.paymentMethod.details}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Completed: All paid — full access granted */}
+                {order.status === "completed" && order.finalPaid && (
+                  <div className="px-6 py-3 border-b bg-emerald-50 text-emerald-700 text-sm flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    تم السداد الكامل — جميع الصلاحيات مُسلَّمة.
                   </div>
                 )}
 

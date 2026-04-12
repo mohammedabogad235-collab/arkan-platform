@@ -88,6 +88,52 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function DeliveredUrlInput({ order }: { order: any }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const updateOrder = useUpdateOrder();
+  const [urlInput, setUrlInput] = useState(order.deliveredUrl ?? "");
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className="bg-white rounded-xl border p-3 space-y-1.5">
+      <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <Globe className="w-3.5 h-3.5" />
+        رابط الموقع المُسلَّم (يظهر للعميل بعد الاكتمال)
+      </Label>
+      <div className="flex gap-2">
+        <Input
+          type="url"
+          placeholder="https://example.com"
+          value={urlInput}
+          onChange={e => setUrlInput(e.target.value)}
+          className="h-9 text-sm"
+          dir="ltr"
+        />
+        <Button size="sm" className="h-9 px-3 text-xs shrink-0" disabled={saving}
+          onClick={() => {
+            setSaving(true);
+            updateOrder.mutate(
+              { id: order.id, data: { deliveredUrl: urlInput.trim() || null } },
+              {
+                onSuccess: () => {
+                  queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+                  toast({ title: "تم حفظ الرابط" });
+                  setSaving(false);
+                },
+                onError: () => {
+                  toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ الرابط" });
+                  setSaving(false);
+                },
+              }
+            );
+          }}>
+          {saving ? "..." : "حفظ"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange, onDelete, onConfirmReceipt, globalDepositPct, onAmountSave }: {
   order: any;
   expanded: boolean;
@@ -262,6 +308,9 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                   </div>
                 )}
               </div>
+
+              {/* Delivered URL */}
+              <DeliveredUrlInput order={order} />
 
               {/* Receipt */}
               {order.receiptUrl && (

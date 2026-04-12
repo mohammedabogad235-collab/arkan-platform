@@ -233,6 +233,7 @@ export const UpdateOrderBody = zod.object({
   notes: zod.string().nullish(),
   totalAmount: zod.number().nullish(),
   depositPercentage: zod.number().nullish(),
+  deliveredUrl: zod.string().nullish(),
 });
 
 export const UpdateOrderResponse = zod.object({
