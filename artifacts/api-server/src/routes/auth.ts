@@ -7,7 +7,7 @@ import * as crypto from "crypto";
 const router: IRouter = Router();
 
 function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password + process.env.SESSION_SECRET).digest("hex");
+  return crypto.createHash("sha256").update(password + "arkan-pwd-salt-2024").digest("hex");
 }
 
 function sanitizeUser(user: typeof usersTable.$inferSelect) {
