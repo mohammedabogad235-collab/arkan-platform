@@ -53,7 +53,17 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     role: "client",
   }).returning();
 
-  (req.session as Record<string, unknown>).userId = user.id;
+  // Only set session if there's no existing admin session
+  const existingUserId = (req.session as Record<string, unknown>).userId as number | undefined;
+  if (!existingUserId) {
+    (req.session as Record<string, unknown>).userId = user.id;
+  } else {
+    // Check if existing session is an admin — if so, don't overwrite it
+    const [existingUser] = await db.select().from(usersTable).where(eq(usersTable.id, existingUserId));
+    if (!existingUser || existingUser.role !== "admin") {
+      (req.session as Record<string, unknown>).userId = user.id;
+    }
+  }
 
   res.status(201).json({ user: sanitizeUser(user), message: "تم إنشاء الحساب بنجاح" });
 });

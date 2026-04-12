@@ -5,7 +5,7 @@ import { GetUserParams, DeleteUserParams } from "@workspace/api-zod";
 import * as crypto from "crypto";
 
 function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password + process.env.SESSION_SECRET).digest("hex");
+  return crypto.createHash("sha256").update(password + "arkan-pwd-salt-2024").digest("hex");
 }
 
 const router: IRouter = Router();
@@ -69,7 +69,7 @@ router.patch("/admin/change-password", async (req, res): Promise<void> => {
   }
 
   const hashed = hashPassword(newPassword);
-  const [user] = await db.update(usersTable).set({ password: hashed }).where(eq(usersTable.id, userId)).returning();
+  const [user] = await db.update(usersTable).set({ passwordHash: hashed }).where(eq(usersTable.id, userId)).returning();
   if (!user) { res.status(404).json({ error: "المستخدم غير موجود" }); return; }
 
   res.json({ success: true });
@@ -89,7 +89,7 @@ router.post("/admin/create-admin", async (req, res): Promise<void> => {
 
   const hashed = hashPassword(password);
 
-  const [newUser] = await db.insert(usersTable).values({ fullName, phone, email, username, password: hashed, role: "admin" }).returning();
+  const [newUser] = await db.insert(usersTable).values({ fullName, phone, email, username, passwordHash: hashed, role: "admin" }).returning();
   res.status(201).json(sanitizeUser(newUser));
 });
 
