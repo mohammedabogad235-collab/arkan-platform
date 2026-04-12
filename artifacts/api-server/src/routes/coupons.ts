@@ -5,8 +5,12 @@ import { db, couponsTable, usersTable } from "@workspace/db";
 const router: IRouter = Router();
 
 async function isAdmin(req: any): Promise<boolean> {
-  const userId = (req.session as Record<string, unknown>)?.userId as number | undefined;
+  const session = req.session as Record<string, unknown> | undefined;
+  const userId = session?.userId as number | undefined;
   if (!userId) return false;
+  // Fast path: role stored in session at login
+  if (session?.role === "admin") return true;
+  // Fallback: look up role in DB (for older sessions without role)
   const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
   return user?.role === "admin";
 }

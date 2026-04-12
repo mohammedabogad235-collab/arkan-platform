@@ -86,6 +86,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
 
   (req.session as Record<string, unknown>).userId = user.id;
+  (req.session as Record<string, unknown>).role = user.role;
 
   res.json({ user: sanitizeUser(user), message: "تم تسجيل الدخول بنجاح" });
 });
