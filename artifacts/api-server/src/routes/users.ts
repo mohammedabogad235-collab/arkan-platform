@@ -47,6 +47,11 @@ router.patch("/users/:id/role", async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "معرّف غير صالح" }); return; }
 
+  const sessionUserId = (req as any).session?.userId as number | undefined;
+  if (sessionUserId && sessionUserId === id) {
+    res.status(403).json({ error: "لا يمكنك تغيير صلاحيتك بنفسك" }); return;
+  }
+
   const { role } = req.body as { role?: string };
   if (role !== "admin" && role !== "user") {
     res.status(400).json({ error: "الصلاحية يجب أن تكون admin أو user" }); return;
