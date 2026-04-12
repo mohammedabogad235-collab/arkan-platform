@@ -104,7 +104,10 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   return (
     <div className="bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b bg-muted/20">
+      <div
+        className="flex items-center justify-between px-5 py-4 border-b bg-muted/20 cursor-pointer select-none"
+        onClick={() => onToggle(order.id)}
+      >
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
             <Globe className="w-4 h-4 text-primary" />
@@ -126,9 +129,9 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
           <span className="text-xs text-muted-foreground hidden sm:block">
             {format(new Date(order.createdAt), "dd MMM yyyy", { locale: ar })}
           </span>
-          <button onClick={() => onToggle(order.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+          <div className="p-1.5 rounded-lg text-muted-foreground">
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
+          </div>
         </div>
       </div>
 
