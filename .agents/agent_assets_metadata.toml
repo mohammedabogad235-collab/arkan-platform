@@ -6,3 +6,9 @@ id = "I_x25x-3YbGPKY6GkhM75"
 uri = "file://arkan-full-source.tar.gz"
 type = "unspecified"
 title = "أركان — الكود المصدري الكامل (محدّث)"
+
+[[outputs]]
+id = "yjq4fvQGZYar8S7KJzitG"
+uri = "file://arkan-source.tar.gz"
+type = "unspecified"
+title = "Arkan - الكود المصدري الكامل"
