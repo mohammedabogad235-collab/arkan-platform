@@ -5,6 +5,8 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const app: Express = express();
 
@@ -59,5 +61,13 @@ app.use(
 );
 
 app.use("/api", router);
+
+// Serve pre-built frontend static files
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendDist = path.resolve(__dirname, "../../website-builder/dist/public");
+app.use(express.static(frontendDist));
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(frontendDist, "index.html"));
+});
 
 export default app;

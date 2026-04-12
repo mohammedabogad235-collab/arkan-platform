@@ -1,28 +1,29 @@
 @echo off
+chcp 65001 > nul
 echo ===================================
 echo    تشغيل مشروع اركان
 echo ===================================
 echo.
-echo [1] تشغيل السيرفر الخلفي على port 8080...
-start "API Server - اركان" cmd /k "pnpm --filter @workspace/api-server run dev"
 
-timeout /t 3 /nobreak > nul
+if not exist ".env" (
+    echo [خطأ] ملف .env غير موجود!
+    pause
+    exit /b 1
+)
 
-echo [2] تشغيل الواجهة الامامية على port 5173...
-start "Website Builder - اركان" cmd /k "pnpm --filter @workspace/website-builder run dev"
-
-timeout /t 5 /nobreak > nul
-
-echo.
-echo [3] فتح المتصفح...
-start http://localhost:5173
-
-echo.
-echo تم! المشروع شغال على:
-echo http://localhost:5173
+echo تشغيل السيرفر على port 3000...
 echo.
 echo بيانات الادمن:
 echo المستخدم: admin
 echo كلمة المرور: admin123
 echo.
+echo http://localhost:3000
+echo.
+
+start "Arkan Server" cmd /k "set PORT=3000 && node --env-file=.env artifacts/api-server/dist/index.mjs"
+
+timeout /t 4 /nobreak > nul
+
+start http://localhost:3000
+
 pause
