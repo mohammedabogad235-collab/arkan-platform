@@ -443,8 +443,12 @@ export default function Order() {
                     <div className="space-y-1">
                       <p className="font-semibold">يُرجى قراءة الشروط والأحكام قبل الإرسال:</p>
                       <ul className="list-disc list-inside space-y-0.5 text-xs text-red-700">
-                        <li>المبلغ المدفوع كمقدّم <strong>غير قابل للاسترداد</strong> في حالة إلغاء الطلب بعد بدء التنفيذ.</li>
-                        <li>يتم دفع المبلغ المتبقي عند الانتهاء من تنفيذ الموقع وقبل استلام الصلاحيات الكاملة.</li>
+                        <li>
+                          يُدفع مقدّم بنسبة <strong>{depositPct}%</strong> من قيمة الطلب — وهو <strong>غير قابل للاسترداد</strong> بعد بدء التنفيذ.
+                        </li>
+                        <li>
+                          المبلغ المتبقي (<strong>{100 - depositPct}%</strong>) يُسدَّد عند الانتهاء من الموقع وقبل استلام الصلاحيات الكاملة.
+                        </li>
                         <li>بإرسالك للطلب فأنت توافق على هذه الشروط.</li>
                       </ul>
                     </div>

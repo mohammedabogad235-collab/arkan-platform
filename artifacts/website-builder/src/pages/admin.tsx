@@ -146,11 +146,11 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   onAmountSave: (id: number, amount: number | null, depositPct: number) => void;
 }) {
   const pct = order.depositPercentage ?? globalDepositPct ?? 50;
-  const deposit = order.totalAmount ? (order.totalAmount * pct) / 100 : null;
-  const remaining = order.totalAmount && deposit !== null ? order.totalAmount - deposit : null;
   const [amountInput, setAmountInput] = useState(order.totalAmount?.toString() ?? "");
-  const [pctInput, setPctInput] = useState((order.depositPercentage ?? globalDepositPct ?? 50).toString());
   const [savingAmount, setSavingAmount] = useState(false);
+  const liveAmount = amountInput !== "" ? Number(amountInput) : null;
+  const deposit = liveAmount ? Math.round((liveAmount * pct) / 100) : null;
+  const remaining = liveAmount && deposit !== null ? liveAmount - deposit : null;
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden">
@@ -239,29 +239,17 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">الحالة المالية</h4>
               <div className="bg-white rounded-xl border p-4 space-y-3">
-                {/* Amount + deposit pct input */}
+                {/* Amount input + live breakdown */}
                 <div className="space-y-2">
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">إجمالي المبلغ ({order.currency})</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      placeholder="أدخل المبلغ الإجمالي..."
-                      value={amountInput}
-                      onChange={e => setAmountInput(e.target.value)}
-                      className="h-9 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">نسبة المقدم (%)</Label>
                     <div className="flex gap-2">
                       <Input
                         type="number"
-                        min={1}
-                        max={99}
-                        placeholder="50"
-                        value={pctInput}
-                        onChange={e => setPctInput(e.target.value)}
+                        min={0}
+                        placeholder="أدخل المبلغ الإجمالي..."
+                        value={amountInput}
+                        onChange={e => setAmountInput(e.target.value)}
                         className="h-9 text-sm"
                       />
                       <Button
@@ -271,7 +259,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                         onClick={async () => {
                           setSavingAmount(true);
                           const amt = amountInput === "" ? null : Number(amountInput);
-                          const pct = Math.min(99, Math.max(1, Number(pctInput) || 50));
                           await onAmountSave(order.id, amt, pct);
                           setSavingAmount(false);
                         }}
@@ -280,33 +267,53 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                       </Button>
                     </div>
                   </div>
+                  {/* Live breakdown preview */}
+                  {liveAmount !== null && liveAmount > 0 && (
+                    <div className="rounded-lg bg-muted/30 border p-2.5 space-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">المقدم ({pct}%)</span>
+                        <span className="font-semibold text-amber-600">{deposit?.toLocaleString()} {order.currency}</span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">المتبقي ({100 - pct}%)</span>
+                        <span className="font-semibold text-blue-600">{remaining?.toLocaleString()} {order.currency}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {deposit !== null && (
-                  <>
-                    <div className="flex justify-between items-center text-sm pt-1 border-t">
-                      <span className="text-muted-foreground">المقدم ({pct}%)</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-amber-600">{deposit.toFixed(0)} {order.currency}</span>
-                        <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
+                {(() => {
+                  const savedAmt = order.totalAmount ? Number(order.totalAmount) : null;
+                  const savedDeposit = savedAmt ? Math.round((savedAmt * pct) / 100) : null;
+                  const savedRemaining = savedAmt && savedDeposit !== null ? savedAmt - savedDeposit : null;
+                  return savedAmt ? (
+                    <>
+                      <div className="flex justify-between items-center text-sm pt-1 border-t">
+                        <span className="text-muted-foreground">المقدم ({pct}%)</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-amber-600">{savedDeposit?.toLocaleString()} {order.currency}</span>
+                          <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-muted-foreground">المتبقي ({100 - pct}%)</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-blue-600">{remaining?.toFixed(0)} {order.currency}</span>
-                        <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75" />
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">المتبقي ({100 - pct}%)</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-blue-600">{savedRemaining?.toLocaleString()} {order.currency}</span>
+                          <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75" />
+                        </div>
                       </div>
+                    </>
+                  ) : (
+                    <div className="flex gap-2 pt-1 border-t">
+                      <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
+                      <Label className="text-xs text-muted-foreground">مقدم</Label>
+                      <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75 ms-3" />
+                      <Label className="text-xs text-muted-foreground">متبقي</Label>
                     </div>
-                  </>
-                )}
-                {!order.totalAmount && (
-                  <div className="flex gap-2 pt-1 border-t">
-                    <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
-                    <Label className="text-xs text-muted-foreground">مقدم</Label>
-                    <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75 ms-3" />
-                    <Label className="text-xs text-muted-foreground">متبقي</Label>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
               {/* Delivered URL */}
@@ -1053,12 +1060,38 @@ export default function Admin() {
                     <Switch checked={depositRequire} onCheckedChange={setDepositRequire} />
                   </div>
                   {depositRequire && (
-                    <div className="space-y-1.5">
-                      <Label>نسبة المقدم</Label>
-                      <div className="flex items-center gap-3">
-                        <Input type="number" min={1} max={100} value={depositPct} onChange={e => setDepositPct(Number(e.target.value))} className="w-28" />
-                        <span className="text-muted-foreground font-bold">%</span>
-                        <span className="text-sm text-muted-foreground">من إجمالي قيمة الطلب</span>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label>نسبة المقدم</Label>
+                        <div className="flex items-center gap-3">
+                          <Input type="number" min={1} max={99} value={depositPct} onChange={e => setDepositPct(Math.min(99, Math.max(1, Number(e.target.value) || 50)))} className="w-28" />
+                          <span className="text-muted-foreground font-bold">%</span>
+                          <span className="text-sm text-muted-foreground">من إجمالي قيمة الطلب</span>
+                        </div>
+                      </div>
+                      {/* Live visual split */}
+                      <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">معاينة التقسيم</p>
+                        <div className="w-full h-4 rounded-full overflow-hidden flex">
+                          <div className="h-full bg-amber-400 transition-all duration-200 flex items-center justify-center" style={{ width: `${depositPct}%` }}>
+                            {depositPct >= 15 && <span className="text-white text-[9px] font-bold">{depositPct}%</span>}
+                          </div>
+                          <div className="h-full bg-blue-400 flex-1 flex items-center justify-center">
+                            {(100 - depositPct) >= 15 && <span className="text-white text-[9px] font-bold">{100 - depositPct}%</span>}
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />
+                            <span className="text-muted-foreground">المقدم</span>
+                            <span className="font-bold text-amber-600">{depositPct}%</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">المتبقي</span>
+                            <span className="font-bold text-blue-600">{100 - depositPct}%</span>
+                            <span className="w-3 h-3 rounded-full bg-blue-400 inline-block" />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
