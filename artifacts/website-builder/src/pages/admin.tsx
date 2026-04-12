@@ -5,6 +5,8 @@ import {
   useUpdateOrder,
   useDeleteOrder,
   useListPackages,
+  useCreatePackage,
+  useUpdatePackage,
   useListTestimonials,
   useUpdateTestimonial,
   useListPaymentMethods,
@@ -58,6 +60,8 @@ export default function Admin() {
   const deleteOrder = useDeleteOrder();
   const deleteUser = useDeleteUser();
   const deletePackage = useDeletePackage();
+  const createPackage = useCreatePackage();
+  const updatePackage = useUpdatePackage();
   const deletePaymentMethod = useDeletePaymentMethod();
   const createPaymentMethod = useCreatePaymentMethod();
   const updatePaymentMethod = useUpdatePaymentMethod();
@@ -77,6 +81,11 @@ export default function Admin() {
   const [pwLoading, setPwLoading] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+
+  const emptyPkg = { name: "", description: "", priceEgp: 0, priceSar: 0, features: "", isActive: true };
+  const [pkgDialogOpen, setPkgDialogOpen] = useState(false);
+  const [pkgEditTarget, setPkgEditTarget] = useState<{ id: number } | null>(null);
+  const [pkgForm, setPkgForm] = useState(emptyPkg);
 
   const emptyPm = { name: "", details: "", isActive: true };
   const [pmDialogOpen, setPmDialogOpen] = useState(false);
@@ -212,6 +221,42 @@ export default function Admin() {
           queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() });
           toast({ title: "تم الحذف", description: "تم حذف الباقة بنجاح" });
         }
+      });
+    }
+  };
+
+  const openAddPkg = () => {
+    setPkgEditTarget(null);
+    setPkgForm(emptyPkg);
+    setPkgDialogOpen(true);
+  };
+
+  const openEditPkg = (pkg: typeof emptyPkg & { id: number }) => {
+    setPkgEditTarget({ id: pkg.id });
+    setPkgForm({ name: pkg.name, description: pkg.description, priceEgp: pkg.priceEgp, priceSar: pkg.priceSar, features: pkg.features, isActive: pkg.isActive });
+    setPkgDialogOpen(true);
+  };
+
+  const handleSavePkg = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = { ...pkgForm, priceEgp: Number(pkgForm.priceEgp), priceSar: Number(pkgForm.priceSar) };
+    if (pkgEditTarget) {
+      updatePackage.mutate({ id: pkgEditTarget.id, data: payload }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() });
+          toast({ title: "تم التحديث", description: "تم تحديث الباقة بنجاح" });
+          setPkgDialogOpen(false);
+        },
+        onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر التحديث" }),
+      });
+    } else {
+      createPackage.mutate({ data: payload }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListPackagesQueryKey() });
+          toast({ title: "تمت الإضافة", description: "تمت إضافة الباقة بنجاح" });
+          setPkgDialogOpen(false);
+        },
+        onError: () => toast({ variant: "destructive", title: "خطأ", description: "تعذر الإضافة" }),
       });
     }
   };
@@ -812,45 +857,145 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="packages">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>الباقات</CardTitle>
-                <CardDescription>إدارة باقات تصميم المواقع</CardDescription>
-              </div>
-              <Button disabled><Plus className="h-4 w-4 ms-2"/> إضافة باقة (قريباً)</Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>اسم الباقة</TableHead>
-                    <TableHead>السعر (مصر / سعودية)</TableHead>
-                    <TableHead>الحالة</TableHead>
-                    <TableHead>إجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {packages?.map(pkg => (
-                    <TableRow key={pkg.id}>
-                      <TableCell className="font-medium">{pkg.name}</TableCell>
-                      <TableCell>{pkg.priceEgp} EGP / {pkg.priceSar} SAR</TableCell>
-                      <TableCell>
-                        <Badge variant={pkg.isActive ? "default" : "outline"}>
-                          {pkg.isActive ? 'مفعلة' : 'غير مفعلة'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="destructive" size="icon" onClick={() => handleDeletePackage(pkg.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+          <Dialog open={pkgDialogOpen} onOpenChange={setPkgDialogOpen}>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>الباقات</CardTitle>
+                  <CardDescription>إدارة باقات تصميم المواقع المعروضة للعملاء</CardDescription>
+                </div>
+                <Button size="sm" onClick={openAddPkg}>
+                  <Plus className="h-4 w-4 ms-2" /> إضافة باقة
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>اسم الباقة</TableHead>
+                      <TableHead>الوصف</TableHead>
+                      <TableHead>السعر (مصر)</TableHead>
+                      <TableHead>السعر (السعودية)</TableHead>
+                      <TableHead>الحالة</TableHead>
+                      <TableHead>إجراءات</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {packages?.map(pkg => (
+                      <TableRow key={pkg.id}>
+                        <TableCell className="font-bold">{pkg.name}</TableCell>
+                        <TableCell className="max-w-xs text-sm text-muted-foreground truncate">{pkg.description}</TableCell>
+                        <TableCell>{pkg.priceEgp.toLocaleString()} ج.م</TableCell>
+                        <TableCell>{pkg.priceSar.toLocaleString()} ر.س</TableCell>
+                        <TableCell>
+                          <Badge variant={pkg.isActive ? "default" : "outline"}>
+                            {pkg.isActive ? 'مفعّلة' : 'غير مفعّلة'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button variant="outline" size="icon" title="تعديل" onClick={() => openEditPkg(pkg)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="destructive" size="icon" onClick={() => handleDeletePackage(pkg.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {(!packages || packages.length === 0) && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          لا توجد باقات — اضغط "إضافة باقة" للبدء
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <DialogContent className="max-w-lg" dir="rtl">
+              <DialogHeader>
+                <DialogTitle>{pkgEditTarget ? "تعديل الباقة" : "إضافة باقة جديدة"}</DialogTitle>
+                <DialogDescription>
+                  {pkgEditTarget ? "عدّل تفاصيل الباقة ثم احفظ التغييرات." : "أدخل تفاصيل الباقة الجديدة وأسعارها."}
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSavePkg} className="space-y-4 mt-2">
+                <div className="space-y-1.5">
+                  <Label>اسم الباقة</Label>
+                  <Input
+                    value={pkgForm.name}
+                    onChange={e => setPkgForm(f => ({ ...f, name: e.target.value }))}
+                    required
+                    placeholder="مثال: الباقة الأساسية، الباقة الاحترافية..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>وصف الباقة</Label>
+                  <Input
+                    value={pkgForm.description}
+                    onChange={e => setPkgForm(f => ({ ...f, description: e.target.value }))}
+                    required
+                    placeholder="وصف مختصر للباقة"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>السعر بالجنيه المصري (ج.م)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={pkgForm.priceEgp}
+                      onChange={e => setPkgForm(f => ({ ...f, priceEgp: Number(e.target.value) }))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>السعر بالريال السعودي (ر.س)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={pkgForm.priceSar}
+                      onChange={e => setPkgForm(f => ({ ...f, priceSar: Number(e.target.value) }))}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>المميزات (افصل بينها بفاصلة)</Label>
+                  <textarea
+                    value={pkgForm.features}
+                    onChange={e => setPkgForm(f => ({ ...f, features: e.target.value }))}
+                    placeholder="مثال: تصميم احترافي، سرعة عالية، دعم فني..."
+                    rows={3}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="pkg-active"
+                    checked={pkgForm.isActive}
+                    onCheckedChange={val => setPkgForm(f => ({ ...f, isActive: val }))}
+                  />
+                  <Label htmlFor="pkg-active" className="cursor-pointer">
+                    {pkgForm.isActive ? "مفعّلة (تظهر للعملاء)" : "غير مفعّلة (مخفية)"}
+                  </Label>
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={createPackage.isPending || updatePackage.isPending}
+                >
+                  {createPackage.isPending || updatePackage.isPending
+                    ? "جاري الحفظ..."
+                    : pkgEditTarget ? "حفظ التعديلات" : "إضافة الباقة"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="payment-methods">
