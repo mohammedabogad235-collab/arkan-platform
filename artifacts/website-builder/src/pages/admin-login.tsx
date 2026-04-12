@@ -37,8 +37,9 @@ export default function AdminLogin() {
         { data: { username: "admin", password: "admin123" } },
         {
           onSuccess: (data) => {
-            queryClient.setQueryData(getGetMeQueryKey(), data);
-            if (data.role === "admin") {
+            const userData = (data as any).user ?? data;
+            queryClient.setQueryData(getGetMeQueryKey(), userData);
+            if (userData.role === "admin") {
               setLocation("/admin");
             }
           },
@@ -55,8 +56,9 @@ export default function AdminLogin() {
       { data: { username, password } },
       {
         onSuccess: (data) => {
-          queryClient.setQueryData(getGetMeQueryKey(), data);
-          if (data.role === "admin") {
+          const userData = (data as any).user ?? data;
+          queryClient.setQueryData(getGetMeQueryKey(), userData);
+          if (userData.role === "admin") {
             setLocation("/admin");
           } else {
             setError("هذا الحساب لا يملك صلاحيات الأدمن.");
