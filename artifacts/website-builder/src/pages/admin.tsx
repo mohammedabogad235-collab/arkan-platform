@@ -88,7 +88,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange, onDelete, onConfirmReceipt }: {
+function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange, onDelete, onConfirmReceipt, globalDepositPct }: {
   order: any;
   expanded: boolean;
   onToggle: (id: number) => void;
@@ -96,8 +96,9 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   onPaymentChange: (id: number, field: string, val: boolean) => void;
   onDelete: (id: number) => void;
   onConfirmReceipt: (id: number) => void;
+  globalDepositPct?: number;
 }) {
-  const pct = order.depositPercentage ?? 50;
+  const pct = order.depositPercentage ?? globalDepositPct ?? 50;
   const deposit = order.totalAmount ? (order.totalAmount * pct) / 100 : null;
   const remaining = order.totalAmount && deposit !== null ? order.totalAmount - deposit : null;
 
@@ -635,6 +636,7 @@ export default function Admin() {
                       onPaymentChange={handleUpdateOrderPayment}
                       onDelete={handleDeleteOrder}
                       onConfirmReceipt={handleConfirmReceipt}
+                      globalDepositPct={siteSettings?.depositPercentageValue}
                     />
                   ))}
                 </div>
@@ -664,7 +666,7 @@ export default function Admin() {
                     <p className="text-center text-muted-foreground py-10 text-sm">لا توجد طلبات بمبالغ محددة</p>
                   )}
                   {allOrders.filter(o => o.totalAmount).map(order => {
-                    const p = order.depositPercentage ?? 50;
+                    const p = order.depositPercentage ?? siteSettings?.depositPercentageValue ?? 50;
                     const dep = (order.totalAmount! * p) / 100;
                     const rem = order.totalAmount! - dep;
                     return (
