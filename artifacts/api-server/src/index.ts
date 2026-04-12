@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import * as crypto from "crypto";
 
 const rawPort = process.env["PORT"];
@@ -16,6 +16,20 @@ const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+async function ensureSessionTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid" varchar NOT NULL,
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+    ) WITH (OIDS=FALSE)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")
+  `);
 }
 
 async function ensureAdminExists() {
@@ -44,5 +58,6 @@ app.listen(port, async (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  await ensureSessionTable().catch(e => logger.error({ err: e }, "Failed to ensure session table"));
   await ensureAdminExists().catch(e => logger.error({ err: e }, "Failed to ensure admin"));
 });

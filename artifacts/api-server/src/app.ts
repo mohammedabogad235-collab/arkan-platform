@@ -44,7 +44,7 @@ app.use(
     store: new PgSession({
       conString: process.env.DATABASE_URL,
       tableName: "session",
-      createTableIfMissing: true,
+      createTableIfMissing: false,
     }),
     secret: process.env.SESSION_SECRET ?? "fallback-secret-change-in-production",
     resave: false,
