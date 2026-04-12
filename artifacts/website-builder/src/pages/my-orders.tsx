@@ -180,8 +180,26 @@ export default function MyOrders() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {orders.map((order) => {
+        <div className="space-y-10">
+          {[
+            { status: "pending",     label: "قيد الانتظار", dot: "bg-amber-400", badge: "text-amber-700 bg-amber-50 border-amber-200" },
+            { status: "in_progress", label: "جاري التنفيذ", dot: "bg-blue-400",  badge: "text-blue-700 bg-blue-50 border-blue-200" },
+            { status: "completed",   label: "مكتمل",        dot: "bg-green-400", badge: "text-green-700 bg-green-50 border-green-200" },
+            { status: "cancelled",   label: "ملغي",          dot: "bg-red-400",   badge: "text-red-700 bg-red-50 border-red-200" },
+          ].map(({ status: grpStatus, label: grpLabel, dot, badge }) => {
+            const groupOrders = orders.filter(o => o.status === grpStatus);
+            if (groupOrders.length === 0) return null;
+            return (
+              <div key={grpStatus}>
+                {/* Group header */}
+                <div className="flex items-center gap-3 mb-5">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+                  <h3 className="text-sm font-bold tracking-wide text-muted-foreground">{grpLabel}</h3>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${badge}`}>{groupOrders.length}</span>
+                  <div className="flex-1 h-px bg-border/60" />
+                </div>
+                <div className="space-y-6">
+                {groupOrders.map((order) => {
             const requireDeposit = settings?.requireDeposit ?? true;
             const depositPct = order.depositPercentage ?? settings?.depositPercentageValue ?? 50;
             const totalAmount = order.totalAmount ? Number(order.totalAmount) : null;
@@ -435,6 +453,10 @@ export default function MyOrders() {
                   </div>
                 </CardContent>
               </Card>
+            );
+          })}
+                </div>
+              </div>
             );
           })}
         </div>
