@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, ordersTable, usersTable, packagesTable, paymentMethodsTable } from "@workspace/db";
+import { db, ordersTable, usersTable, packagesTable, paymentMethodsTable, siteSettingsTable } from "@workspace/db";
 import {
   CreateOrderBody,
   UpdateOrderBody,
@@ -74,10 +74,14 @@ router.post("/orders", async (req, res): Promise<void> => {
     return;
   }
 
+  const [settings] = await db.select().from(siteSettingsTable).limit(1);
+  const depositPct = settings?.depositPercentageValue ?? 50;
+
   const [order] = await db.insert(ordersTable).values({
     userId: sessionUserId,
     ...parsed.data,
     status: "pending",
+    depositPercentage: depositPct,
   }).returning();
 
   const enriched = await enrichOrder(order);
