@@ -1,12 +1,3 @@
-import { config } from "dotenv";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
-// Load .env from project root (works for both Replit and local Windows/Mac)
-const __dirname2 = dirname(fileURLToPath(import.meta.url));
-config({ path: resolve(__dirname2, "../../.env") });
-config({ path: resolve(__dirname2, "../../../.env") });
-config({ path: resolve(__dirname2, "../../../../.env") });
-
 import app from "./app";
 import { logger } from "./lib/logger";
 import { db, usersTable } from "@workspace/db";
