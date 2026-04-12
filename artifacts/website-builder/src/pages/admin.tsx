@@ -6,6 +6,7 @@ import {
   useDeleteOrder,
   useListPackages,
   useListTestimonials,
+  useUpdateTestimonial,
   useListPaymentMethods,
   useListUsers,
   useDeleteUser,
@@ -22,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff } from "lucide-react";
+import { Users, ShoppingCart, DollarSign, CheckCircle, Trash2, Plus, Pencil, Check, X, ShieldCheck, ShieldOff, UserPlus, Settings, Eye, EyeOff, ToggleLeft, ToggleRight } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
@@ -57,6 +58,7 @@ export default function Admin() {
   const deletePackage = useDeletePackage();
   const deletePaymentMethod = useDeletePaymentMethod();
   const deleteTestimonial = useDeleteTestimonial();
+  const updateTestimonial = useUpdateTestimonial();
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -225,6 +227,18 @@ export default function Admin() {
         }
       });
     }
+  };
+
+  const handleToggleTestimonial = (id: number, current: boolean) => {
+    updateTestimonial.mutate({ id, data: { isActive: !current } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListTestimonialsQueryKey() });
+        toast({ title: "تم التحديث", description: current ? "تم إخفاء الرأي" : "تم نشر الرأي بنجاح" });
+      },
+      onError: () => {
+        toast({ variant: "destructive", title: "خطأ", description: "تعذر تحديث الرأي" });
+      }
+    });
   };
 
   const handleSaveAmount = (orderId: number) => {
@@ -701,12 +715,9 @@ export default function Admin() {
 
         <TabsContent value="testimonials">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>آراء العملاء</CardTitle>
-                <CardDescription>إدارة التقييمات والآراء</CardDescription>
-              </div>
-              <Button disabled><Plus className="h-4 w-4 ms-2"/> إضافة تقييم (قريباً)</Button>
+            <CardHeader>
+              <CardTitle>آراء العملاء</CardTitle>
+              <CardDescription>آراء تُرسل من الموقع — وافق عليها أو احذفها. الآراء غير المفعّلة لا تظهر للزوار.</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -721,22 +732,45 @@ export default function Admin() {
                 </TableHeader>
                 <TableBody>
                   {testimonials?.map(t => (
-                    <TableRow key={t.id}>
+                    <TableRow key={t.id} className={!t.isActive ? "bg-muted/30" : ""}>
                       <TableCell className="font-medium">{t.clientName}</TableCell>
-                      <TableCell>{t.rating} / 5</TableCell>
+                      <TableCell>
+                        <div className="flex gap-0.5">
+                          {Array.from({ length: 5 }).map((_, j) => (
+                            <span key={j} className={`text-sm ${j < t.rating ? "text-yellow-400" : "text-muted-foreground"}`}>★</span>
+                          ))}
+                        </div>
+                      </TableCell>
                       <TableCell className="max-w-xs truncate">{t.comment}</TableCell>
                       <TableCell>
                         <Badge variant={t.isActive ? "default" : "outline"}>
-                          {t.isActive ? 'مفعل' : 'غير مفعل'}
+                          {t.isActive ? 'منشور' : 'بانتظار الموافقة'}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button variant="destructive" size="icon" onClick={() => handleDeleteTestimonial(t.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            title={t.isActive ? "إيقاف النشر" : "نشر الرأي"}
+                            onClick={() => handleToggleTestimonial(t.id, t.isActive)}
+                          >
+                            {t.isActive
+                              ? <ToggleRight className="h-4 w-4 text-green-600" />
+                              : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                          </Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteTestimonial(t.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(!testimonials || testimonials.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">لا توجد آراء</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
