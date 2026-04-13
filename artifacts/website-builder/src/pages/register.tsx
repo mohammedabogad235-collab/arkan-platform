@@ -68,10 +68,12 @@ export default function Register() {
         onError: (error) => {
           const msg = error.error?.error || "حدث خطأ أثناء إنشاء الحساب";
           const field = (error.error as any)?.field;
-          if (field === "email") {
+          if (field === "phone") {
+            form.setError("phone", { message: msg });
+          } else if (field === "email") {
             form.setError("email", { message: msg });
-          } else if (msg.includes("اسم المستخدم")) {
-            form.setError("username", { message: "اسم المستخدم مستخدم بالفعل" });
+          } else if (field === "username") {
+            form.setError("username", { message: msg });
           } else {
             toast({ variant: "destructive", title: "فشل التسجيل", description: msg });
           }

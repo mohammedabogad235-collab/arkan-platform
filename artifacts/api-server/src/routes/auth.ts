@@ -31,15 +31,21 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
   const { fullName, phone, email, username, password } = parsed.data;
 
-  const existing = await db.select().from(usersTable).where(eq(usersTable.username, username));
-  if (existing.length > 0) {
-    res.status(409).json({ error: "اسم المستخدم مستخدم بالفعل" });
+  const existingPhone = await db.select().from(usersTable).where(eq(usersTable.phone, phone));
+  if (existingPhone.length > 0) {
+    res.status(409).json({ error: "رقم الهاتف مسجل من قبل", field: "phone" });
     return;
   }
 
   const existingEmail = await db.select().from(usersTable).where(eq(usersTable.email, email));
   if (existingEmail.length > 0) {
     res.status(409).json({ error: "هذا البريد مسجل من قبل", field: "email" });
+    return;
+  }
+
+  const existing = await db.select().from(usersTable).where(eq(usersTable.username, username));
+  if (existing.length > 0) {
+    res.status(409).json({ error: "اسم المستخدم مستخدم بالفعل", field: "username" });
     return;
   }
 
