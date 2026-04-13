@@ -15,6 +15,7 @@ import Admin from "@/pages/admin";
 import AdminLogin from "@/pages/admin-login";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
+import ForgotPassword from "@/pages/forgot-password";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
+      <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/register" component={Register} />
       <Route path="/testimonials" component={Testimonials} />
       <Route path="/terms" component={Terms} />

@@ -131,7 +131,10 @@ export default function Login() {
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="flex justify-center border-t pt-6">
+        <CardFooter className="flex flex-col items-center gap-3 border-t pt-6">
+          <Link href="/forgot-password" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+            نسيت كلمة المرور؟
+          </Link>
           <p className="text-sm text-muted-foreground">
             ليس لديك حساب؟{" "}
             <Link href="/register" className="text-primary font-semibold hover:underline">
