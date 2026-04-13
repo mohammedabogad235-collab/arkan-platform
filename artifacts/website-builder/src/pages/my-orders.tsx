@@ -423,9 +423,32 @@ export default function MyOrders() {
                       </div>
                     </div>
                   ) : (
-                    <div className="px-6 py-3 border-b text-sm flex items-start gap-3 bg-blue-50 text-blue-700">
-                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>طلبك قيد المراجعة — يرجى الانتظار حتى تحديد السعر من قِبل الإدارة.</span>
+                    <div className="px-6 py-4 border-b bg-blue-50 space-y-3">
+                      <div className="flex items-start gap-3 text-blue-700 text-sm">
+                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span className="font-medium">طلبك قيد المراجعة — يرجى الانتظار حتى تحديد السعر من قِبل الإدارة.</span>
+                      </div>
+                      {/* Always show payment account details */}
+                      {(order.paymentMethod || activePMs.length > 0) && (
+                        <div className="space-y-2 pt-1">
+                          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">حسابات الدفع</p>
+                          {order.paymentMethod ? (
+                            <div className="bg-white border border-blue-200 rounded-xl px-3 py-2.5 space-y-0.5">
+                              <p className="font-semibold text-xs text-blue-900">{order.paymentMethod.name}</p>
+                              {order.paymentMethod.details && (
+                                <p className="text-blue-800 text-xs whitespace-pre-line font-mono leading-relaxed">{order.paymentMethod.details}</p>
+                              )}
+                            </div>
+                          ) : activePMs.map((pm: any) => (
+                            <div key={pm.id} className="bg-white border border-blue-200 rounded-xl px-3 py-2.5 space-y-0.5">
+                              <p className="font-semibold text-xs text-blue-900">{pm.name}</p>
+                              {pm.details && (
+                                <p className="text-blue-800 text-xs whitespace-pre-line font-mono leading-relaxed">{pm.details}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 )}
