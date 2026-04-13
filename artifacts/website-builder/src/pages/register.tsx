@@ -24,7 +24,6 @@ const registerSchema = z.object({
   fullName: z.string().min(5, { message: "الاسم الكامل مطلوب" }),
   phone: z.string().min(10, { message: "رقم الهاتف غير صالح" }),
   email: z.string().email({ message: "البريد الإلكتروني غير صالح" }),
-  username: z.string().min(3, { message: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" }),
   password: z.string().min(6, { message: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }),
 });
 
@@ -48,7 +47,6 @@ export default function Register() {
       fullName: "",
       phone: "",
       email: "",
-      username: "",
       password: "",
     },
   });
@@ -72,8 +70,6 @@ export default function Register() {
             form.setError("phone", { message: msg });
           } else if (field === "email") {
             form.setError("email", { message: msg });
-          } else if (field === "username") {
-            form.setError("username", { message: msg });
           } else {
             toast({ variant: "destructive", title: "فشل التسجيل", description: msg });
           }
@@ -136,19 +132,6 @@ export default function Register() {
                   )}
                 />
               </div>
-              <FormField
-                control={form.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>اسم المستخدم</FormLabel>
-                    <FormControl>
-                      <Input placeholder="user123" {...field} className="h-11" dir="ltr" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <FormField
                 control={form.control}
                 name="password"

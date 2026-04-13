@@ -29,7 +29,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
-  const { fullName, phone, email, username, password } = parsed.data;
+  const { fullName, phone, email, password } = parsed.data;
 
   const existingPhone = await db.select().from(usersTable).where(eq(usersTable.phone, phone));
   if (existingPhone.length > 0) {
@@ -43,11 +43,8 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
-  const existing = await db.select().from(usersTable).where(eq(usersTable.username, username));
-  if (existing.length > 0) {
-    res.status(409).json({ error: "اسم المستخدم مستخدم بالفعل", field: "username" });
-    return;
-  }
+  // Auto-generate a unique username from phone digits
+  const username = "u_" + phone.replace(/\D/g, "") + "_" + Date.now().toString().slice(-4);
 
   const passwordHash = hashPassword(password);
   const [user] = await db.insert(usersTable).values({

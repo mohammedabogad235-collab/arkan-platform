@@ -10,6 +10,5 @@ export interface RegisterBody {
   fullName: string;
   phone: string;
   email: string;
-  username: string;
   password: string;
 }
