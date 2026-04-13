@@ -24,3 +24,9 @@ id = "kKNxaE9GqRSAXPXViZBT3"
 uri = "file://arkan-windows-final.tar.gz"
 type = "unspecified"
 title = "arkan-windows-final.tar.gz"
+
+[[outputs]]
+id = "kfZNKpG8Dkngk3S9Ee7i6"
+uri = "file://arkan-standalone.tar.gz"
+type = "unspecified"
+title = "arkan-standalone.tar.gz"
