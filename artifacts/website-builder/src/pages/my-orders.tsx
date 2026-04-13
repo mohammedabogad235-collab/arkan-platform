@@ -1,5 +1,5 @@
 import { useAuth } from "@/lib/auth";
-import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-react";
+import { useListOrders, useListPaymentMethods, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -271,6 +271,8 @@ export default function MyOrders() {
   const { user } = useAuth();
   const { data: orders, isLoading } = useListOrders({ userId: user?.id });
   const { data: settings } = useSettings();
+  const { data: allPaymentMethods } = useListPaymentMethods();
+  const activePMs = (allPaymentMethods || []).filter((pm: any) => pm.isActive);
 
   if (isLoading) {
     return (
