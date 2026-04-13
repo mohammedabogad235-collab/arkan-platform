@@ -166,6 +166,7 @@ export const CreateOrderBody = zod.object({
   customBudget: zod.number().nullish(),
   currency: zod.string(),
   paymentMethodId: zod.number().nullish(),
+  couponCode: zod.string().nullish(),
 });
 
 /**

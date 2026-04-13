@@ -208,7 +208,7 @@ export default function Order() {
         setCouponStatus("invalid");
         setCouponData(null);
         setAppliedCoupon(null);
-        toast({ variant: "destructive", title: "كود غير صالح", description: data.error || "الكود غير موجود أو منتهي" });
+        toast({ variant: "destructive", title: data.error || "الكود غير صالح أو غير موجود" });
       }
     } catch {
       setCouponStatus("invalid");

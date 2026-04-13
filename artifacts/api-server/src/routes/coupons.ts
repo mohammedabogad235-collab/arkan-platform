@@ -126,58 +126,56 @@ router.delete("/coupons/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/coupons/validate", async (req, res): Promise<void> => {
-  const session = req.session as { userId?: number } | undefined;
-  if (!session?.userId) {
-    res.status(401).json({ error: "يجب تسجيل الدخول" });
-    return;
+  try {
+    const body = req.body as { code?: string; orderAmount?: number };
+    if (!body.code) {
+      res.status(400).json({ valid: false, error: "الكود مطلوب" });
+      return;
+    }
+
+    const code = body.code.trim().toUpperCase();
+    const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, code));
+
+    if (!coupon) {
+      res.status(404).json({ valid: false, error: "الكود غير موجود" });
+      return;
+    }
+
+    if (!coupon.isActive) {
+      res.status(400).json({ valid: false, error: "هذا الكود غير مفعّل، تواصل مع الإدارة" });
+      return;
+    }
+
+    if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
+      res.status(400).json({ valid: false, error: "انتهت صلاحية هذا الكود" });
+      return;
+    }
+
+    if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
+      res.status(400).json({ valid: false, error: "تم استنفاد هذا الكود بالكامل" });
+      return;
+    }
+
+    if (coupon.minOrderAmount && body.orderAmount && body.orderAmount < coupon.minOrderAmount) {
+      res.status(400).json({ valid: false, error: `الحد الأدنى للطلب ${coupon.minOrderAmount} لاستخدام هذا الكود` });
+      return;
+    }
+
+    let discountAmount = 0;
+    if (coupon.discountType === "percentage") {
+      discountAmount = ((body.orderAmount ?? 0) * coupon.discountValue) / 100;
+    } else {
+      discountAmount = coupon.discountValue;
+    }
+
+    res.json({
+      valid: true,
+      coupon: formatCoupon(coupon),
+      discountAmount: Math.round(discountAmount),
+    });
+  } catch (err: any) {
+    res.status(500).json({ valid: false, error: "حدث خطأ أثناء التحقق من الكود، حاول مرة أخرى" });
   }
-
-  const body = req.body as { code?: string; orderAmount?: number };
-  if (!body.code) {
-    res.status(400).json({ error: "الكود مطلوب" });
-    return;
-  }
-
-  const code = body.code.trim().toUpperCase();
-  const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, code));
-
-  if (!coupon) {
-    res.status(404).json({ error: "الكود غير موجود أو غير صحيح" });
-    return;
-  }
-
-  if (!coupon.isActive) {
-    res.status(400).json({ error: "هذا الكود غير نشط" });
-    return;
-  }
-
-  if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
-    res.status(400).json({ error: "انتهت صلاحية هذا الكود" });
-    return;
-  }
-
-  if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
-    res.status(400).json({ error: "تجاوز هذا الكود الحد الأقصى للاستخدام" });
-    return;
-  }
-
-  if (coupon.minOrderAmount && body.orderAmount && body.orderAmount < coupon.minOrderAmount) {
-    res.status(400).json({ error: `الحد الأدنى للطلب ${coupon.minOrderAmount} لاستخدام هذا الكود` });
-    return;
-  }
-
-  let discountAmount = 0;
-  if (coupon.discountType === "percentage") {
-    discountAmount = ((body.orderAmount ?? 0) * coupon.discountValue) / 100;
-  } else {
-    discountAmount = coupon.discountValue;
-  }
-
-  res.json({
-    valid: true,
-    coupon: formatCoupon(coupon),
-    discountAmount: Math.round(discountAmount),
-  });
 });
 
 export default router;
