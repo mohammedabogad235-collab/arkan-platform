@@ -39,7 +39,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
   const existingEmail = await db.select().from(usersTable).where(eq(usersTable.email, email));
   if (existingEmail.length > 0) {
-    res.status(409).json({ error: "البريد الإلكتروني مستخدم بالفعل" });
+    res.status(409).json({ error: "هذا البريد مسجل من قبل", field: "email" });
     return;
   }
 

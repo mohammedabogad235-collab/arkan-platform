@@ -66,11 +66,15 @@ export default function Register() {
           setLocation("/order");
         },
         onError: (error) => {
-          toast({
-            variant: "destructive",
-            title: "فشل التسجيل",
-            description: error.error?.error || "حدث خطأ أثناء إنشاء الحساب",
-          });
+          const msg = error.error?.error || "حدث خطأ أثناء إنشاء الحساب";
+          const field = (error.error as any)?.field;
+          if (field === "email") {
+            form.setError("email", { message: msg });
+          } else if (msg.includes("اسم المستخدم")) {
+            form.setError("username", { message: "اسم المستخدم مستخدم بالفعل" });
+          } else {
+            toast({ variant: "destructive", title: "فشل التسجيل", description: msg });
+          }
         },
       }
     );
