@@ -151,6 +151,24 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   if (parsed.data.depositPercentage != null) updateData.depositPercentage = parsed.data.depositPercentage;
   if (parsed.data.deliveredUrl !== undefined) updateData.deliveredUrl = parsed.data.deliveredUrl;
 
+  // Recalculate discount if totalAmount is being set and order has a coupon
+  if (parsed.data.totalAmount != null) {
+    const [existingOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
+    if (existingOrder?.couponCode) {
+      const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, existingOrder.couponCode));
+      if (coupon && coupon.isActive) {
+        const newTotal = Number(parsed.data.totalAmount);
+        let newDiscount = 0;
+        if (coupon.discountType === "percentage") {
+          newDiscount = Math.round((newTotal * coupon.discountValue) / 100);
+        } else {
+          newDiscount = coupon.discountValue;
+        }
+        updateData.discountAmount = newDiscount;
+      }
+    }
+  }
+
   const [order] = await db.update(ordersTable).set(updateData).where(eq(ordersTable.id, params.data.id)).returning();
   if (!order) {
     res.status(404).json({ error: "الطلب غير موجود" });
