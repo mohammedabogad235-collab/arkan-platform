@@ -334,8 +334,10 @@ export default function MyOrders() {
             const requireDeposit = settings?.requireDeposit ?? true;
             const depositPct = order.depositPercentage ?? settings?.depositPercentageValue ?? 50;
             const totalAmount = order.totalAmount ? Number(order.totalAmount) : null;
-            const depositAmount = totalAmount ? Math.round(totalAmount * depositPct / 100) : null;
-            const remainingAmount = totalAmount && depositAmount !== null ? totalAmount - depositAmount : null;
+            const discountAmt = order.discountAmount ? Number(order.discountAmount) : 0;
+            const effectiveAmount = totalAmount !== null ? Math.max(0, totalAmount - discountAmt) : null;
+            const depositAmount = effectiveAmount ? Math.round(effectiveAmount * depositPct / 100) : null;
+            const remainingAmount = effectiveAmount && depositAmount !== null ? effectiveAmount - depositAmount : null;
             const currencyLabel = order.currency === "EGP" ? "جنيه" : "ريال";
 
             const priceSet = totalAmount !== null && totalAmount > 0;
@@ -389,10 +391,27 @@ export default function MyOrders() {
                       <div className="flex items-start gap-3 text-amber-800 text-sm">
                         <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                         <div className="space-y-2 flex-1">
+                          {/* Coupon discount breakdown */}
+                          {discountAmt > 0 && (
+                            <div className="bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 space-y-1 text-xs">
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>السعر الأصلي</span>
+                                <span>{totalAmount?.toLocaleString()} {currencyLabel}</span>
+                              </div>
+                              <div className="flex justify-between text-purple-700 font-semibold">
+                                <span>🎟 خصم كوبون ({order.couponCode})</span>
+                                <span>− {discountAmt.toLocaleString()} {currencyLabel}</span>
+                              </div>
+                              <div className="flex justify-between text-green-700 font-bold border-t border-purple-200 pt-1">
+                                <span>المبلغ بعد الخصم</span>
+                                <span>{effectiveAmount?.toLocaleString()} {currencyLabel}</span>
+                              </div>
+                            </div>
+                          )}
                           <p className="font-semibold text-base">
                             {requireDeposit
-                              ? `يُطلب منك دفع مقدّم ${depositPct}% — المبلغ: ${depositAmount} ${currencyLabel}`
-                              : `يُطلب منك سداد كامل المبلغ: ${totalAmount} ${currencyLabel}`}
+                              ? `يُطلب منك دفع مقدّم ${depositPct}% — المبلغ: ${depositAmount?.toLocaleString()} ${currencyLabel}`
+                              : `يُطلب منك سداد كامل المبلغ: ${effectiveAmount?.toLocaleString()} ${currencyLabel}`}
                           </p>
                           {/* Show linked payment method OR all active ones from settings */}
                           {order.paymentMethod ? (
@@ -578,25 +597,46 @@ export default function MyOrders() {
                       <div className="border-t pt-4">
                         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">ملخص مالي</h4>
                         <div className="space-y-2 text-sm">
-                          {order.couponCode && (
-                            <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
-                              <span className="text-purple-700 flex items-center gap-1 text-xs">
-                                🎟 كوبون: <span className="font-mono font-bold">{order.couponCode}</span>
-                              </span>
-                              {order.discountAmount ? <span className="text-purple-600 font-semibold text-xs">وفّرت {order.discountAmount} {currencyLabel}</span> : null}
-                            </div>
-                          )}
                           {totalAmount ? (
                             <>
-                              <div className="flex justify-between items-center">
-                                <span className="text-muted-foreground">إجمالي الطلب</span>
-                                <span className="font-bold text-base">{totalAmount} {currencyLabel}</span>
+                              {/* Original price row — only show if there's a discount */}
+                              {discountAmt > 0 && (
+                                <div className="flex justify-between items-center text-muted-foreground line-through">
+                                  <span>السعر الأصلي</span>
+                                  <span>{totalAmount.toLocaleString()} {currencyLabel}</span>
+                                </div>
+                              )}
+                              {/* Coupon discount row */}
+                              {order.couponCode && discountAmt > 0 && (
+                                <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
+                                  <span className="text-purple-700 flex items-center gap-1 text-xs">
+                                    🎟 خصم: <span className="font-mono font-bold">{order.couponCode}</span>
+                                  </span>
+                                  <span className="text-purple-600 font-semibold text-xs">− {discountAmt.toLocaleString()} {currencyLabel}</span>
+                                </div>
+                              )}
+                              {/* Coupon applied but no amount yet (discount = 0) */}
+                              {order.couponCode && discountAmt === 0 && (
+                                <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
+                                  <span className="text-purple-700 flex items-center gap-1 text-xs">
+                                    🎟 كوبون: <span className="font-mono font-bold">{order.couponCode}</span>
+                                  </span>
+                                  <span className="text-purple-500 text-xs">سيُحسب الخصم عند تحديد المبلغ</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between items-center border-t pt-1">
+                                <span className="text-muted-foreground font-medium">
+                                  {discountAmt > 0 ? "المبلغ بعد الخصم" : "إجمالي الطلب"}
+                                </span>
+                                <span className="font-bold text-base text-green-700">
+                                  {effectiveAmount?.toLocaleString()} {currencyLabel}
+                                </span>
                               </div>
                               {requireDeposit && depositAmount !== null && (
                                 <div className="flex justify-between items-center">
                                   <span className="text-muted-foreground">المقدم ({depositPct}%)</span>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-semibold">{depositAmount} {currencyLabel}</span>
+                                    <span className="font-semibold">{depositAmount.toLocaleString()} {currencyLabel}</span>
                                     <Badge variant={order.depositPaid ? "default" : "outline"} className="text-[10px] px-1.5 py-0">
                                       {order.depositPaid ? "✓ مدفوع" : "معلق"}
                                     </Badge>
@@ -607,7 +647,7 @@ export default function MyOrders() {
                                 <div className="flex justify-between items-center">
                                   <span className="text-muted-foreground">المتبقي</span>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-semibold">{remainingAmount} {currencyLabel}</span>
+                                    <span className="font-semibold">{remainingAmount.toLocaleString()} {currencyLabel}</span>
                                     <Badge variant={order.finalPaid ? "default" : "outline"} className="text-[10px] px-1.5 py-0">
                                       {order.finalPaid ? "✓ مدفوع" : "معلق"}
                                     </Badge>
@@ -626,6 +666,14 @@ export default function MyOrders() {
                           ) : (
                             <>
                               <p className="text-muted-foreground text-xs">لم يُحدد المبلغ بعد — ستصلك رسالة من الإدارة.</p>
+                              {order.couponCode && (
+                                <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
+                                  <span className="text-purple-700 flex items-center gap-1 text-xs">
+                                    🎟 كوبون مطبّق: <span className="font-mono font-bold">{order.couponCode}</span>
+                                  </span>
+                                  <span className="text-purple-500 text-xs">سيُحسب الخصم مع المبلغ</span>
+                                </div>
+                              )}
                               <div className="flex justify-between items-center">
                                 <span className="text-muted-foreground">المقدم ({depositPct}%)</span>
                                 <Badge variant={order.depositPaid ? "default" : "outline"} className="text-xs">
