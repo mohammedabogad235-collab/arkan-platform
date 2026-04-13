@@ -275,28 +275,78 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                     </div>
                   </div>
                   {/* Live breakdown preview */}
-                  {liveAmount !== null && liveAmount > 0 && (
-                    <div className="rounded-lg bg-muted/30 border p-2.5 space-y-1.5 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">المقدم ({pct}%)</span>
-                        <span className="font-semibold text-amber-600">{deposit?.toLocaleString()} {order.currency}</span>
+                  {liveAmount !== null && liveAmount > 0 && (() => {
+                    const liveDiscount = order.discountAmount ? Number(order.discountAmount) : 0;
+                    const liveEffective = Math.max(0, liveAmount - liveDiscount);
+                    const liveDeposit = Math.round(liveEffective * pct / 100);
+                    const liveRemaining = liveEffective - liveDeposit;
+                    return (
+                      <div className="rounded-lg bg-muted/30 border p-2.5 space-y-1.5 text-xs">
+                        {liveDiscount > 0 && (
+                          <>
+                            <div className="flex justify-between text-muted-foreground line-through">
+                              <span>الأصلي</span>
+                              <span>{liveAmount.toLocaleString()} {order.currency}</span>
+                            </div>
+                            <div className="flex justify-between text-purple-700">
+                              <span>خصم ({order.couponCode})</span>
+                              <span>− {liveDiscount.toLocaleString()} {order.currency}</span>
+                            </div>
+                            <div className="flex justify-between text-green-700 font-semibold border-t pt-1">
+                              <span>صافي</span>
+                              <span>{liveEffective.toLocaleString()} {order.currency}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">المقدم ({pct}%)</span>
+                          <span className="font-semibold text-amber-600">{liveDeposit.toLocaleString()} {order.currency}</span>
+                        </div>
+                        <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">المتبقي ({100 - pct}%)</span>
+                          <span className="font-semibold text-blue-600">{liveRemaining.toLocaleString()} {order.currency}</span>
+                        </div>
                       </div>
-                      <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">المتبقي ({100 - pct}%)</span>
-                        <span className="font-semibold text-blue-600">{remaining?.toLocaleString()} {order.currency}</span>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
                 {(() => {
                   const savedAmt = order.totalAmount ? Number(order.totalAmount) : null;
-                  const savedDeposit = savedAmt ? Math.round((savedAmt * pct) / 100) : null;
-                  const savedRemaining = savedAmt && savedDeposit !== null ? savedAmt - savedDeposit : null;
+                  const savedDiscount = order.discountAmount ? Number(order.discountAmount) : 0;
+                  const savedEffective = savedAmt !== null ? Math.max(0, savedAmt - savedDiscount) : null;
+                  const savedDeposit = savedEffective ? Math.round((savedEffective * pct) / 100) : null;
+                  const savedRemaining = savedEffective && savedDeposit !== null ? savedEffective - savedDeposit : null;
                   return savedAmt ? (
                     <>
+                      {/* Coupon breakdown */}
+                      {order.couponCode && (
+                        <div className="pt-1 border-t space-y-1 text-xs">
+                          {savedDiscount > 0 ? (
+                            <>
+                              <div className="flex justify-between text-muted-foreground line-through">
+                                <span>السعر الأصلي</span>
+                                <span>{savedAmt.toLocaleString()} {order.currency}</span>
+                              </div>
+                              <div className="flex justify-between text-purple-700 bg-purple-50 rounded px-2 py-1">
+                                <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> خصم ({order.couponCode})</span>
+                                <span className="font-bold">− {savedDiscount.toLocaleString()} {order.currency}</span>
+                              </div>
+                              <div className="flex justify-between text-green-700 font-bold">
+                                <span>صافي المبلغ</span>
+                                <span>{savedEffective?.toLocaleString()} {order.currency}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex justify-between text-purple-600 bg-purple-50 rounded px-2 py-1">
+                              <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> كوبون: {order.couponCode}</span>
+                              <span className="text-purple-400 text-xs">الخصم سيُحسب بعد الحفظ</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="flex justify-between items-center text-sm pt-1 border-t">
                         <span className="text-muted-foreground">المقدم ({pct}%)</span>
                         <div className="flex items-center gap-2">
@@ -313,28 +363,25 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                       </div>
                     </>
                   ) : (
-                    <div className="flex gap-2 pt-1 border-t">
-                      <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
-                      <Label className="text-xs text-muted-foreground">مقدم</Label>
-                      <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75 ms-3" />
-                      <Label className="text-xs text-muted-foreground">متبقي</Label>
-                    </div>
+                    <>
+                      {order.couponCode && (
+                        <div className="pt-1 border-t">
+                          <div className="flex justify-between text-purple-600 bg-purple-50 rounded px-2 py-1 text-xs">
+                            <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> كوبون: {order.couponCode}</span>
+                            <span className="text-purple-400">سيُطبّق عند تحديد المبلغ</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex gap-2 pt-1 border-t">
+                        <Switch checked={order.depositPaid} onCheckedChange={v => onPaymentChange(order.id, "depositPaid", v)} className="scale-75" />
+                        <Label className="text-xs text-muted-foreground">مقدم</Label>
+                        <Switch checked={order.finalPaid} onCheckedChange={v => onPaymentChange(order.id, "finalPaid", v)} className="scale-75 ms-3" />
+                        <Label className="text-xs text-muted-foreground">متبقي</Label>
+                      </div>
+                    </>
                   );
                 })()}
               </div>
-
-              {/* Coupon */}
-              {order.couponCode && (
-                <div className="bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-1.5 text-purple-700">
-                    <Tag className="w-3.5 h-3.5" />
-                    كوبون مطبّق: <span className="font-mono font-bold">{order.couponCode}</span>
-                  </span>
-                  {order.discountAmount ? (
-                    <span className="text-purple-600 font-semibold text-xs">خصم {order.discountAmount.toLocaleString()} {order.currency}</span>
-                  ) : null}
-                </div>
-              )}
 
               {/* Delivered URL */}
               <DeliveredUrlInput order={order} />
