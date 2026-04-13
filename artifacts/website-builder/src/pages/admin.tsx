@@ -776,9 +776,11 @@ export default function Admin() {
   };
 
   const allOrders = orders || [];
-  const totalRevenue = allOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
-  const depositCollected = allOrders.filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + ((o.totalAmount || 0) * p / 100); }, 0);
-  const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + ((o.totalAmount || 0) * (100 - p) / 100); }, 0);
+  const effectiveAmt = (o: any) => Math.max(0, (o.totalAmount || 0) - (o.discountAmount || 0));
+  const totalRevenue = allOrders.reduce((s, o) => s + effectiveAmt(o), 0);
+  const totalDiscounts = allOrders.reduce((s, o) => s + (o.discountAmount || 0), 0);
+  const depositCollected = allOrders.filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o) * p / 100); }, 0);
+  const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o) * (100 - p) / 100); }, 0);
   const pendingReceipts = allOrders.filter(o => o.receiptUrl && !o.depositPaid).length;
 
   return (
@@ -923,10 +925,10 @@ export default function Admin() {
                 <p className="text-muted-foreground text-sm mt-1">ملخص الإيرادات والمدفوعات</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                <StatCard icon={DollarSign}  label="إجمالي قيمة الطلبات"  value={totalRevenue.toLocaleString()}       color="bg-primary/10 text-primary" />
-                <StatCard icon={Banknote}    label="مقدمات محصلة"         value={depositCollected.toFixed(0)}          color="bg-amber-100 text-amber-600" />
-                <StatCard icon={CheckCircle} label="مبالغ نهائية محصلة"   value={finalCollected.toFixed(0)}            color="bg-green-100 text-green-600" />
-                <StatCard icon={Clock}       label="إيصالات بانتظار تأكيد" value={pendingReceipts}                     color="bg-orange-100 text-orange-600" />
+                <StatCard icon={DollarSign}  label="صافي الإيرادات (بعد الخصم)" value={totalRevenue.toLocaleString()}     color="bg-primary/10 text-primary" />
+                <StatCard icon={Banknote}    label="مقدمات محصلة"               value={depositCollected.toFixed(0)}        color="bg-amber-100 text-amber-600" />
+                <StatCard icon={CheckCircle} label="مبالغ نهائية محصلة"         value={finalCollected.toFixed(0)}          color="bg-green-100 text-green-600" />
+                <StatCard icon={Tag}         label="إجمالي الخصومات الممنوحة"   value={totalDiscounts.toLocaleString()}    color="bg-purple-100 text-purple-600" />
               </div>
               <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b">
@@ -938,27 +940,43 @@ export default function Admin() {
                   )}
                   {allOrders.filter(o => o.totalAmount).map(order => {
                     const p = order.depositPercentage ?? siteSettings?.depositPercentageValue ?? 50;
-                    const dep = (order.totalAmount! * p) / 100;
-                    const rem = order.totalAmount! - dep;
+                    const disc = order.discountAmount ? Number(order.discountAmount) : 0;
+                    const eff = Math.max(0, (order.totalAmount || 0) - disc);
+                    const dep = Math.round(eff * p / 100);
+                    const rem = eff - dep;
                     return (
                       <div key={order.id} className="px-6 py-4 flex flex-wrap items-center gap-4">
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold">{order.siteName}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold">{order.siteName}</p>
+                            {order.couponCode && (
+                              <span className="inline-flex items-center gap-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-0.5 font-mono">
+                                🎟 {order.couponCode}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">{order.user?.fullName}</p>
                         </div>
                         <StatusBadge status={order.status} />
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">الإجمالي: </span>
-                          <strong>{order.totalAmount!.toLocaleString()} {order.currency}</strong>
+                        <div className="text-sm text-end space-y-0.5">
+                          {disc > 0 ? (
+                            <>
+                              <div className="text-muted-foreground line-through text-xs">{order.totalAmount!.toLocaleString()} {order.currency}</div>
+                              <div className="text-xs text-purple-600">خصم − {disc.toLocaleString()}</div>
+                              <div className="font-bold text-green-700">{eff.toLocaleString()} {order.currency}</div>
+                            </>
+                          ) : (
+                            <div><span className="text-muted-foreground text-xs">الإجمالي: </span><strong>{order.totalAmount!.toLocaleString()} {order.currency}</strong></div>
+                          )}
                         </div>
                         <div className="flex gap-3 text-sm">
                           <span className={`flex items-center gap-1 ${order.depositPaid ? "text-green-600" : "text-muted-foreground"}`}>
                             {order.depositPaid ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                            مقدم {dep.toFixed(0)}
+                            مقدم {dep.toLocaleString()}
                           </span>
                           <span className={`flex items-center gap-1 ${order.finalPaid ? "text-green-600" : "text-muted-foreground"}`}>
                             {order.finalPaid ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                            متبقي {rem.toFixed(0)}
+                            متبقي {rem.toLocaleString()}
                           </span>
                         </div>
                       </div>
