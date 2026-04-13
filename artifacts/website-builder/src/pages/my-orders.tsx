@@ -209,10 +209,11 @@ function CouponApplier({ orderId, onApplied }: { orderId: number; onApplied: () 
         credentials: "include",
         body: JSON.stringify({ code: code.trim().toUpperCase() }),
       });
-      const data = await res.json();
+      let data: any = {};
+      try { data = await res.json(); } catch { /* ignore parse error */ }
       if (!res.ok) {
         setStatus("error");
-        setErrorMsg(data.error || "كود غير صحيح");
+        setErrorMsg(data.error || "الكود غير صحيح أو غير نشط");
       } else {
         toast({ title: "تم تطبيق الكوبون بنجاح!" });
         onApplied();
@@ -222,7 +223,7 @@ function CouponApplier({ orderId, onApplied }: { orderId: number; onApplied: () 
       }
     } catch {
       setStatus("error");
-      setErrorMsg("حدث خطأ، حاول مرة أخرى");
+      setErrorMsg("تعذّر الاتصال، تحقق من الإنترنت وأعد المحاولة");
     }
   };
 

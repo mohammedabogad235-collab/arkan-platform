@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import session from "express-session";
@@ -61,6 +61,11 @@ app.use(
 );
 
 app.use("/api", router);
+
+// Global JSON error handler — must come after routes
+app.use("/api", (err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  res.status(500).json({ error: err.message || "حدث خطأ في السيرفر" });
+});
 
 // Serve pre-built frontend static files
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
