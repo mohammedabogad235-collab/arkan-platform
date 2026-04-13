@@ -335,7 +335,8 @@ export default function MyOrders() {
             const remainingAmount = totalAmount && depositAmount !== null ? totalAmount - depositAmount : null;
             const currencyLabel = order.currency === "EGP" ? "جنيه" : "ريال";
 
-            const showReceiptUpload = requireDeposit && order.status === "pending" && !order.receiptUrl;
+            const priceSet = totalAmount !== null && totalAmount > 0;
+            const showReceiptUpload = order.status === "pending" && priceSet && !order.receiptUrl;
             const receiptUploaded = !!order.receiptUrl;
             const canCancel = order.status === "pending" || order.status === "in_progress";
             const statusCfg = statusMap[order.status] || { label: order.status, color: "", variant: "outline" as const };
@@ -374,21 +375,45 @@ export default function MyOrders() {
                 </CardHeader>
 
                 {/* Deposit / Receipt Alert */}
-                {requireDeposit && order.status === "pending" && (
-                  <div className={`px-6 py-3 border-b text-sm flex items-start gap-3 ${receiptUploaded ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>
-                    {receiptUploaded ? (
+                {order.status === "pending" && (
+                  receiptUploaded ? (
+                    <div className="px-6 py-3 border-b text-sm flex items-start gap-3 bg-green-50 text-green-800">
                       <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-                    ) : (
+                      <span>تم رفع إيصال الدفع — بانتظار تأكيد الإدارة لبدء التنفيذ.</span>
+                    </div>
+                  ) : priceSet ? (
+                    <div className="px-6 py-4 border-b bg-amber-50 space-y-4">
+                      <div className="flex items-start gap-3 text-amber-800 text-sm">
+                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                        <div className="space-y-1.5 flex-1">
+                          <p className="font-semibold text-base">
+                            {requireDeposit
+                              ? `يُطلب منك دفع مقدّم ${depositPct}% — المبلغ: ${depositAmount} ${currencyLabel}`
+                              : `يُطلب منك سداد كامل المبلغ: ${totalAmount} ${currencyLabel}`}
+                          </p>
+                          {order.paymentMethod && (
+                            <p className="text-amber-800 font-medium">
+                              ادفع عبر: <strong>{order.paymentMethod.name}</strong>
+                            </p>
+                          )}
+                          {order.paymentMethod?.details && (
+                            <div className="text-amber-900 text-xs whitespace-pre-line font-mono bg-amber-100 border border-amber-200 rounded-xl px-3 py-2.5 mt-1 leading-relaxed">
+                              {order.paymentMethod.details}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Receipt upload directly here */}
+                      <div className="pt-1">
+                        <ReceiptUploader orderId={order.id} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="px-6 py-3 border-b text-sm flex items-start gap-3 bg-blue-50 text-blue-700">
                       <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                    )}
-                    <span>
-                      {receiptUploaded
-                        ? "تم رفع إيصال الدفع — بانتظار تأكيد الإدارة لبدء التنفيذ."
-                        : depositAmount
-                          ? `يُطلب منك دفع مقدّم ${depositPct}% (${depositAmount} ${currencyLabel}) من قيمة الطلب ثم رفع الإيصال لبدء التنفيذ.`
-                          : `يُطلب منك دفع مقدّم ${depositPct}% من قيمة الطلب ثم رفع الإيصال لبدء التنفيذ.`}
-                    </span>
-                  </div>
+                      <span>طلبك قيد المراجعة — يرجى الانتظار حتى تحديد السعر من قِبل الإدارة.</span>
+                    </div>
+                  )
                 )}
 
                 {/* Completed: Delivered URL */}
