@@ -29,7 +29,7 @@ export const RegisterBody = zod.object({
  * @summary Login
  */
 export const LoginBody = zod.object({
-  username: zod.string(),
+  identifier: zod.string(),
   password: zod.string(),
 });
 

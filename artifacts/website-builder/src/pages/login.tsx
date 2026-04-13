@@ -21,7 +21,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 const loginSchema = z.object({
-  username: z.string().min(3, { message: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" }),
+  identifier: z.string().min(5, { message: "أدخل رقم الهاتف أو البريد الإلكتروني" }),
   password: z.string().min(6, { message: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }),
 });
 
@@ -42,7 +42,7 @@ export default function Login() {
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      username: "",
+      identifier: "",
       password: "",
     },
   });
@@ -85,12 +85,12 @@ export default function Login() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
-                name="username"
+                name="identifier"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>اسم المستخدم</FormLabel>
+                    <FormLabel>رقم الهاتف أو البريد الإلكتروني</FormLabel>
                     <FormControl>
-                      <Input placeholder="أدخل اسم المستخدم" {...field} className="h-12 text-lg" dir="ltr" />
+                      <Input placeholder="رقم الجوال أو البريد الإلكتروني" {...field} className="h-12 text-lg" dir="ltr" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

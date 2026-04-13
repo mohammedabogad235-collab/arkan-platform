@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
-import { RegisterBody, LoginBody } from "@workspace/api-zod";
+import { RegisterBody } from "@workspace/api-zod";
 import * as crypto from "crypto";
 
 const router: IRouter = Router();
@@ -69,19 +69,24 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 });
 
 router.post("/auth/login", async (req, res): Promise<void> => {
-  const parsed = LoginBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+  const { identifier, password } = req.body as { identifier?: string; password?: string };
+
+  if (!identifier || !password) {
+    res.status(400).json({ error: "رقم الهاتف أو البريد وكلمة المرور مطلوبان" });
     return;
   }
 
-  const { username, password } = parsed.data;
   const passwordHash = hashPassword(password);
+  const trimmed = identifier.trim();
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.username, username));
+  // Try phone first, then email
+  let [user] = await db.select().from(usersTable).where(eq(usersTable.phone, trimmed));
+  if (!user) {
+    [user] = await db.select().from(usersTable).where(eq(usersTable.email, trimmed));
+  }
 
   if (!user || user.passwordHash !== passwordHash) {
-    res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
+    res.status(401).json({ error: "البيانات غير صحيحة، تحقق من رقم الهاتف أو البريد وكلمة المرور" });
     return;
   }
 
