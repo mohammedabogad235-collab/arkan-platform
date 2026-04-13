@@ -338,7 +338,7 @@ export default function MyOrders() {
             const currencyLabel = order.currency === "EGP" ? "جنيه" : "ريال";
 
             const priceSet = totalAmount !== null && totalAmount > 0;
-            const showReceiptUpload = order.status === "pending" && !order.receiptUrl;
+            const showReceiptUpload = order.status === "pending" && priceSet && !order.receiptUrl;
             const receiptUploaded = !!order.receiptUrl;
             const canCancel = order.status === "pending" || order.status === "in_progress";
             const statusCfg = statusMap[order.status] || { label: order.status, color: "", variant: "outline" as const };
@@ -447,12 +447,6 @@ export default function MyOrders() {
                               )}
                             </div>
                           ))}
-                        </div>
-                      )}
-                      {/* Receipt uploader even before price is set */}
-                      {!order.receiptUrl && (
-                        <div className="pt-1">
-                          <ReceiptUploader orderId={order.id} />
                         </div>
                       )}
                     </div>
