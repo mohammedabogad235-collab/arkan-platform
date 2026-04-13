@@ -387,25 +387,37 @@ export default function MyOrders() {
                     <div className="px-6 py-4 border-b bg-amber-50 space-y-4">
                       <div className="flex items-start gap-3 text-amber-800 text-sm">
                         <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                        <div className="space-y-1.5 flex-1">
+                        <div className="space-y-2 flex-1">
                           <p className="font-semibold text-base">
                             {requireDeposit
                               ? `يُطلب منك دفع مقدّم ${depositPct}% — المبلغ: ${depositAmount} ${currencyLabel}`
                               : `يُطلب منك سداد كامل المبلغ: ${totalAmount} ${currencyLabel}`}
                           </p>
-                          {order.paymentMethod && (
-                            <p className="text-amber-800 font-medium">
-                              ادفع عبر: <strong>{order.paymentMethod.name}</strong>
-                            </p>
-                          )}
-                          {order.paymentMethod?.details && (
-                            <div className="text-amber-900 text-xs whitespace-pre-line font-mono bg-amber-100 border border-amber-200 rounded-xl px-3 py-2.5 mt-1 leading-relaxed">
-                              {order.paymentMethod.details}
+                          {/* Show linked payment method OR all active ones from settings */}
+                          {order.paymentMethod ? (
+                            <div className="space-y-1">
+                              <p className="text-amber-800 font-medium">ادفع عبر: <strong>{order.paymentMethod.name}</strong></p>
+                              {order.paymentMethod.details && (
+                                <div className="text-amber-900 text-xs whitespace-pre-line font-mono bg-amber-100 border border-amber-200 rounded-xl px-3 py-2.5 leading-relaxed">
+                                  {order.paymentMethod.details}
+                                </div>
+                              )}
                             </div>
-                          )}
+                          ) : activePMs.length > 0 ? (
+                            <div className="space-y-2">
+                              <p className="text-amber-800 font-medium">حسابات الدفع المتاحة:</p>
+                              {activePMs.map((pm: any) => (
+                                <div key={pm.id} className="bg-amber-100 border border-amber-200 rounded-xl px-3 py-2.5 space-y-0.5">
+                                  <p className="font-semibold text-xs text-amber-900">{pm.name}</p>
+                                  {pm.details && (
+                                    <p className="text-amber-800 text-xs whitespace-pre-line font-mono leading-relaxed">{pm.details}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
-                      {/* Receipt upload directly here */}
                       <div className="pt-1">
                         <ReceiptUploader orderId={order.id} />
                       </div>
