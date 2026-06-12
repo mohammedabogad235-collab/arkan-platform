@@ -30,3 +30,9 @@ id = "kfZNKpG8Dkngk3S9Ee7i6"
 uri = "file://arkan-standalone.tar.gz"
 type = "unspecified"
 title = "arkan-standalone.tar.gz"
+
+[[outputs]]
+id = "E9J8cUfbAfmRibfYtzjeQ"
+uri = "file://arkan-source.zip"
+type = "unspecified"
+title = "أركان — كود المشروع (ZIP)"
