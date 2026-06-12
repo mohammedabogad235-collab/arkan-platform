@@ -205,12 +205,14 @@ export default function Order() {
         setCouponData({ discountType: data.coupon.discountType, discountValue: data.coupon.discountValue, discountAmount: data.discountAmount });
         setAppliedCoupon(couponInput.trim().toUpperCase());
       } else {
-        setCouponStatus("idle");
+        setCouponStatus("invalid");
         setCouponData(null);
         setAppliedCoupon(null);
+        toast({ variant: "destructive", title: data.error || "الكود غير صالح أو غير موجود" });
       }
     } catch {
-      setCouponStatus("idle");
+      setCouponStatus("invalid");
+      toast({ variant: "destructive", title: "تعذّر التحقق من الكود، حاول مرة أخرى" });
     }
   };
 

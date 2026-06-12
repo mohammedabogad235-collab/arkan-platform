@@ -223,7 +223,7 @@ function CouponApplier({ orderId, onApplied }: { orderId: number; onApplied: () 
       }
     } catch {
       setStatus("error");
-      setErrorMsg("تعذّر الاتصال، تحقق من الإنترنت وأعد المحاولة");
+      setErrorMsg("تعذّر تطبيق الكود، حاول مرة أخرى");
     }
   };
 
