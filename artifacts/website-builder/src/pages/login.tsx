@@ -21,7 +21,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 const loginSchema = z.object({
-  identifier: z.string().min(5, { message: "أدخل رقم الهاتف أو البريد الإلكتروني" }),
+  identifier: z.string().min(3, { message: "أدخل رقم الهاتف أو البريد أو اسم المستخدم" }),
   password: z.string().min(6, { message: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }),
 });
 
@@ -88,9 +88,9 @@ export default function Login() {
                 name="identifier"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>رقم الهاتف أو البريد الإلكتروني</FormLabel>
+                    <FormLabel>رقم الهاتف أو البريد أو اسم المستخدم</FormLabel>
                     <FormControl>
-                      <Input placeholder="رقم الجوال أو البريد الإلكتروني" {...field} className="h-12 text-lg" dir="ltr" />
+                      <Input placeholder="رقم الجوال أو البريد أو username" {...field} className="h-12 text-lg" dir="ltr" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

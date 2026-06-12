@@ -82,10 +82,13 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const passwordHash = hashPassword(password);
   const trimmed = identifier.trim();
 
-  // Try phone first, then email
+  // Try phone, then email, then username
   let [user] = await db.select().from(usersTable).where(eq(usersTable.phone, trimmed));
   if (!user) {
     [user] = await db.select().from(usersTable).where(eq(usersTable.email, trimmed));
+  }
+  if (!user) {
+    [user] = await db.select().from(usersTable).where(eq(usersTable.username, trimmed));
   }
 
   if (!user || user.passwordHash !== passwordHash) {
