@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/lib/auth";
 import { useSettings, useUpdateSettings, SETTINGS_KEY } from "@/lib/use-settings";
 import {
   useGetAdminStats,
@@ -38,7 +39,7 @@ import {
   TrendingUp, FileImage, BadgeCheck, Percent, MessageSquare,
   CreditCard, Package, BarChart3, Globe, Phone, Mail, MapPin,
   Facebook, Instagram, Twitter, ChevronDown, ChevronUp, Check, X,
-  Clock, Banknote, Star, ArrowUpRight, Tag, ToggleLeft, ToggleRight, Calendar,
+  Clock, Banknote, Star, ArrowUpRight, Tag, ToggleLeft, ToggleRight, Calendar, Shield, Lock, Unlock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -52,16 +53,17 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   cancelled:  { label: "ملغي",          color: "text-red-700",   bg: "bg-red-50 border-red-200",     dot: "bg-red-400" },
 };
 
-const NAV = [
-  { id: "overview", label: "الإحصائيات", icon: BarChart3 },
-  { id: "orders",   label: "الطلبات",    icon: ShoppingCart },
-  { id: "finances", label: "المالية",    icon: TrendingUp },
-  { id: "users",    label: "المستخدمين", icon: Users },
-  { id: "packages", label: "الباقات",    icon: Package },
-  { id: "payments", label: "طرق الدفع", icon: CreditCard },
-  { id: "reviews",  label: "الآراء",     icon: MessageSquare },
-  { id: "coupons",  label: "الكوبونات",  icon: Tag },
-  { id: "settings", label: "الإعدادات", icon: Settings },
+const ALL_NAV = [
+  { id: "overview",   label: "الإحصائيات",     icon: BarChart3,     adminOnly: false },
+  { id: "orders",     label: "الطلبات",         icon: ShoppingCart,  adminOnly: false },
+  { id: "finances",   label: "المالية",         icon: TrendingUp,    adminOnly: false },
+  { id: "users",      label: "المستخدمين",      icon: Users,         adminOnly: false },
+  { id: "packages",   label: "الباقات",         icon: Package,       adminOnly: false },
+  { id: "payments",   label: "طرق الدفع",       icon: CreditCard,    adminOnly: false },
+  { id: "reviews",    label: "الآراء",           icon: MessageSquare, adminOnly: false },
+  { id: "coupons",    label: "الكوبونات",        icon: Tag,           adminOnly: false },
+  { id: "settings",   label: "الإعدادات",       icon: Settings,      adminOnly: false },
+  { id: "subadmins",  label: "مشرفون فرعيون",  icon: Shield,        adminOnly: true  },
 ];
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
@@ -458,7 +460,23 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   );
 }
 
+const PERMISSIONS_LIST = [
+  { id: "overview",  label: "الإحصائيات" },
+  { id: "orders",    label: "الطلبات" },
+  { id: "finances",  label: "المالية" },
+  { id: "users",     label: "المستخدمين" },
+  { id: "packages",  label: "الباقات" },
+  { id: "payments",  label: "طرق الدفع" },
+  { id: "reviews",   label: "الآراء" },
+  { id: "coupons",   label: "الكوبونات" },
+  { id: "settings",  label: "الإعدادات" },
+];
+
 export default function Admin() {
+  const { user: currentUser } = useAuth();
+  const isMainAdmin = currentUser?.role === "admin";
+  const userPermissions: string[] = (currentUser as any)?.permissions || [];
+
   const { data: stats } = useGetAdminStats();
   const { data: orders } = useListOrders();
   const { data: users } = useListUsers();
@@ -509,6 +527,7 @@ export default function Admin() {
 
   useEffect(() => {
     if (activeTab === "coupons") fetchCoupons();
+    if (activeTab === "subadmins") fetchSubadmins();
   }, [activeTab]);
 
   // Auth
@@ -539,6 +558,15 @@ export default function Admin() {
   const [couponForm, setCouponForm] = useState<typeof emptyCoupon>(emptyCoupon);
   const [coupons, setCoupons] = useState<any[]>([]);
   const [couponsLoading, setCouponsLoading] = useState(false);
+
+  // Sub-admins
+  const emptySubAdmin = { fullName: "", phone: "", email: "", username: "", password: "", permissions: [] as string[] };
+  const [subadmins, setSubadmins] = useState<any[]>([]);
+  const [subadminsLoading, setSubadminsLoading] = useState(false);
+  const [subadminDialogOpen, setSubadminDialogOpen] = useState(false);
+  const [subadminEditId, setSubadminEditId] = useState<number | null>(null);
+  const [subadminForm, setSubadminForm] = useState<typeof emptySubAdmin>(emptySubAdmin);
+  const [subadminFormLoading, setSubadminFormLoading] = useState(false);
 
   const apiFetch = async (url: string, options: RequestInit) => {
     const res = await fetch(url, { ...options, credentials: "include" });
@@ -759,6 +787,74 @@ export default function Admin() {
     }
   };
 
+  const fetchSubadmins = async () => {
+    setSubadminsLoading(true);
+    try {
+      const res = await fetch("/api/subadmins", { credentials: "include" });
+      if (res.ok) setSubadmins(await res.json());
+    } finally { setSubadminsLoading(false); }
+  };
+
+  const handleOpenSubadminDialog = (sub?: any) => {
+    if (sub) {
+      setSubadminEditId(sub.id);
+      setSubadminForm({ fullName: sub.fullName, phone: sub.phone, email: sub.email, username: sub.username, password: "", permissions: sub.permissions || [] });
+    } else {
+      setSubadminEditId(null);
+      setSubadminForm(emptySubAdmin);
+    }
+    setSubadminDialogOpen(true);
+  };
+
+  const handleSaveSubadmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubadminFormLoading(true);
+    try {
+      if (subadminEditId) {
+        const body: any = { permissions: subadminForm.permissions, fullName: subadminForm.fullName, phone: subadminForm.phone, email: subadminForm.email };
+        if (subadminForm.password) body.password = subadminForm.password;
+        await apiFetch(`/api/subadmins/${subadminEditId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        toast({ title: "تم التحديث", description: "تم تحديث بيانات المشرف الفرعي" });
+      } else {
+        await apiFetch("/api/subadmins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(subadminForm) });
+        toast({ title: "تم الإنشاء", description: "تم إنشاء حساب المشرف الفرعي بنجاح" });
+      }
+      setSubadminDialogOpen(false);
+      fetchSubadmins();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err.message });
+    } finally { setSubadminFormLoading(false); }
+  };
+
+  const handleToggleSubadmin = async (id: number) => {
+    try {
+      await apiFetch(`/api/subadmins/${id}/toggle`, { method: "PATCH" });
+      fetchSubadmins();
+    } catch {
+      toast({ variant: "destructive", title: "خطأ في تغيير الحالة" });
+    }
+  };
+
+  const handleDeleteSubadmin = async (id: number) => {
+    if (!confirm("هل أنت متأكد من حذف هذا المشرف؟")) return;
+    try {
+      await apiFetch(`/api/subadmins/${id}`, { method: "DELETE" });
+      toast({ title: "تم الحذف" });
+      fetchSubadmins();
+    } catch {
+      toast({ variant: "destructive", title: "خطأ في الحذف" });
+    }
+  };
+
+  const toggleSubadminPermission = (perm: string) => {
+    setSubadminForm(f => ({
+      ...f,
+      permissions: f.permissions.includes(perm)
+        ? f.permissions.filter(p => p !== perm)
+        : [...f.permissions, perm],
+    }));
+  };
+
   const handleSaveContact = async (e: React.FormEvent) => {
     e.preventDefault(); setContactSaving(true);
     updateSettings.mutate(contactForm, {
@@ -782,6 +878,11 @@ export default function Admin() {
   const depositCollected = allOrders.filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o) * p / 100); }, 0);
   const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o) * (100 - p) / 100); }, 0);
   const pendingReceipts = allOrders.filter(o => o.receiptUrl && !o.depositPaid).length;
+
+  // Build visible nav based on role/permissions
+  const NAV = isMainAdmin
+    ? ALL_NAV
+    : ALL_NAV.filter(n => !n.adminOnly && userPermissions.includes(n.id));
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" dir="rtl">
@@ -1371,6 +1472,84 @@ export default function Admin() {
               </div>
             </div>
           )}
+          {/* ─── Sub-admins ─── */}
+          {activeTab === "subadmins" && isMainAdmin && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold flex items-center gap-2"><Shield className="w-6 h-6 text-primary" />مشرفون فرعيون</h1>
+                  <p className="text-muted-foreground text-sm mt-1">إدارة حسابات المشرفين وتحديد صلاحياتهم</p>
+                </div>
+                <Button onClick={() => handleOpenSubadminDialog()} className="gap-2">
+                  <Plus className="w-4 h-4" /> إضافة مشرف
+                </Button>
+              </div>
+
+              {subadminsLoading ? (
+                <div className="text-center py-12 text-muted-foreground">جاري التحميل...</div>
+              ) : subadmins.length === 0 ? (
+                <div className="bg-white rounded-2xl border p-16 text-center">
+                  <Shield className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground font-medium">لا يوجد مشرفون فرعيون</p>
+                  <p className="text-sm text-muted-foreground mt-1">أضف مشرفاً فرعياً وحدد له الصلاحيات</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {subadmins.map(sub => (
+                    <div key={sub.id} className="bg-white rounded-2xl border shadow-sm p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${sub.isActive ? "bg-primary/10" : "bg-gray-100"}`}>
+                            <Shield className={`w-5 h-5 ${sub.isActive ? "text-primary" : "text-gray-400"}`} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">{sub.fullName}</p>
+                              {sub.isActive ? (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">مفعّل</span>
+                              ) : (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">موقوف</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">@{sub.username} · {sub.phone}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleOpenSubadminDialog(sub)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm"
+                            className={`h-8 w-8 p-0 ${sub.isActive ? "text-orange-500 hover:text-orange-600" : "text-green-600 hover:text-green-700"}`}
+                            onClick={() => handleToggleSubadmin(sub.id)}
+                            title={sub.isActive ? "إيقاف الحساب" : "تفعيل الحساب"}
+                          >
+                            {sub.isActive ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive" onClick={() => handleDeleteSubadmin(sub.id)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">الصلاحيات الممنوحة</p>
+                        {sub.permissions.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic">لا توجد صلاحيات ممنوحة</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {PERMISSIONS_LIST.filter(p => sub.permissions.includes(p.id)).map(p => (
+                              <span key={p.id} className="text-xs px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-medium">{p.label}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
         </main>
       </div>
 
@@ -1446,6 +1625,69 @@ export default function Admin() {
             </div>
             <div className="flex items-center gap-3"><Switch id="pm-active" checked={pmForm.isActive} onCheckedChange={v => setPmForm(f => ({ ...f, isActive: v }))} /><Label htmlFor="pm-active">{pmForm.isActive ? "مفعّلة" : "غير مفعّلة"}</Label></div>
             <Button type="submit" className="w-full" disabled={createPaymentMethod.isPending || updatePaymentMethod.isPending}>{createPaymentMethod.isPending || updatePaymentMethod.isPending ? "جاري الحفظ..." : pmEditTarget ? "حفظ التعديلات" : "إضافة طريقة الدفع"}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sub-admin dialog */}
+      <Dialog open={subadminDialogOpen} onOpenChange={setSubadminDialogOpen}>
+        <DialogContent className="max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{subadminEditId ? "تعديل مشرف فرعي" : "إضافة مشرف فرعي جديد"}</DialogTitle>
+            <DialogDescription>{subadminEditId ? "عدّل البيانات والصلاحيات ثم احفظ." : "أدخل بيانات المشرف وحدد الصلاحيات."}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveSubadmin} className="space-y-4 mt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>الاسم الكامل</Label>
+                <Input value={subadminForm.fullName} onChange={e => setSubadminForm(f => ({ ...f, fullName: e.target.value }))} required placeholder="أدخل الاسم" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>رقم الهاتف</Label>
+                <Input value={subadminForm.phone} onChange={e => setSubadminForm(f => ({ ...f, phone: e.target.value }))} required placeholder="05xxxxxxxx" dir="ltr" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>البريد الإلكتروني</Label>
+                <Input type="email" value={subadminForm.email} onChange={e => setSubadminForm(f => ({ ...f, email: e.target.value }))} required placeholder="email@example.com" dir="ltr" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>اسم المستخدم</Label>
+                <Input value={subadminForm.username} onChange={e => setSubadminForm(f => ({ ...f, username: e.target.value }))} required={!subadminEditId} disabled={!!subadminEditId} placeholder="username" dir="ltr" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{subadminEditId ? "كلمة المرور الجديدة (اتركها فارغة للإبقاء)" : "كلمة المرور"}</Label>
+              <Input type="password" value={subadminForm.password} onChange={e => setSubadminForm(f => ({ ...f, password: e.target.value }))} required={!subadminEditId} placeholder="6 أحرف على الأقل" dir="ltr" />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-primary" />الصلاحيات الممنوحة</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {PERMISSIONS_LIST.map(perm => {
+                  const active = subadminForm.permissions.includes(perm.id);
+                  return (
+                    <button
+                      key={perm.id}
+                      type="button"
+                      onClick={() => toggleSubadminPermission(perm.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${active ? "bg-primary text-white border-primary shadow-sm" : "bg-muted/30 text-muted-foreground hover:border-primary/50"}`}
+                    >
+                      {active ? <Check className="w-3.5 h-3.5 shrink-0" /> : <X className="w-3.5 h-3.5 shrink-0 opacity-30" />}
+                      {perm.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 mt-1">
+                <button type="button" className="text-xs text-primary hover:underline" onClick={() => setSubadminForm(f => ({ ...f, permissions: PERMISSIONS_LIST.map(p => p.id) }))}>تحديد الكل</button>
+                <span className="text-xs text-muted-foreground">·</span>
+                <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => setSubadminForm(f => ({ ...f, permissions: [] }))}>إلغاء الكل</button>
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full" disabled={subadminFormLoading}>
+              {subadminFormLoading ? "جاري الحفظ..." : subadminEditId ? "حفظ التعديلات" : "إنشاء المشرف الفرعي"}
+            </Button>
           </form>
         </DialogContent>
       </Dialog>

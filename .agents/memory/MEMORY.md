@@ -1,0 +1,1 @@
+- [Sub-admin system](subadmin-system.md) — role="subadmin" with permissions[] JSON and isActive bool; main admin can manage via /api/subadmins routes

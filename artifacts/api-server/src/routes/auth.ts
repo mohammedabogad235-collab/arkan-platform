@@ -18,6 +18,8 @@ function sanitizeUser(user: typeof usersTable.$inferSelect) {
     email: user.email,
     username: user.username,
     role: user.role,
+    permissions: user.permissions ? JSON.parse(user.permissions) : [],
+    isActive: user.isActive,
     createdAt: user.createdAt.toISOString(),
   };
 }
@@ -93,6 +95,11 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   if (!user || user.passwordHash !== passwordHash) {
     res.status(401).json({ error: "البيانات غير صحيحة، تحقق من رقم الهاتف أو البريد وكلمة المرور" });
+    return;
+  }
+
+  if (!user.isActive) {
+    res.status(403).json({ error: "تم تعطيل هذا الحساب، تواصل مع المدير" });
     return;
   }
 

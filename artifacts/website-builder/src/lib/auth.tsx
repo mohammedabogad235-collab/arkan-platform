@@ -43,21 +43,23 @@ export function ProtectedRoute({ children, adminOnly = false }: { children: Reac
   const { user, isLoading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
 
+  const isAdminOrSub = user?.role === "admin" || user?.role === "subadmin";
+
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
         setLocation(adminOnly ? "/admin/login" : "/login");
-      } else if (adminOnly && user?.role !== "admin") {
+      } else if (adminOnly && !isAdminOrSub) {
         setLocation("/");
       }
     }
-  }, [isLoading, isAuthenticated, user, setLocation, adminOnly]);
+  }, [isLoading, isAuthenticated, user, setLocation, adminOnly, isAdminOrSub]);
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">جاري التحميل...</div>;
   }
 
-  if (!isAuthenticated || (adminOnly && user?.role !== "admin")) {
+  if (!isAuthenticated || (adminOnly && !isAdminOrSub)) {
     return null;
   }
 

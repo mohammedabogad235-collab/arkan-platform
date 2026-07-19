@@ -18,6 +18,8 @@ function sanitizeUser(user: typeof usersTable.$inferSelect) {
     email: user.email,
     username: user.username,
     role: user.role,
+    permissions: user.permissions ? JSON.parse(user.permissions) : [],
+    isActive: user.isActive,
     createdAt: user.createdAt.toISOString(),
   };
 }
