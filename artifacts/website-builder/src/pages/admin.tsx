@@ -516,12 +516,18 @@ export default function Admin() {
   const [depositRequire, setDepositRequire] = useState(true);
   const [depositPct, setDepositPct] = useState(50);
   const [depositSaving, setDepositSaving] = useState(false);
+  const [termsText, setTermsText] = useState("");
+  const [privacyText, setPrivacyText] = useState("");
+  const [termsSaving, setTermsSaving] = useState(false);
+  const [privacySaving, setPrivacySaving] = useState(false);
 
   useEffect(() => {
     if (siteSettings) {
       setContactForm({ phone1: siteSettings.phone1 || "", phone2: siteSettings.phone2 || "", email: siteSettings.email || "", whatsapp: siteSettings.whatsapp || "", address: siteSettings.address || "", facebookUrl: siteSettings.facebookUrl || "", instagramUrl: siteSettings.instagramUrl || "", twitterUrl: siteSettings.twitterUrl || "" });
       setDepositRequire(siteSettings.requireDeposit ?? true);
       setDepositPct(siteSettings.depositPercentageValue ?? 50);
+      setTermsText((siteSettings as any).termsAndConditions || "");
+      setPrivacyText((siteSettings as any).privacyPolicy || "");
     }
   }, [siteSettings]);
 
@@ -560,7 +566,7 @@ export default function Admin() {
   const [couponsLoading, setCouponsLoading] = useState(false);
 
   // Sub-admins
-  const emptySubAdmin = { fullName: "", phone: "", email: "", username: "", password: "", permissions: [] as string[] };
+  const emptySubAdmin = { fullName: "", username: "", password: "", permissions: [] as string[] };
   const [subadmins, setSubadmins] = useState<any[]>([]);
   const [subadminsLoading, setSubadminsLoading] = useState(false);
   const [subadminDialogOpen, setSubadminDialogOpen] = useState(false);
@@ -853,6 +859,22 @@ export default function Admin() {
         ? f.permissions.filter(p => p !== perm)
         : [...f.permissions, perm],
     }));
+  };
+
+  const handleSaveTerms = async (e: React.FormEvent) => {
+    e.preventDefault(); setTermsSaving(true);
+    updateSettings.mutate({ termsAndConditions: termsText } as any, {
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); toast({ title: "تم الحفظ" }); setTermsSaving(false); },
+      onError: () => { toast({ variant: "destructive", title: "خطأ" }); setTermsSaving(false); },
+    });
+  };
+
+  const handleSavePrivacy = async (e: React.FormEvent) => {
+    e.preventDefault(); setPrivacySaving(true);
+    updateSettings.mutate({ privacyPolicy: privacyText } as any, {
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); toast({ title: "تم الحفظ" }); setPrivacySaving(false); },
+      onError: () => { toast({ variant: "destructive", title: "خطأ" }); setPrivacySaving(false); },
+    });
   };
 
   const handleSaveContact = async (e: React.FormEvent) => {
@@ -1444,6 +1466,42 @@ export default function Admin() {
                 </form>
               </div>
 
+              {/* Terms & Conditions */}
+              <div className="bg-white rounded-2xl border shadow-sm p-6">
+                <h2 className="font-bold mb-1 flex items-center gap-2"><BadgeCheck className="w-4 h-4 text-primary" />الشروط والأحكام</h2>
+                <p className="text-sm text-muted-foreground mb-4">تظهر لعملائك عند التسجيل وفي صفحة مستقلة</p>
+                <form onSubmit={handleSaveTerms} className="space-y-3">
+                  <textarea
+                    value={termsText}
+                    onChange={e => setTermsText(e.target.value)}
+                    rows={8}
+                    placeholder="اكتب الشروط والأحكام هنا..."
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+                  />
+                  <Button type="submit" disabled={termsSaving} className="gap-1.5">
+                    {termsSaving ? "جاري الحفظ..." : "حفظ الشروط والأحكام"}
+                  </Button>
+                </form>
+              </div>
+
+              {/* Privacy Policy */}
+              <div className="bg-white rounded-2xl border shadow-sm p-6">
+                <h2 className="font-bold mb-1 flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" />سياسة الخصوصية</h2>
+                <p className="text-sm text-muted-foreground mb-4">تظهر لعملائك عند التسجيل وفي صفحة مستقلة</p>
+                <form onSubmit={handleSavePrivacy} className="space-y-3">
+                  <textarea
+                    value={privacyText}
+                    onChange={e => setPrivacyText(e.target.value)}
+                    rows={8}
+                    placeholder="اكتب سياسة الخصوصية هنا..."
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+                  />
+                  <Button type="submit" disabled={privacySaving} className="gap-1.5">
+                    {privacySaving ? "جاري الحفظ..." : "حفظ سياسة الخصوصية"}
+                  </Button>
+                </form>
+              </div>
+
               {/* Change password */}
               <div className="bg-white rounded-2xl border shadow-sm p-6 max-w-sm">
                 <h2 className="font-bold mb-1">تغيير كلمة المرور</h2>
@@ -1496,52 +1554,62 @@ export default function Admin() {
               ) : (
                 <div className="space-y-4">
                   {subadmins.map(sub => (
-                    <div key={sub.id} className="bg-white rounded-2xl border shadow-sm p-5">
-                      <div className="flex items-start justify-between gap-4">
+                    <div key={sub.id} className={`bg-white rounded-2xl border shadow-sm p-5 transition-opacity ${!sub.isActive ? "opacity-60" : ""}`}>
+                      {/* Header */}
+                      <div className="flex items-center justify-between gap-4 mb-5">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${sub.isActive ? "bg-primary/10" : "bg-gray-100"}`}>
                             <Shield className={`w-5 h-5 ${sub.isActive ? "text-primary" : "text-gray-400"}`} />
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold">{sub.fullName}</p>
-                              {sub.isActive ? (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">مفعّل</span>
-                              ) : (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">موقوف</span>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">@{sub.username} · {sub.phone}</p>
+                            <p className="font-semibold">{sub.fullName}</p>
+                            <p className="text-xs text-muted-foreground">@{sub.username}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleOpenSubadminDialog(sub)}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost" size="sm"
-                            className={`h-8 w-8 p-0 ${sub.isActive ? "text-orange-500 hover:text-orange-600" : "text-green-600 hover:text-green-700"}`}
-                            onClick={() => handleToggleSubadmin(sub.id)}
-                            title={sub.isActive ? "إيقاف الحساب" : "تفعيل الحساب"}
-                          >
-                            {sub.isActive ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                          </Button>
+                        <div className="flex items-center gap-3">
+                          {/* Active toggle */}
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-medium ${sub.isActive ? "text-green-600" : "text-red-500"}`}>
+                              {sub.isActive ? "مفعّل" : "موقوف"}
+                            </span>
+                            <Switch checked={sub.isActive} onCheckedChange={() => handleToggleSubadmin(sub.id)} />
+                          </div>
                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive" onClick={() => handleDeleteSubadmin(sub.id)}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
                       </div>
-                      <div className="mt-4">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">الصلاحيات الممنوحة</p>
-                        {sub.permissions.length === 0 ? (
-                          <p className="text-xs text-muted-foreground italic">لا توجد صلاحيات ممنوحة</p>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {PERMISSIONS_LIST.filter(p => sub.permissions.includes(p.id)).map(p => (
-                              <span key={p.id} className="text-xs px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-medium">{p.label}</span>
-                            ))}
-                          </div>
-                        )}
+
+                      {/* Permissions — inline toggles */}
+                      <div className="border-t pt-4">
+                        <p className="text-xs font-semibold text-muted-foreground mb-3">الصلاحيات</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {PERMISSIONS_LIST.map(perm => {
+                            const enabled = sub.permissions.includes(perm.id);
+                            return (
+                              <div
+                                key={perm.id}
+                                className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border transition-all ${enabled ? "bg-primary/5 border-primary/30" : "bg-gray-50 border-gray-200"}`}
+                              >
+                                <span className={`text-sm font-medium ${enabled ? "text-primary" : "text-muted-foreground"}`}>{perm.label}</span>
+                                <Switch
+                                  checked={enabled}
+                                  onCheckedChange={async () => {
+                                    const newPerms = enabled
+                                      ? sub.permissions.filter((p: string) => p !== perm.id)
+                                      : [...sub.permissions, perm.id];
+                                    try {
+                                      await apiFetch(`/api/subadmins/${sub.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: newPerms }) });
+                                      fetchSubadmins();
+                                    } catch {
+                                      toast({ variant: "destructive", title: "خطأ في تحديث الصلاحية" });
+                                    }
+                                  }}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1629,64 +1697,28 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* Sub-admin dialog */}
+      {/* Sub-admin create dialog */}
       <Dialog open={subadminDialogOpen} onOpenChange={setSubadminDialogOpen}>
-        <DialogContent className="max-w-lg" dir="rtl">
+        <DialogContent className="max-w-sm" dir="rtl">
           <DialogHeader>
-            <DialogTitle>{subadminEditId ? "تعديل مشرف فرعي" : "إضافة مشرف فرعي جديد"}</DialogTitle>
-            <DialogDescription>{subadminEditId ? "عدّل البيانات والصلاحيات ثم احفظ." : "أدخل بيانات المشرف وحدد الصلاحيات."}</DialogDescription>
+            <DialogTitle>إضافة مشرف فرعي جديد</DialogTitle>
+            <DialogDescription>أدخل بيانات الحساب — يمكنك تحديد الصلاحيات بعد الإنشاء مباشرةً</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveSubadmin} className="space-y-4 mt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>الاسم الكامل</Label>
-                <Input value={subadminForm.fullName} onChange={e => setSubadminForm(f => ({ ...f, fullName: e.target.value }))} required placeholder="أدخل الاسم" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>رقم الهاتف</Label>
-                <Input value={subadminForm.phone} onChange={e => setSubadminForm(f => ({ ...f, phone: e.target.value }))} required placeholder="05xxxxxxxx" dir="ltr" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>البريد الإلكتروني</Label>
-                <Input type="email" value={subadminForm.email} onChange={e => setSubadminForm(f => ({ ...f, email: e.target.value }))} required placeholder="email@example.com" dir="ltr" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>اسم المستخدم</Label>
-                <Input value={subadminForm.username} onChange={e => setSubadminForm(f => ({ ...f, username: e.target.value }))} required={!subadminEditId} disabled={!!subadminEditId} placeholder="username" dir="ltr" />
-              </div>
+            <div className="space-y-1.5">
+              <Label>الاسم الكامل</Label>
+              <Input value={subadminForm.fullName} onChange={e => setSubadminForm(f => ({ ...f, fullName: e.target.value }))} required placeholder="أدخل الاسم" />
             </div>
             <div className="space-y-1.5">
-              <Label>{subadminEditId ? "كلمة المرور الجديدة (اتركها فارغة للإبقاء)" : "كلمة المرور"}</Label>
-              <Input type="password" value={subadminForm.password} onChange={e => setSubadminForm(f => ({ ...f, password: e.target.value }))} required={!subadminEditId} placeholder="6 أحرف على الأقل" dir="ltr" />
+              <Label>اسم المستخدم</Label>
+              <Input value={subadminForm.username} onChange={e => setSubadminForm(f => ({ ...f, username: e.target.value }))} required placeholder="username" dir="ltr" />
             </div>
-
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-primary" />الصلاحيات الممنوحة</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {PERMISSIONS_LIST.map(perm => {
-                  const active = subadminForm.permissions.includes(perm.id);
-                  return (
-                    <button
-                      key={perm.id}
-                      type="button"
-                      onClick={() => toggleSubadminPermission(perm.id)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${active ? "bg-primary text-white border-primary shadow-sm" : "bg-muted/30 text-muted-foreground hover:border-primary/50"}`}
-                    >
-                      {active ? <Check className="w-3.5 h-3.5 shrink-0" /> : <X className="w-3.5 h-3.5 shrink-0 opacity-30" />}
-                      {perm.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2 mt-1">
-                <button type="button" className="text-xs text-primary hover:underline" onClick={() => setSubadminForm(f => ({ ...f, permissions: PERMISSIONS_LIST.map(p => p.id) }))}>تحديد الكل</button>
-                <span className="text-xs text-muted-foreground">·</span>
-                <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => setSubadminForm(f => ({ ...f, permissions: [] }))}>إلغاء الكل</button>
-              </div>
+            <div className="space-y-1.5">
+              <Label>كلمة المرور</Label>
+              <Input type="password" value={subadminForm.password} onChange={e => setSubadminForm(f => ({ ...f, password: e.target.value }))} required placeholder="6 أحرف على الأقل" dir="ltr" />
             </div>
-
             <Button type="submit" className="w-full" disabled={subadminFormLoading}>
-              {subadminFormLoading ? "جاري الحفظ..." : subadminEditId ? "حفظ التعديلات" : "إنشاء المشرف الفرعي"}
+              {subadminFormLoading ? "جاري الإنشاء..." : "إنشاء الحساب"}
             </Button>
           </form>
         </DialogContent>

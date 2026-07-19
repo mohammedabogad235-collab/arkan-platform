@@ -38,9 +38,9 @@ router.get("/subadmins", async (req, res): Promise<void> => {
 router.post("/subadmins", async (req, res): Promise<void> => {
   if (!isAdmin(req)) { res.status(403).json({ error: "غير مصرح" }); return; }
 
-  const { fullName, phone, email, username, password, permissions } = req.body as Record<string, any>;
-  if (!fullName || !phone || !email || !username || !password) {
-    res.status(400).json({ error: "جميع الحقول مطلوبة" }); return;
+  const { fullName, username, password, permissions } = req.body as Record<string, any>;
+  if (!fullName || !username || !password) {
+    res.status(400).json({ error: "الاسم واسم المستخدم وكلمة المرور مطلوبة" }); return;
   }
   if (password.length < 6) {
     res.status(400).json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }); return;
@@ -49,15 +49,13 @@ router.post("/subadmins", async (req, res): Promise<void> => {
   const [existingUsername] = await db.select().from(usersTable).where(eq(usersTable.username, username));
   if (existingUsername) { res.status(409).json({ error: "اسم المستخدم مستخدم بالفعل" }); return; }
 
-  const [existingEmail] = await db.select().from(usersTable).where(eq(usersTable.email, email));
-  if (existingEmail) { res.status(409).json({ error: "البريد الإلكتروني مستخدم بالفعل" }); return; }
-
-  const [existingPhone] = await db.select().from(usersTable).where(eq(usersTable.phone, phone));
-  if (existingPhone) { res.status(409).json({ error: "رقم الهاتف مستخدم بالفعل" }); return; }
-
   const perms = Array.isArray(permissions) ? permissions : [];
+  const uniqueId = Date.now().toString();
   const [newUser] = await db.insert(usersTable).values({
-    fullName, phone, email, username,
+    fullName,
+    phone: `sub_${uniqueId}`,
+    email: `${username}_${uniqueId}@subadmin.internal`,
+    username,
     passwordHash: hashPassword(password),
     role: "subadmin",
     permissions: JSON.stringify(perms),
