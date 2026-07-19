@@ -460,6 +460,54 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   );
 }
 
+const DEFAULT_TERMS_TEXT = `1. قبول الشروط
+باستخدامك للمنصة وخدماتها، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق على أي من هذه الشروط، فيرجى عدم استخدام خدماتنا. نحتفظ بالحق في تعديل هذه الشروط في أي وقت، وسيتم إخطارك بأي تغييرات جوهرية.
+
+2. الخدمات المقدمة
+تقدم المنصة خدمات تصميم وتطوير المواقع الإلكترونية وتشمل: تصميم المواقع المخصصة، المتاجر الإلكترونية، المواقع التعريفية، المنصات التعليمية والمدونات، والاستشارات التقنية.
+
+3. سياسة الدفع
+يتم الدفع على مرحلتين: دفعة مقدمة (50%) قبل البدء في العمل لضمان الجدية، ودفعة التسليم (50%) عند تسليم الموقع النهائي وقبوله. لا تُسترد الدفعة المقدمة في حالة إلغاء العميل للمشروع بعد البدء.
+
+4. مدة التنفيذ
+تختلف مدة تنفيذ المشاريع حسب حجم وتعقيد الطلب. يتم تحديد المدة الزمنية بوضوح في اتفاقية العمل. قد تتأثر المدة بمدى التزام العميل بتقديم المحتوى والبيانات في الوقت المحدد.
+
+5. حقوق الملكية الفكرية
+بعد إتمام الدفع الكامل، تنتقل ملكية الموقع بالكامل إلى العميل. يحتفظ الفريق بحق عرض المشروع في معرض الأعمال ما لم يطلب العميل خلاف ذلك.
+
+6. حسابات المستخدمين
+أنت مسؤول عن الحفاظ على سرية بيانات تسجيل دخولك. يُحظر مشاركة بيانات الدخول مع أشخاص آخرين. في حالة الاشتباه بأي وصول غير مصرح، يجب إخطارنا فوراً.
+
+7. التواصل والدعم
+نلتزم بالرد على جميع الاستفسارات خلال 24 ساعة في أيام العمل. يُقدم الدعم الفني للمواقع المُسلَّمة لمدة شهر من تاريخ التسليم بشكل مجاني.
+
+8. تعديل الشروط
+نحتفظ بالحق في تعديل هذه الشروط في أي وقت. سيتم إشعار المستخدمين بأي تغييرات جوهرية. استمرار استخدام الخدمة بعد نشر التعديلات يعني قبولك لها.`;
+
+const DEFAULT_PRIVACY_TEXT = `1. التزامنا بحماية خصوصيتك
+نأخذ خصوصية مستخدمينا على محمل الجد. توضح هذه السياسة كيفية جمع بياناتك الشخصية واستخدامها وحمايتها. باستخدامك لخدماتنا، فإنك توافق على ممارسات جمع البيانات المبينة هنا.
+
+2. البيانات التي نجمعها
+نجمع بيانات الحساب (الاسم، البريد الإلكتروني، رقم الهاتف، اسم المستخدم وكلمة المرور المشفرة)، وبيانات الطلبات (تفاصيل المشاريع، الباقة المختارة، تفضيلات الدفع)، والبيانات التقنية الضرورية.
+
+3. كيف نستخدم بياناتك
+نستخدم البيانات لإنشاء وإدارة حسابك، ومعالجة طلباتك والتواصل بشأنها، وتقديم الدعم الفني، وإرسال إشعارات عن حالة مشاريعك، وتحسين خدماتنا.
+
+4. حماية بياناتك
+نتخذ تدابير أمنية صارمة تشمل: تشفير كلمات المرور، استخدام جلسات آمنة (HTTPS)، والتحكم في وصول المدراء المعتمدين فقط إلى بيانات المستخدمين.
+
+5. مشاركة البيانات مع الأطراف الثالثة
+لا نبيع أو نشارك بياناتك الشخصية مع أطراف ثالثة لأغراض تجارية. قد نشارك بياناتك فقط بموافقتك الصريحة، أو للامتثال للقانون، أو لحماية حقوقنا القانونية.
+
+6. حقوقك كمستخدم
+يحق لك الاطلاع على بياناتك المحفوظة، وطلب تصحيح أي بيانات غير دقيقة، وطلب حذف حسابك وبياناتك، والاعتراض على استخدام بياناتك لأغراض معينة.
+
+7. ملفات تعريف الارتباط
+نستخدم ملفات تعريف الارتباط الضرورية فقط للحفاظ على جلسة تسجيل دخولك. لا نستخدمها للتتبع الإعلاني أو مشاركتها مع أطراف ثالثة.
+
+8. التواصل معنا
+إذا كان لديك أسئلة أو مخاوف بشأن سياسة الخصوصية، تواصل معنا مباشرة من خلال المنصة وسنرد عليك في أقرب وقت.`;
+
 const PERMISSIONS_LIST = [
   { id: "overview",  label: "الإحصائيات" },
   { id: "orders",    label: "الطلبات" },
@@ -518,6 +566,8 @@ export default function Admin() {
   const [depositSaving, setDepositSaving] = useState(false);
   const [termsText, setTermsText] = useState("");
   const [privacyText, setPrivacyText] = useState("");
+  const [savedTermsText, setSavedTermsText] = useState("");
+  const [savedPrivacyText, setSavedPrivacyText] = useState("");
   const [termsSaving, setTermsSaving] = useState(false);
   const [privacySaving, setPrivacySaving] = useState(false);
 
@@ -526,8 +576,12 @@ export default function Admin() {
       setContactForm({ phone1: siteSettings.phone1 || "", phone2: siteSettings.phone2 || "", email: siteSettings.email || "", whatsapp: siteSettings.whatsapp || "", address: siteSettings.address || "", facebookUrl: siteSettings.facebookUrl || "", instagramUrl: siteSettings.instagramUrl || "", twitterUrl: siteSettings.twitterUrl || "" });
       setDepositRequire(siteSettings.requireDeposit ?? true);
       setDepositPct(siteSettings.depositPercentageValue ?? 50);
-      setTermsText((siteSettings as any).termsAndConditions || "");
-      setPrivacyText((siteSettings as any).privacyPolicy || "");
+      const loadedTerms = (siteSettings as any).termsAndConditions || DEFAULT_TERMS_TEXT;
+      const loadedPrivacy = (siteSettings as any).privacyPolicy || DEFAULT_PRIVACY_TEXT;
+      setTermsText(loadedTerms);
+      setPrivacyText(loadedPrivacy);
+      setSavedTermsText(loadedTerms);
+      setSavedPrivacyText(loadedPrivacy);
     }
   }, [siteSettings]);
 
@@ -864,16 +918,16 @@ export default function Admin() {
   const handleSaveTerms = async (e: React.FormEvent) => {
     e.preventDefault(); setTermsSaving(true);
     updateSettings.mutate({ termsAndConditions: termsText } as any, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); toast({ title: "تم الحفظ" }); setTermsSaving(false); },
-      onError: () => { toast({ variant: "destructive", title: "خطأ" }); setTermsSaving(false); },
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); setSavedTermsText(termsText); toast({ title: "تم حفظ الشروط والأحكام", duration: 2000 }); setTermsSaving(false); },
+      onError: () => { toast({ variant: "destructive", title: "خطأ في الحفظ", duration: 2000 }); setTermsSaving(false); },
     });
   };
 
   const handleSavePrivacy = async (e: React.FormEvent) => {
     e.preventDefault(); setPrivacySaving(true);
     updateSettings.mutate({ privacyPolicy: privacyText } as any, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); toast({ title: "تم الحفظ" }); setPrivacySaving(false); },
-      onError: () => { toast({ variant: "destructive", title: "خطأ" }); setPrivacySaving(false); },
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); setSavedPrivacyText(privacyText); toast({ title: "تم حفظ سياسة الخصوصية", duration: 2000 }); setPrivacySaving(false); },
+      onError: () => { toast({ variant: "destructive", title: "خطأ في الحفظ", duration: 2000 }); setPrivacySaving(false); },
     });
   };
 
@@ -1474,13 +1528,14 @@ export default function Admin() {
                   <textarea
                     value={termsText}
                     onChange={e => setTermsText(e.target.value)}
-                    rows={8}
-                    placeholder="اكتب الشروط والأحكام هنا..."
+                    rows={10}
                     className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
                   />
-                  <Button type="submit" disabled={termsSaving} className="gap-1.5">
-                    {termsSaving ? "جاري الحفظ..." : "حفظ الشروط والأحكام"}
-                  </Button>
+                  {termsText !== savedTermsText && (
+                    <Button type="submit" disabled={termsSaving} className="gap-1.5">
+                      {termsSaving ? "جاري الحفظ..." : "حفظ التعديلات"}
+                    </Button>
+                  )}
                 </form>
               </div>
 
@@ -1492,13 +1547,14 @@ export default function Admin() {
                   <textarea
                     value={privacyText}
                     onChange={e => setPrivacyText(e.target.value)}
-                    rows={8}
-                    placeholder="اكتب سياسة الخصوصية هنا..."
+                    rows={10}
                     className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
                   />
-                  <Button type="submit" disabled={privacySaving} className="gap-1.5">
-                    {privacySaving ? "جاري الحفظ..." : "حفظ سياسة الخصوصية"}
-                  </Button>
+                  {privacyText !== savedPrivacyText && (
+                    <Button type="submit" disabled={privacySaving} className="gap-1.5">
+                      {privacySaving ? "جاري الحفظ..." : "حفظ التعديلات"}
+                    </Button>
+                  )}
                 </form>
               </div>
 
