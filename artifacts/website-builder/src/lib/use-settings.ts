@@ -12,6 +12,8 @@ export interface SiteSettings {
   twitterUrl: string;
   requireDeposit: boolean;
   depositPercentageValue: number;
+  termsAndConditions: string;
+  privacyPolicy: string;
 }
 
 const SETTINGS_KEY = ["site-settings"] as const;

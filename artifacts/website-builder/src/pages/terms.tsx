@@ -3,9 +3,44 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, FileText } from "lucide-react";
 import { useSettings } from "@/lib/use-settings";
 
+const DEFAULT_TERMS = [
+  {
+    title: "1. قبول الشروط",
+    body: "باستخدامك للمنصة وخدماتها، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق على أي من هذه الشروط، فيرجى عدم استخدام خدماتنا. نحتفظ بالحق في تعديل هذه الشروط في أي وقت، وسيتم إخطارك بأي تغييرات جوهرية.",
+  },
+  {
+    title: "2. الخدمات المقدمة",
+    body: "تقدم المنصة خدمات تصميم وتطوير المواقع الإلكترونية وتشمل: تصميم المواقع المخصصة، المتاجر الإلكترونية، المواقع التعريفية، المنصات التعليمية والمدونات، والاستشارات التقنية.",
+  },
+  {
+    title: "3. سياسة الدفع",
+    body: "يتم الدفع على مرحلتين: دفعة مقدمة (50%) قبل البدء في العمل لضمان الجدية، ودفعة التسليم (50%) عند تسليم الموقع النهائي وقبوله. لا تُسترد الدفعة المقدمة في حالة إلغاء العميل للمشروع بعد البدء.",
+  },
+  {
+    title: "4. مدة التنفيذ",
+    body: "تختلف مدة تنفيذ المشاريع حسب حجم وتعقيد الطلب. يتم تحديد المدة الزمنية بوضوح في اتفاقية العمل. قد تتأثر المدة بمدى التزام العميل بتقديم المحتوى والبيانات في الوقت المحدد.",
+  },
+  {
+    title: "5. حقوق الملكية الفكرية",
+    body: "بعد إتمام الدفع الكامل، تنتقل ملكية الموقع بالكامل إلى العميل. يحتفظ الفريق بحق عرض المشروع في معرض الأعمال ما لم يطلب العميل خلاف ذلك.",
+  },
+  {
+    title: "6. حسابات المستخدمين",
+    body: "أنت مسؤول عن الحفاظ على سرية بيانات تسجيل دخولك. يُحظر مشاركة بيانات الدخول مع أشخاص آخرين. في حالة الاشتباه بأي وصول غير مصرح، يجب إخطارنا فوراً.",
+  },
+  {
+    title: "7. التواصل والدعم",
+    body: "نلتزم بالرد على جميع الاستفسارات خلال 24 ساعة في أيام العمل. يُقدم الدعم الفني للمواقع المُسلَّمة لمدة شهر من تاريخ التسليم بشكل مجاني.",
+  },
+  {
+    title: "8. تعديل الشروط",
+    body: "نحتفظ بالحق في تعديل هذه الشروط في أي وقت. سيتم إشعار المستخدمين بأي تغييرات جوهرية. استمرار استخدام الخدمة بعد نشر التعديلات يعني قبولك لها.",
+  },
+];
+
 export default function Terms() {
   const { data: settings, isLoading } = useSettings();
-  const content = (settings as any)?.termsAndConditions || "";
+  const customContent = settings?.termsAndConditions?.trim() || "";
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
@@ -29,15 +64,22 @@ export default function Terms() {
 
       {isLoading ? (
         <div className="bg-white rounded-2xl border p-12 text-center text-muted-foreground">جاري التحميل...</div>
-      ) : content ? (
+      ) : customContent ? (
         <div className="bg-white rounded-2xl border shadow-sm p-8">
-          <p className="text-foreground leading-loose whitespace-pre-wrap text-base">{content}</p>
+          <p className="text-foreground leading-loose whitespace-pre-wrap text-base">{customContent}</p>
         </div>
       ) : (
-        <div className="bg-muted/30 rounded-2xl border p-12 text-center">
-          <FileText className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-muted-foreground font-medium">لم تُضف الشروط والأحكام بعد</p>
-          <p className="text-sm text-muted-foreground mt-1">يمكن للأدمن إضافتها من لوحة التحكم ← الإعدادات</p>
+        <div className="prose prose-lg max-w-none space-y-6 text-foreground">
+          {DEFAULT_TERMS.map((section, i) => (
+            <section key={i} className="bg-card rounded-2xl p-6 border shadow-sm">
+              <h2 className="text-xl font-bold mb-4 text-primary">{section.title}</h2>
+              <p className="text-muted-foreground leading-relaxed">{section.body}</p>
+            </section>
+          ))}
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 text-center">
+            <p className="text-muted-foreground mb-3">هل لديك أسئلة حول شروطنا وأحكامنا؟</p>
+            <p className="font-semibold text-foreground">تواصل معنا وسنكون سعداء بمساعدتك</p>
+          </div>
         </div>
       )}
     </div>

@@ -3,9 +3,44 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Shield } from "lucide-react";
 import { useSettings } from "@/lib/use-settings";
 
+const DEFAULT_PRIVACY = [
+  {
+    title: "1. التزامنا بحماية خصوصيتك",
+    body: "نأخذ خصوصية مستخدمينا على محمل الجد. توضح هذه السياسة كيفية جمع بياناتك الشخصية واستخدامها وحمايتها. باستخدامك لخدماتنا، فإنك توافق على ممارسات جمع البيانات المبينة هنا.",
+  },
+  {
+    title: "2. البيانات التي نجمعها",
+    body: "نجمع بيانات الحساب (الاسم، البريد الإلكتروني، رقم الهاتف، اسم المستخدم وكلمة المرور المشفرة)، وبيانات الطلبات (تفاصيل المشاريع، الباقة المختارة، تفضيلات الدفع)، والبيانات التقنية الضرورية (سجلات الدخول، نوع المتصفح).",
+  },
+  {
+    title: "3. كيف نستخدم بياناتك",
+    body: "نستخدم البيانات لإنشاء وإدارة حسابك، ومعالجة طلباتك والتواصل بشأنها، وتقديم الدعم الفني، وإرسال إشعارات عن حالة مشاريعك، وتحسين خدماتنا وتجربة المستخدم.",
+  },
+  {
+    title: "4. حماية بياناتك",
+    body: "نتخذ تدابير أمنية صارمة تشمل: تشفير كلمات المرور، استخدام جلسات آمنة (HTTPS)، والتحكم في وصول المدراء المعتمدين فقط إلى بيانات المستخدمين.",
+  },
+  {
+    title: "5. مشاركة البيانات مع الأطراف الثالثة",
+    body: "لا نبيع أو نشارك بياناتك الشخصية مع أطراف ثالثة لأغراض تجارية. قد نشارك بياناتك فقط بموافقتك الصريحة، أو للامتثال للقانون، أو لحماية حقوقنا القانونية.",
+  },
+  {
+    title: "6. حقوقك كمستخدم",
+    body: "يحق لك الاطلاع على بياناتك المحفوظة، وطلب تصحيح أي بيانات غير دقيقة، وطلب حذف حسابك وبياناتك، والاعتراض على استخدام بياناتك لأغراض معينة.",
+  },
+  {
+    title: "7. ملفات تعريف الارتباط",
+    body: "نستخدم ملفات تعريف الارتباط الضرورية فقط للحفاظ على جلسة تسجيل دخولك. لا نستخدمها للتتبع الإعلاني أو مشاركتها مع أطراف ثالثة.",
+  },
+  {
+    title: "8. التواصل معنا",
+    body: "إذا كان لديك أسئلة أو مخاوف بشأن سياسة الخصوصية، تواصل معنا مباشرة من خلال المنصة وسنرد عليك في أقرب وقت.",
+  },
+];
+
 export default function Privacy() {
   const { data: settings, isLoading } = useSettings();
-  const content = (settings as any)?.privacyPolicy || "";
+  const customContent = settings?.privacyPolicy?.trim() || "";
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
@@ -29,15 +64,24 @@ export default function Privacy() {
 
       {isLoading ? (
         <div className="bg-white rounded-2xl border p-12 text-center text-muted-foreground">جاري التحميل...</div>
-      ) : content ? (
+      ) : customContent ? (
         <div className="bg-white rounded-2xl border shadow-sm p-8">
-          <p className="text-foreground leading-loose whitespace-pre-wrap text-base">{content}</p>
+          <p className="text-foreground leading-loose whitespace-pre-wrap text-base">{customContent}</p>
         </div>
       ) : (
-        <div className="bg-muted/30 rounded-2xl border p-12 text-center">
-          <Shield className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-muted-foreground font-medium">لم تُضف سياسة الخصوصية بعد</p>
-          <p className="text-sm text-muted-foreground mt-1">يمكن للأدمن إضافتها من لوحة التحكم ← الإعدادات</p>
+        <div className="prose prose-lg max-w-none space-y-6 text-foreground">
+          {DEFAULT_PRIVACY.map((section, i) => (
+            <section key={i} className="bg-card rounded-2xl p-6 border shadow-sm">
+              <h2 className="text-xl font-bold mb-4 text-primary">{section.title}</h2>
+              <p className="text-muted-foreground leading-relaxed">{section.body}</p>
+            </section>
+          ))}
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 text-center">
+            <p className="text-muted-foreground mb-2">خصوصيتك تهمنا — نلتزم بحماية بياناتك دائماً</p>
+            <p className="font-semibold text-foreground text-sm">
+              آخر مراجعة: {new Date().toLocaleDateString("ar-EG", { year: "numeric", month: "long" })}
+            </p>
+          </div>
         </div>
       )}
     </div>
