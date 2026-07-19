@@ -38,7 +38,7 @@ router.get("/subadmins", async (req, res): Promise<void> => {
 router.post("/subadmins", async (req, res): Promise<void> => {
   if (!isAdmin(req)) { res.status(403).json({ error: "غير مصرح" }); return; }
 
-  const { fullName, username, password, permissions } = req.body as Record<string, any>;
+  const { fullName, username, password, permissions, phone, email } = req.body as Record<string, any>;
   if (!fullName || !username || !password) {
     res.status(400).json({ error: "الاسم واسم المستخدم وكلمة المرور مطلوبة" }); return;
   }
@@ -51,10 +51,13 @@ router.post("/subadmins", async (req, res): Promise<void> => {
 
   const perms = Array.isArray(permissions) ? permissions : [];
   const uniqueId = Date.now().toString();
+  const finalPhone = (phone && typeof phone === "string" && phone.trim()) ? phone.trim() : `sub_${uniqueId}`;
+  const finalEmail = (email && typeof email === "string" && email.trim()) ? email.trim() : `${username}_${uniqueId}@subadmin.internal`;
+
   const [newUser] = await db.insert(usersTable).values({
     fullName,
-    phone: `sub_${uniqueId}`,
-    email: `${username}_${uniqueId}@subadmin.internal`,
+    phone: finalPhone,
+    email: finalEmail,
     username,
     passwordHash: hashPassword(password),
     role: "subadmin",

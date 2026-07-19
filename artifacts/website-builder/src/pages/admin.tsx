@@ -549,6 +549,11 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("overview");
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
 
+  // Profile dialog for sub-admins
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState({ phone: "", email: "", password: "", confirm: "" });
+  const [profileSaving, setProfileSaving] = useState(false);
+
   const toggleOrder = (id: number) =>
     setExpandedOrders(prev => {
       const next = new Set(prev);
@@ -590,6 +595,21 @@ export default function Admin() {
     if (activeTab === "subadmins") fetchSubadmins();
   }, [activeTab]);
 
+  // For sub-admins: set initial tab to first permitted tab
+  useEffect(() => {
+    if (currentUser?.role === "subadmin") {
+      const perms: string[] = (currentUser as any).permissions || [];
+      const firstAllowed = ALL_NAV.find(n => !n.adminOnly && perms.includes(n.id));
+      if (firstAllowed) setActiveTab(firstAllowed.id);
+      // Pre-fill profile form with current sub-admin data
+      setProfileForm(f => ({
+        ...f,
+        phone: (currentUser as any).phone?.startsWith("sub_") ? "" : ((currentUser as any).phone || ""),
+        email: (currentUser as any).email?.includes("@subadmin.internal") ? "" : ((currentUser as any).email || ""),
+      }));
+    }
+  }, [currentUser?.id]);
+
   // Auth
   const [createAdminOpen, setCreateAdminOpen] = useState(false);
   const [adminForm, setAdminForm] = useState({ fullName: "", phone: "", email: "", username: "", password: "" });
@@ -620,7 +640,7 @@ export default function Admin() {
   const [couponsLoading, setCouponsLoading] = useState(false);
 
   // Sub-admins
-  const emptySubAdmin = { fullName: "", username: "", password: "", permissions: [] as string[] };
+  const emptySubAdmin = { fullName: "", phone: "", email: "", username: "", password: "", permissions: [] as string[] };
   const [subadmins, setSubadmins] = useState<any[]>([]);
   const [subadminsLoading, setSubadminsLoading] = useState(false);
   const [subadminDialogOpen, setSubadminDialogOpen] = useState(false);
@@ -858,7 +878,7 @@ export default function Admin() {
   const handleOpenSubadminDialog = (sub?: any) => {
     if (sub) {
       setSubadminEditId(sub.id);
-      setSubadminForm({ fullName: sub.fullName, username: sub.username, password: "", permissions: sub.permissions || [] });
+      setSubadminForm({ fullName: sub.fullName, phone: sub.phone?.startsWith("sub_") ? "" : (sub.phone || ""), email: sub.email?.includes("@subadmin.internal") ? "" : (sub.email || ""), username: sub.username, password: "", permissions: sub.permissions || [] });
     } else {
       setSubadminEditId(null);
       setSubadminForm(emptySubAdmin);
@@ -871,7 +891,7 @@ export default function Admin() {
     setSubadminFormLoading(true);
     try {
       if (subadminEditId) {
-        const body: any = { permissions: subadminForm.permissions, fullName: subadminForm.fullName };
+        const body: any = { permissions: subadminForm.permissions, fullName: subadminForm.fullName, phone: subadminForm.phone, email: subadminForm.email };
         if (subadminForm.password) body.password = subadminForm.password;
         await apiFetch(`/api/subadmins/${subadminEditId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         toast({ title: "تم التحديث", description: "تم تحديث بيانات المشرف الفرعي" });
@@ -913,6 +933,27 @@ export default function Admin() {
         ? f.permissions.filter(p => p !== perm)
         : [...f.permissions, perm],
     }));
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (profileForm.password && profileForm.password !== profileForm.confirm) {
+      toast({ variant: "destructive", title: "كلمتا المرور غير متطابقتين", duration: 2000 }); return;
+    }
+    setProfileSaving(true);
+    try {
+      const body: any = {};
+      if (profileForm.phone.trim()) body.phone = profileForm.phone.trim();
+      if (profileForm.email.trim()) body.email = profileForm.email.trim();
+      if (profileForm.password) body.password = profileForm.password;
+      if (Object.keys(body).length === 0) { toast({ title: "لا يوجد تغيير", duration: 2000 }); setProfileSaving(false); return; }
+      await apiFetch("/api/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      toast({ title: "تم تحديث بيانات حسابك", duration: 2000 });
+      setProfileForm(f => ({ ...f, password: "", confirm: "" }));
+      setProfileOpen(false);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ", description: err.message, duration: 2000 });
+    } finally { setProfileSaving(false); }
   };
 
   const handleSaveTerms = async (e: React.FormEvent) => {
@@ -973,13 +1014,28 @@ export default function Admin() {
             <span className="text-xs text-muted-foreground ms-2 hidden sm:inline">لوحة التحكم</span>
           </div>
         </div>
-        {pendingReceipts > 0 && (
-          <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs px-2.5 py-1.5 rounded-full cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => setActiveTab("orders")}>
-            <FileImage className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">{pendingReceipts} إيصال بانتظار التأكيد</span>
-            <span className="sm:hidden">{pendingReceipts} إيصال</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {pendingReceipts > 0 && (
+            <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs px-2.5 py-1.5 rounded-full cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => setActiveTab("orders")}>
+              <FileImage className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">{pendingReceipts} إيصال بانتظار التأكيد</span>
+              <span className="sm:hidden">{pendingReceipts} إيصال</span>
+            </div>
+          )}
+          {!isMainAdmin && (
+            <button
+              onClick={() => setProfileOpen(true)}
+              className="flex items-center gap-2 bg-muted hover:bg-muted/80 border rounded-xl px-3 py-1.5 text-sm transition-colors"
+              title="إعدادات حسابي"
+            >
+              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                {currentUser?.fullName?.[0] || "م"}
+              </div>
+              <span className="hidden sm:inline text-foreground font-medium">{currentUser?.fullName}</span>
+              <Settings className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="flex flex-1">
@@ -1760,21 +1816,68 @@ export default function Admin() {
             <DialogTitle>إضافة مشرف فرعي جديد</DialogTitle>
             <DialogDescription>أدخل بيانات الحساب — يمكنك تحديد الصلاحيات بعد الإنشاء مباشرةً</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSaveSubadmin} className="space-y-4 mt-2">
+          <form onSubmit={handleSaveSubadmin} className="space-y-3 mt-2">
             <div className="space-y-1.5">
-              <Label>الاسم الكامل</Label>
+              <Label>الاسم الكامل <span className="text-red-500">*</span></Label>
               <Input value={subadminForm.fullName} onChange={e => setSubadminForm(f => ({ ...f, fullName: e.target.value }))} required placeholder="أدخل الاسم" />
             </div>
             <div className="space-y-1.5">
-              <Label>اسم المستخدم</Label>
-              <Input value={subadminForm.username} onChange={e => setSubadminForm(f => ({ ...f, username: e.target.value }))} required placeholder="username" dir="ltr" />
+              <Label>رقم الهاتف <span className="text-muted-foreground text-xs">(اختياري)</span></Label>
+              <Input value={subadminForm.phone} onChange={e => setSubadminForm(f => ({ ...f, phone: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" />
             </div>
             <div className="space-y-1.5">
-              <Label>كلمة المرور</Label>
-              <Input type="password" value={subadminForm.password} onChange={e => setSubadminForm(f => ({ ...f, password: e.target.value }))} required placeholder="6 أحرف على الأقل" dir="ltr" />
+              <Label>البريد الإلكتروني <span className="text-muted-foreground text-xs">(اختياري)</span></Label>
+              <Input type="email" value={subadminForm.email} onChange={e => setSubadminForm(f => ({ ...f, email: e.target.value }))} placeholder="example@email.com" dir="ltr" />
             </div>
-            <Button type="submit" className="w-full" disabled={subadminFormLoading}>
-              {subadminFormLoading ? "جاري الإنشاء..." : "إنشاء الحساب"}
+            <div className="space-y-1.5">
+              <Label>اسم المستخدم <span className="text-red-500">*</span></Label>
+              <Input value={subadminForm.username} onChange={e => setSubadminForm(f => ({ ...f, username: e.target.value }))} required placeholder="username" dir="ltr" disabled={!!subadminEditId} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{subadminEditId ? "كلمة مرور جديدة (اتركها فارغة لعدم التغيير)" : <>كلمة المرور <span className="text-red-500">*</span></>}</Label>
+              <Input type="password" value={subadminForm.password} onChange={e => setSubadminForm(f => ({ ...f, password: e.target.value }))} required={!subadminEditId} placeholder="6 أحرف على الأقل" dir="ltr" />
+            </div>
+            <Button type="submit" className="w-full mt-1" disabled={subadminFormLoading}>
+              {subadminFormLoading ? "جاري الحفظ..." : subadminEditId ? "حفظ التعديلات" : "إنشاء الحساب"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Profile dialog for sub-admins */}
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>إعدادات حسابي</DialogTitle>
+            <DialogDescription>تعديل بيانات حسابك الشخصي</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveProfile} className="space-y-3 mt-2">
+            <div className="bg-muted/50 rounded-xl px-4 py-3 text-sm">
+              <p className="text-muted-foreground text-xs mb-1">الاسم</p>
+              <p className="font-semibold">{currentUser?.fullName}</p>
+              <p className="text-muted-foreground text-xs mt-1.5 mb-1">اسم المستخدم</p>
+              <p className="font-mono">{currentUser?.username}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>رقم الهاتف</Label>
+              <Input value={profileForm.phone} onChange={e => setProfileForm(f => ({ ...f, phone: e.target.value }))} placeholder="+20 100 000 0000" dir="ltr" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>البريد الإلكتروني</Label>
+              <Input type="email" value={profileForm.email} onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))} placeholder="example@email.com" dir="ltr" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>كلمة مرور جديدة <span className="text-muted-foreground text-xs">(اتركها فارغة لعدم التغيير)</span></Label>
+              <Input type="password" value={profileForm.password} onChange={e => setProfileForm(f => ({ ...f, password: e.target.value }))} placeholder="6 أحرف على الأقل" dir="ltr" />
+            </div>
+            {profileForm.password && (
+              <div className="space-y-1.5">
+                <Label>تأكيد كلمة المرور</Label>
+                <Input type="password" value={profileForm.confirm} onChange={e => setProfileForm(f => ({ ...f, confirm: e.target.value }))} placeholder="أعد كتابة كلمة المرور" dir="ltr" />
+              </div>
+            )}
+            <Button type="submit" className="w-full" disabled={profileSaving}>
+              {profileSaving ? "جاري الحفظ..." : "حفظ التعديلات"}
             </Button>
           </form>
         </DialogContent>

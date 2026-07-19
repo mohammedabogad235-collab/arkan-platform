@@ -11,6 +11,7 @@ import settingsRouter from "./settings";
 import storageRouter from "./storage";
 import couponsRouter from "./coupons";
 import subadminsRouter from "./subadmins";
+import profileRouter from "./profile";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(settingsRouter);
 router.use(storageRouter);
 router.use(couponsRouter);
 router.use(subadminsRouter);
+router.use(profileRouter);
 
 export default router;
