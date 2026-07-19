@@ -31,24 +31,6 @@ export default function AdminLogin() {
     }
   }, [isLoading, isAuthenticated, user, setLocation]);
 
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      login.mutate(
-        { data: { username: "admin", password: "admin123" } },
-        {
-          onSuccess: (data) => {
-            const userData = (data as any).user ?? data;
-            queryClient.setQueryData(getGetMeQueryKey(), userData);
-            if (userData.role === "admin") {
-              setLocation("/admin");
-            }
-          },
-          onError: () => {},
-        }
-      );
-    }
-  }, [isLoading, isAuthenticated]);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");

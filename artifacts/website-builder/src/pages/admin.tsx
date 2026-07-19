@@ -804,7 +804,7 @@ export default function Admin() {
   const handleOpenSubadminDialog = (sub?: any) => {
     if (sub) {
       setSubadminEditId(sub.id);
-      setSubadminForm({ fullName: sub.fullName, phone: sub.phone, email: sub.email, username: sub.username, password: "", permissions: sub.permissions || [] });
+      setSubadminForm({ fullName: sub.fullName, username: sub.username, password: "", permissions: sub.permissions || [] });
     } else {
       setSubadminEditId(null);
       setSubadminForm(emptySubAdmin);
@@ -817,7 +817,7 @@ export default function Admin() {
     setSubadminFormLoading(true);
     try {
       if (subadminEditId) {
-        const body: any = { permissions: subadminForm.permissions, fullName: subadminForm.fullName, phone: subadminForm.phone, email: subadminForm.email };
+        const body: any = { permissions: subadminForm.permissions, fullName: subadminForm.fullName };
         if (subadminForm.password) body.password = subadminForm.password;
         await apiFetch(`/api/subadmins/${subadminEditId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         toast({ title: "تم التحديث", description: "تم تحديث بيانات المشرف الفرعي" });

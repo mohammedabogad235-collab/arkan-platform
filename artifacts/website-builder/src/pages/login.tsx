@@ -57,7 +57,7 @@ export default function Login() {
             title: "تم تسجيل الدخول بنجاح",
             description: `أهلاً بك ${data.user.fullName}`,
           });
-          setLocation(data.user.role === "admin" ? "/admin" : "/order");
+          setLocation(data.user.role === "admin" || data.user.role === "subadmin" ? "/admin" : "/order");
         },
         onError: (error) => {
           toast({
