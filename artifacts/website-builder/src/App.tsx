@@ -8,6 +8,7 @@ import { Layout } from "@/components/layout";
 import Home from "@/pages/home";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
+import VerifyEmail from "@/pages/verify-email";
 import Order from "@/pages/order";
 import MyOrders from "@/pages/my-orders";
 import Testimonials from "@/pages/testimonials";
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/register" component={Register} />
+      <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/testimonials" component={Testimonials} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />

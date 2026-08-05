@@ -2,11 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { GetUserParams, DeleteUserParams } from "@workspace/api-zod";
-import * as crypto from "crypto";
-
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password + "arkan-pwd-salt-2024").digest("hex");
-}
+import { hashPassword } from "../lib/crypto";
 
 const router: IRouter = Router();
 
@@ -66,8 +62,7 @@ router.patch("/users/:id/role", async (req, res): Promise<void> => {
 });
 
 router.patch("/admin/change-password", async (req, res): Promise<void> => {
-  const session = (req as any).session;
-  const userId = session?.userId;
+  const userId = (req as any).session?.userId as number | undefined;
   if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
   const { newPassword } = req.body as { newPassword?: string };
@@ -75,8 +70,10 @@ router.patch("/admin/change-password", async (req, res): Promise<void> => {
     res.status(400).json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }); return;
   }
 
-  const hashed = hashPassword(newPassword);
-  const [user] = await db.update(usersTable).set({ passwordHash: hashed }).where(eq(usersTable.id, userId)).returning();
+  const [user] = await db.update(usersTable)
+    .set({ passwordHash: hashPassword(newPassword) })
+    .where(eq(usersTable.id, userId))
+    .returning();
   if (!user) { res.status(404).json({ error: "المستخدم غير موجود" }); return; }
 
   res.json({ success: true });
@@ -94,9 +91,9 @@ router.post("/admin/create-admin", async (req, res): Promise<void> => {
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.username, username));
   if (existing) { res.status(409).json({ error: "اسم المستخدم مستخدم بالفعل" }); return; }
 
-  const hashed = hashPassword(password);
-
-  const [newUser] = await db.insert(usersTable).values({ fullName, phone, email, username, passwordHash: hashed, role: "admin" }).returning();
+  const [newUser] = await db.insert(usersTable)
+    .values({ fullName, phone, email, username, passwordHash: hashPassword(password), role: "admin", isVerified: true })
+    .returning();
   res.status(201).json(sanitizeUser(newUser));
 });
 

@@ -12,6 +12,7 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull().default("client"),
   permissions: text("permissions"),
   isActive: boolean("is_active").notNull().default(true),
+  isVerified: boolean("is_verified").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -2,7 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { db, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import * as crypto from "crypto";
+import { hashPassword } from "./lib/crypto";
 
 const rawPort = process.env["PORT"] ?? "8080";
 const port = Number(rawPort);
@@ -25,7 +25,7 @@ async function ensureSessionTable() {
 }
 
 async function ensureAdminExists() {
-  const hash = crypto.createHash("sha256").update("admin123" + "arkan-pwd-salt-2024").digest("hex");
+  const hash = hashPassword("admin123");
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.username, "admin"));
   if (!existing) {
     await db.insert(usersTable).values({

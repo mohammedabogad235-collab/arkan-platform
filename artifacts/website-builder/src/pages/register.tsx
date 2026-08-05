@@ -2,9 +2,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useState, useEffect } from "react";
 import * as z from "zod";
-import { useRegister, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useRegister } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -21,7 +20,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 const registerSchema = z.object({
-  fullName: z.string().min(5, { message: "الاسم الكامل مطلوب" }),
+  fullName: z.string().min(5, { message: "الاسم الكامل مطلوب (5 أحرف على الأقل)" }),
   phone: z.string().min(10, { message: "رقم الهاتف غير صالح" }),
   email: z.string().email({ message: "البريد الإلكتروني غير صالح" }),
   password: z.string().min(6, { message: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }),
@@ -32,7 +31,6 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -43,29 +41,38 @@ export default function Register() {
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: {
-      fullName: "",
-      phone: "",
-      email: "",
-      password: "",
-    },
+    defaultValues: { fullName: "", phone: "", email: "", password: "" },
   });
 
   function onSubmit(values: z.infer<typeof registerSchema>) {
     register.mutate(
       { data: values },
       {
-        onSuccess: (data) => {
-          queryClient.setQueryData(getGetMeQueryKey(), data.user);
-          toast({
-            title: "تم إنشاء الحساب بنجاح",
-            description: `أهلاً بك ${data.user.fullName}`,
-          });
-          setLocation("/order");
+        onSuccess: (data: any) => {
+          // Account created but pending email verification
+          if (data.pendingVerification) {
+            toast({
+              title: "تم إنشاء الحساب",
+              description: "تحقق من بريدك الإلكتروني وأدخل رمز التأكيد",
+            });
+            setLocation(`/verify-email?email=${encodeURIComponent(data.email)}`);
+            return;
+          }
+          // Fallback (should not happen with current backend)
+          toast({ title: "تم إنشاء الحساب بنجاح" });
+          setLocation("/");
         },
         onError: (error) => {
-          const msg = error.error?.error || "حدث خطأ أثناء إنشاء الحساب";
-          const field = (error.error as any)?.field;
+          const errData = error.error as any;
+          const msg = errData?.error || "حدث خطأ أثناء إنشاء الحساب";
+          const field = errData?.field;
+          const pending = errData?.pendingVerification;
+
+          if (pending && errData?.email) {
+            toast({ title: "حساب موجود", description: "أُرسل رمز تأكيد جديد — تحقق من بريدك" });
+            setLocation(`/verify-email?email=${encodeURIComponent(errData.email)}`);
+            return;
+          }
           if (field === "phone") {
             form.setError("phone", { message: msg });
           } else if (field === "email") {
