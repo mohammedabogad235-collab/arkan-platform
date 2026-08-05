@@ -32,9 +32,24 @@ app.use(
   }),
 );
 
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(",") 
+  : ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"];
+
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -67,12 +82,9 @@ app.use("/api", (err: Error, _req: Request, res: Response, _next: NextFunction) 
   res.status(500).json({ error: err.message || "حدث خطأ في السيرفر" });
 });
 
-// Serve pre-built frontend static files
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const frontendDist = path.resolve(__dirname, "../../website-builder/dist/public");
-app.use(express.static(frontendDist));
-app.get(/(.*)/, (_req, res) => {
-  res.sendFile(path.join(frontendDist, "index.html"));
+// Health check endpoint
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 export default app;
