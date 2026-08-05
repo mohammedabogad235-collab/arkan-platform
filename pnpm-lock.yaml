@@ -147,6 +147,13 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      express-session:
+        specifier: ^1.19.0
+        version: 1.19.0
     devDependencies:
       '@types/archiver':
         specifier: ^8.0.0
