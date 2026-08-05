@@ -12,6 +12,7 @@ import storageRouter from "./storage";
 import couponsRouter from "./coupons";
 import subadminsRouter from "./subadmins";
 import profileRouter from "./profile";
+import otpRouter from "./otp";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(storageRouter);
 router.use(couponsRouter);
 router.use(subadminsRouter);
 router.use(profileRouter);
+router.use(otpRouter);
 
 export default router;

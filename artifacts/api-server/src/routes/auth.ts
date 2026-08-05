@@ -2,13 +2,9 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { RegisterBody } from "@workspace/api-zod";
-import * as crypto from "crypto";
+import { hashPassword } from "../lib/crypto";
 
 const router: IRouter = Router();
-
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password + "arkan-pwd-salt-2024").digest("hex");
-}
 
 function sanitizeUser(user: typeof usersTable.$inferSelect) {
   return {

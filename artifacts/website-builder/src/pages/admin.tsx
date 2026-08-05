@@ -62,8 +62,9 @@ const ALL_NAV = [
   { id: "payments",   label: "طرق الدفع",       icon: CreditCard,    adminOnly: false },
   { id: "reviews",    label: "الآراء",           icon: MessageSquare, adminOnly: false },
   { id: "coupons",    label: "الكوبونات",        icon: Tag,           adminOnly: false },
-  { id: "settings",   label: "الإعدادات",       icon: Settings,      adminOnly: false },
-  { id: "subadmins",  label: "مشرفون فرعيون",  icon: Shield,        adminOnly: true  },
+  { id: "settings",     label: "الإعدادات",        icon: Settings,      adminOnly: false },
+  { id: "otp-settings", label: "إعدادات OTP",     icon: Mail,          adminOnly: true  },
+  { id: "subadmins",   label: "مشرفون فرعيون",   icon: Shield,        adminOnly: true  },
 ];
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
@@ -576,6 +577,13 @@ export default function Admin() {
   const [termsSaving, setTermsSaving] = useState(false);
   const [privacySaving, setPrivacySaving] = useState(false);
 
+  // OTP Settings
+  const [otpForm, setOtpForm] = useState({ emailUser: "", emailPass: "" });
+  const [savedOtpForm, setSavedOtpForm] = useState({ emailUser: "", emailPass: "" });
+  const [otpSaving, setOtpSaving] = useState(false);
+  const [otpTestLoading, setOtpTestLoading] = useState(false);
+  const [otpTestEmail, setOtpTestEmail] = useState("");
+
   useEffect(() => {
     if (siteSettings) {
       setContactForm({ phone1: siteSettings.phone1 || "", phone2: siteSettings.phone2 || "", email: siteSettings.email || "", whatsapp: siteSettings.whatsapp || "", address: siteSettings.address || "", facebookUrl: siteSettings.facebookUrl || "", instagramUrl: siteSettings.instagramUrl || "", twitterUrl: siteSettings.twitterUrl || "" });
@@ -587,6 +595,10 @@ export default function Admin() {
       setPrivacyText(loadedPrivacy);
       setSavedTermsText(loadedTerms);
       setSavedPrivacyText(loadedPrivacy);
+      const emailUser = (siteSettings as any).emailUser || "";
+      const emailPass = (siteSettings as any).emailPass || "";
+      setOtpForm({ emailUser, emailPass });
+      setSavedOtpForm({ emailUser, emailPass });
     }
   }, [siteSettings]);
 
@@ -954,6 +966,28 @@ export default function Admin() {
     } catch (err: any) {
       toast({ variant: "destructive", title: "خطأ", description: err.message, duration: 2000 });
     } finally { setProfileSaving(false); }
+  };
+
+  const handleSaveOtp = async (e: React.FormEvent) => {
+    e.preventDefault(); setOtpSaving(true);
+    updateSettings.mutate({ emailUser: otpForm.emailUser, emailPass: otpForm.emailPass } as any, {
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); setSavedOtpForm({ ...otpForm }); toast({ title: "تم حفظ إعدادات OTP", duration: 2000 }); setOtpSaving(false); },
+      onError: () => { toast({ variant: "destructive", title: "خطأ في الحفظ", duration: 2000 }); setOtpSaving(false); },
+    });
+  };
+
+  const handleTestOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpTestEmail) { toast({ variant: "destructive", title: "أدخل بريداً للاختبار", duration: 2000 }); return; }
+    setOtpTestLoading(true);
+    try {
+      const res = await fetch("/api/auth/send-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: otpTestEmail }), credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "فشل الإرسال");
+      toast({ title: "✅ تم الإرسال", description: `تحقق من صندوق الوارد لـ ${otpTestEmail}`, duration: 4000 });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "فشل الإرسال", description: err.message, duration: 4000 });
+    } finally { setOtpTestLoading(false); }
   };
 
   const handleSaveTerms = async (e: React.FormEvent) => {
@@ -1642,6 +1676,89 @@ export default function Admin() {
               </div>
             </div>
           )}
+          {/* ─── OTP Settings ─── */}
+          {activeTab === "otp-settings" && isMainAdmin && (
+            <div className="space-y-6 max-w-xl">
+              <div>
+                <h1 className="text-2xl font-bold flex items-center gap-2"><Mail className="w-6 h-6 text-primary" />إعدادات OTP</h1>
+                <p className="text-muted-foreground text-sm mt-1">إعداد البريد الإلكتروني لإرسال رموز التحقق عند نسيان كلمة المرور</p>
+              </div>
+
+              {/* Config card */}
+              <div className="bg-white rounded-2xl border shadow-sm p-6">
+                <h2 className="font-bold mb-1 flex items-center gap-2"><Settings className="w-4 h-4 text-primary" />بيانات Gmail</h2>
+                <p className="text-sm text-muted-foreground mb-5">
+                  يُستخدم حساب Gmail مع <strong>App Password</strong> (وليس كلمة المرور العادية).
+                  {" "}<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-primary underline text-xs">إنشاء App Password ←</a>
+                </p>
+                <form onSubmit={handleSaveOtp} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label>بريد Gmail <span className="text-red-500">*</span></Label>
+                    <Input
+                      type="email"
+                      value={otpForm.emailUser}
+                      onChange={e => setOtpForm(f => ({ ...f, emailUser: e.target.value }))}
+                      placeholder="example@gmail.com"
+                      dir="ltr"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>App Password <span className="text-red-500">*</span></Label>
+                    <Input
+                      type="password"
+                      value={otpForm.emailPass}
+                      onChange={e => setOtpForm(f => ({ ...f, emailPass: e.target.value }))}
+                      placeholder="xxxx xxxx xxxx xxxx"
+                      dir="ltr"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">كلمة المرور المُولَّدة من Google — غير كلمة المرور العادية</p>
+                  </div>
+                  {(otpForm.emailUser !== savedOtpForm.emailUser || otpForm.emailPass !== savedOtpForm.emailPass) && (
+                    <Button type="submit" disabled={otpSaving} className="gap-1.5">
+                      {otpSaving ? "جاري الحفظ..." : "حفظ الإعدادات"}
+                    </Button>
+                  )}
+                </form>
+              </div>
+
+              {/* Status card */}
+              <div className="bg-white rounded-2xl border shadow-sm p-6">
+                <h2 className="font-bold mb-1">حالة الإعداد</h2>
+                <p className="text-sm text-muted-foreground mb-4">المصدر الفعلي الذي يُستخدم عند الإرسال (DB يأخذ الأولوية على .env)</p>
+                <div className="space-y-2">
+                  <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${savedOtpForm.emailUser ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                    <div className={`w-2.5 h-2.5 rounded-full ${savedOtpForm.emailUser ? "bg-green-500" : "bg-amber-400"}`} />
+                    <div>
+                      <p className="text-sm font-medium">{savedOtpForm.emailUser ? "إعداد DB" : "لم يُضبط في DB"}</p>
+                      <p className="text-xs text-muted-foreground">{savedOtpForm.emailUser ? savedOtpForm.emailUser : "سيُستخدم EMAIL_USER من متغيرات البيئة كـ fallback"}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Test card */}
+              <div className="bg-white rounded-2xl border shadow-sm p-6">
+                <h2 className="font-bold mb-1">اختبار الإرسال</h2>
+                <p className="text-sm text-muted-foreground mb-4">أرسل OTP تجريبياً للتحقق من صحة الإعداد</p>
+                <form onSubmit={handleTestOtp} className="flex gap-2">
+                  <Input
+                    type="email"
+                    value={otpTestEmail}
+                    onChange={e => setOtpTestEmail(e.target.value)}
+                    placeholder="test@example.com"
+                    dir="ltr"
+                    className="flex-1"
+                  />
+                  <Button type="submit" variant="outline" disabled={otpTestLoading} className="gap-1.5 shrink-0">
+                    {otpTestLoading ? "جاري الإرسال..." : "إرسال اختبار"}
+                  </Button>
+                </form>
+              </div>
+            </div>
+          )}
+
           {/* ─── Sub-admins ─── */}
           {activeTab === "subadmins" && isMainAdmin && (
             <div className="space-y-6">

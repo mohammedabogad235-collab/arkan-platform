@@ -14,6 +14,8 @@ export interface SiteSettings {
   depositPercentageValue: number;
   termsAndConditions: string;
   privacyPolicy: string;
+  emailUser: string;
+  emailPass: string;
 }
 
 const SETTINGS_KEY = ["site-settings"] as const;

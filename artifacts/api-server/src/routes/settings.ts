@@ -22,7 +22,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
   const body = req.body as Record<string, unknown>;
   const update: Record<string, unknown> = {};
 
-  const textFields = ["phone1", "phone2", "email", "whatsapp", "address", "facebookUrl", "instagramUrl", "twitterUrl", "termsAndConditions", "privacyPolicy"];
+  const textFields = ["phone1", "phone2", "email", "whatsapp", "address", "facebookUrl", "instagramUrl", "twitterUrl", "termsAndConditions", "privacyPolicy", "emailUser", "emailPass"];
   for (const key of textFields) {
     if (typeof body[key] === "string") update[key] = body[key];
   }

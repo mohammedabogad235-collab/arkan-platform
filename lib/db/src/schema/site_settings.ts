@@ -14,6 +14,8 @@ export const siteSettingsTable = pgTable("site_settings", {
   depositPercentageValue: real("deposit_percentage_value").notNull().default(50),
   termsAndConditions: text("terms_and_conditions").notNull().default(""),
   privacyPolicy: text("privacy_policy").notNull().default(""),
+  emailUser: text("email_user").notNull().default(""),
+  emailPass: text("email_pass").notNull().default(""),
 });
 
 export type SiteSettings = typeof siteSettingsTable.$inferSelect;
