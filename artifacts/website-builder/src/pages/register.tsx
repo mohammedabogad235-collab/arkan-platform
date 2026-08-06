@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { getApiErrorData } from "@/lib/api-error";
 
 const registerSchema = z.object({
   fullName: z.string().min(5, { message: "الاسم الكامل مطلوب (5 أحرف على الأقل)" }),
@@ -63,9 +64,7 @@ export default function Register() {
           setLocation("/");
         },
         onError: (error) => {
-          // The error object from react-query often contains server response in `error.response.data`.
-          // Accessing it safely.
-          const errData = (error as any)?.response?.data;
+          const errData = getApiErrorData(error);
           const msg = errData?.error || "حدث خطأ أثناء إنشاء الحساب";
           const field = errData?.field;
           const pending = errData?.pendingVerification;

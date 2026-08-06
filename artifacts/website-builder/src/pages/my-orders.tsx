@@ -24,12 +24,25 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/lib/use-settings";
 
-const statusMap: Record<string, { label: string, variant: "default" | "secondary" | "destructive" | "outline", color: string }> = {
-  pending:     { label: "قيد الانتظار", variant: "outline",     color: "text-amber-600 border-amber-300 bg-amber-50" },
-  in_progress: { label: "جاري التنفيذ", variant: "default",     color: "text-blue-700 border-blue-300 bg-blue-50" },
-  completed:   { label: "مكتمل",         variant: "secondary",   color: "text-green-700 border-green-300 bg-green-50" },
-  cancelled:   { label: "ملغي",           variant: "destructive", color: "text-red-700 border-red-300 bg-red-50" },
-};
+function getDisplayStatus(order: any): { label: string; color: string } {
+  const { status, totalAmount, receiptUrl, depositPaid, finalPaid } = order;
+  if (status === 'cancelled') {
+    return { label: "ملغي", color: "text-red-700 border-red-300 bg-red-50" };
+  }
+  if (status === 'completed') {
+    if (finalPaid) return { label: "مُسلّم بالكامل", color: "text-emerald-700 border-emerald-300 bg-emerald-50" };
+    return { label: "مكتمل", color: "text-green-700 border-green-300 bg-green-50" };
+  }
+  if (status === 'in_progress') {
+    return { label: "جاري التنفيذ", color: "text-blue-700 border-blue-300 bg-blue-50" };
+  }
+  if (status === 'pending') {
+    if (receiptUrl && !depositPaid) return { label: "بانتظار تأكيد الإيصال", color: "text-orange-600 border-orange-300 bg-orange-50" };
+    if (totalAmount) return { label: "بانتظار الدفعة المقدمة", color: "text-amber-600 border-amber-300 bg-amber-50" };
+    return { label: "قيد المراجعة", color: "text-gray-600 border-gray-300 bg-gray-50" };
+  }
+  return { label: status, color: "text-gray-600 border-gray-300 bg-gray-50" };
+}
 
 function ReceiptUploader({ orderId }: { orderId: number }) {
   const { uploadFile, isUploading, error } = useReceiptUpload();
@@ -66,7 +79,7 @@ function ReceiptUploader({ orderId }: { orderId: number }) {
 
   return (
     <div className="space-y-2">
-      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFile} />
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
       <Button
         variant="outline"
         size="sm"
@@ -117,7 +130,7 @@ function FinalReceiptUploader({ orderId }: { orderId: number }) {
 
   return (
     <div className="space-y-2">
-      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFile} />
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
       <Button
         variant="outline"
         size="sm"
@@ -345,7 +358,7 @@ export default function MyOrders() {
             const showReceiptUpload = order.status === "pending" && priceSet && !(order as any).receiptUrl;
             const receiptUploaded = !!(order as any).receiptUrl;
             const canCancel = order.status === "pending" || order.status === "in_progress";
-            const statusCfg = statusMap[order.status] || { label: order.status, color: "", variant: "outline" as const };
+            const displayStatus = getDisplayStatus(order);
 
             return (
               <Card key={order.id} className="overflow-hidden hover:shadow-lg transition-shadow border border-border/60">
@@ -355,8 +368,8 @@ export default function MyOrders() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <CardTitle className="text-xl font-bold">{order.siteName}</CardTitle>
-                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusCfg.color}`}>
-                          {statusCfg.label}
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${displayStatus.color}`}>
+                          {displayStatus.label}
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">

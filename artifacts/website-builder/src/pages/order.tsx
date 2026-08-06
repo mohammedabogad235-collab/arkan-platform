@@ -131,7 +131,7 @@ function ReceiptStep({
       )}
 
       <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFile} />
-      <Button
+      <Button type="button"
         className="w-full h-14 text-base gap-2"
         disabled={isUploading}
         onClick={() => inputRef.current?.click()}
@@ -290,14 +290,14 @@ export default function Order() {
 
               {step === "receipt" && createdOrderId && (
             <div className="text-center py-10 space-y-5">
-              <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-10 h-10 text-green-600" />
+              <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center mx-auto">
+                <FileCheck className="w-10 h-10 text-blue-600" />
               </div>
-              <h3 className="text-2xl font-bold text-green-700">تم استلام طلبك بنجاح!</h3>
+              <h3 className="text-2xl font-bold text-blue-700">تم استلام طلبك بنجاح!</h3>
               <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">
-                سيقوم فريقنا بمراجعة طلبك وتحديد المبلغ المطلوب قريباً،
+                سيقوم فريقنا بمراجعة طلبك وتحديد السعر والمبلغ المطلوب دفعه كمقدم.
                 <br />
-                وستجد زر رفع الإيصال في صفحة <strong>طلباتي</strong> بعد تحديد المبلغ.
+                ستجد تفاصيل الدفع وزر رفع الإيصال في صفحة <strong>طلباتي</strong> قريباً.
               </p>
               <Button onClick={() => setLocation("/my-orders")} className="mt-2 gap-2">
                 متابعة طلباتي

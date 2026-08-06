@@ -46,12 +46,26 @@ import { ar } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  pending:    { label: "قيد الانتظار", color: "text-amber-700", bg: "bg-amber-50 border-amber-200", dot: "bg-amber-500" },
-  in_progress:{ label: "جاري التنفيذ",  color: "text-blue-700",  bg: "bg-blue-50 border-blue-200",   dot: "bg-blue-500" },
-  completed:  { label: "مكتمل",         color: "text-green-700", bg: "bg-green-50 border-green-200", dot: "bg-green-500" },
-  cancelled:  { label: "ملغي",          color: "text-red-700",   bg: "bg-red-50 border-red-200",     dot: "bg-red-400" },
-};
+function getAdminOrderStatus(order: any): { label: string; color: string; bg: string; dot: string } {
+  const { status, totalAmount, receiptUrl, depositPaid, finalPaid, finalReceiptUrl } = order;
+
+  if (status === 'cancelled') return { label: "ملغي", color: "text-red-700", bg: "bg-red-50 border-red-200", dot: "bg-red-400" };
+  if (status === 'completed') {
+    if (finalPaid) return { label: "مكتمل ومدفوع", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", dot: "bg-emerald-500" };
+    if (finalReceiptUrl) return { label: "بانتظار تأكيد النهائي", color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200", dot: "bg-indigo-500" };
+    return { label: "مكتمل بانتظار الدفع", color: "text-green-700", bg: "bg-green-50 border-green-200", dot: "bg-green-500" };
+  }
+  if (status === 'in_progress') return { label: "قيد التنفيذ", color: "text-blue-700", bg: "bg-blue-50 border-blue-200", dot: "bg-blue-500" };
+  if (status === 'started') return { label: "بدأ التنفيذ", color: "text-sky-700", bg: "bg-sky-50 border-sky-200", dot: "bg-sky-500" };
+  if (status === 'pending') {
+    if (receiptUrl && !depositPaid) return { label: "تأكيد الإيصال مطلوب", color: "text-orange-700", bg: "bg-orange-50 border-orange-200", dot: "bg-orange-500" };
+    if (totalAmount) return { label: "بانتظار دفع العميل", color: "text-amber-700", bg: "bg-amber-50 border-amber-200", dot: "bg-amber-500" };
+    return { label: "قيد المراجعة (تحديد السعر)", color: "text-gray-700", bg: "bg-gray-100 border-gray-200", dot: "bg-gray-500" };
+  }
+
+  // Fallback
+  return { label: status, color: "text-gray-700", bg: "bg-gray-100 border-gray-200", dot: "bg-gray-500" };
+}
 
 const ALL_NAV = [
   { id: "overview",   label: "الإحصائيات",     icon: BarChart3,     adminOnly: false },
@@ -79,16 +93,6 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.bg} ${cfg.color}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-      {cfg.label}
-    </span>
   );
 }
 
@@ -155,6 +159,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   const liveAmount = amountInput !== "" ? Number(amountInput) : null;
   const deposit = liveAmount ? Math.round((liveAmount * pct) / 100) : null;
   const remaining = liveAmount && deposit !== null ? liveAmount - deposit : null;
+  const displayStatus = getAdminOrderStatus(order);
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden">
@@ -170,17 +175,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-foreground truncate">{order.siteName}</span>
-              <StatusBadge status={order.status} />
-              {(order as any).receiptUrl && !order.depositPaid && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200">
-                  <FileImage className="w-3 h-3" /> إيصال مقدّم بانتظار التأكيد
-                </span>
-              )}
-              {(order as any).finalReceiptUrl && !order.finalPaid && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                  <FileImage className="w-3 h-3" /> إيصال متبقي بانتظار التأكيد
-                </span>
-              )}
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${displayStatus.bg} ${displayStatus.color}`}><span className={`w-1.5 h-1.5 rounded-full ${displayStatus.dot}`} />{displayStatus.label}</span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{order.siteType} · #{order.id}</p>
           </div>
@@ -439,8 +434,11 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pending">قيد الانتظار</SelectItem>
-                  <SelectItem value="in_progress">جاري التنفيذ</SelectItem>
+                  <SelectItem value="started">بدأ التنفيذ</SelectItem>
+                  <SelectItem value="in_progress">قيد التنفيذ</SelectItem>
                   <SelectItem value="completed">مكتمل</SelectItem>
+                  {/* Admin can manually set to awaiting_payment etc. if needed, but the main flow is automatic */}
+                  {/* Let's keep it simple as per original statuses */}
                   <SelectItem value="cancelled">ملغي</SelectItem>
                 </SelectContent>
               </Select>
@@ -715,14 +713,14 @@ export default function Admin() {
   };
 
   const handleConfirmReceipt = async (orderId: number) => {
-    try {
-      await apiFetch(`/api/orders/${orderId}/confirm-receipt`, { method: "POST" });
-      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
-      toast({ title: "تم التأكيد", description: "تم قبول الإيصال وبدء تنفيذ الطلب" });
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "خطأ", description: err?.message });
-    }
+    updateOrder.mutate({ id: orderId, data: { depositPaid: true, status: 'started' } as any }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+        toast({ title: "تم التأكيد", description: "تم قبول الإيصال وتغيير الحالة إلى 'بدأ التنفيذ'" });
+      },
+      onError: (err: any) => toast({ variant: "destructive", title: "خطأ", description: (err as any)?.response?.data?.error || "تعذر تأكيد الإيصال" }),
+    });
   };
 
   const handleDeleteUser = (userId: number) => {
@@ -1128,7 +1126,7 @@ export default function Admin() {
                         <p className="font-semibold truncate">{order.siteName}</p>
                         <p className="text-xs text-muted-foreground">{order.user?.fullName} · {format(new Date(order.createdAt), "dd MMM", { locale: ar })}</p>
                       </div>
-                      <StatusBadge status={order.status} />
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border ${getAdminOrderStatus(order).bg} ${getAdminOrderStatus(order).color}`}><span className={`w-1.5 h-1.5 rounded-full ${getAdminOrderStatus(order).dot}`} />{getAdminOrderStatus(order).label}</span>
                     </div>
                   ))}
                   {allOrders.length === 0 && <p className="text-muted-foreground text-sm text-center py-8">لا توجد طلبات حتى الآن</p>}
@@ -1224,7 +1222,9 @@ export default function Admin() {
                           </div>
                           <p className="text-xs text-muted-foreground">{order.user?.fullName}</p>
                         </div>
-                        <StatusBadge status={order.status} />
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border ${getAdminOrderStatus(order).bg} ${getAdminOrderStatus(order).color}`}>
+                          {getAdminOrderStatus(order).label}
+                        </span>
                         <div className="text-sm text-end space-y-0.5">
                           {disc > 0 ? (
                             <>

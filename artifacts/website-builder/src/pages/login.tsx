@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { getApiErrorData, getApiErrorStatus } from "@/lib/api-error";
 
 const loginSchema = z.object({
   identifier: z.string().min(3, { message: "أدخل رقم الهاتف أو البريد أو اسم المستخدم" }),
@@ -60,12 +61,33 @@ export default function Login() {
           setLocation(data.user.role === "admin" || data.user.role === "subadmin" ? "/admin" : "/order");
         },
         onError: (error) => {
-          const errData = (error as any)?.response?.data;
+          const errData = getApiErrorData(error);
+          const status = getApiErrorStatus(error);
+
           if (errData?.pendingVerification && errData?.email) {
             toast({ title: "حساب غير مؤكد", description: "يجب تأكيد بريدك أولاً" });
             setLocation(`/verify-email?email=${encodeURIComponent(errData.email)}`);
             return;
           }
+
+          if (status === 404) {
+            toast({
+              variant: "destructive",
+              title: "هذا الحساب غير موجود",
+              description: "تحقق من البريد/الهاتف/اسم المستخدم أو أنشئ حساباً جديداً",
+            });
+            return;
+          }
+
+          if (status === 401) {
+            toast({
+              variant: "destructive",
+              title: "بيانات الدخول غير صحيحة",
+              description: errData?.error || "تحقق من كلمة المرور وحاول مجدداً",
+            });
+            return;
+          }
+
           toast({
             variant: "destructive",
             title: "فشل تسجيل الدخول",

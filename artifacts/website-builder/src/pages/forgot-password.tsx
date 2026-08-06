@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, Mail, KeyRound, Lock, CheckCircle } from "lucide-react";
+import { formatCountdown, useOtpCountdown } from "@/lib/use-otp-countdown";
 
 export default function ForgotPassword() {
   const [, setLocation] = useLocation();
@@ -19,6 +20,18 @@ export default function ForgotPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const countdown = useOtpCountdown({
+    key: `reset:${email.trim().toLowerCase()}`,
+    seconds: 60,
+  });
+
+  useEffect(() => {
+    // عند الانتقال للخطوة الثانية بدون مؤقت نشغّله تلقائياً (مثلاً عند Refresh)
+    if (step === "otp" && countdown.remaining <= 0) {
+      countdown.start();
+    }
+  }, [step, countdown]);
 
   // ── Step 1: send OTP ──
   async function handleSendOtp(e: React.FormEvent) {
@@ -34,11 +47,16 @@ export default function ForgotPassword() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast({ variant: "destructive", title: "خطأ", description: data.error });
+        toast({
+          variant: "destructive",
+          title: "تعذر الإرسال",
+          description: data?.error || "حدث خطأ أثناء إرسال الرمز",
+        });
         return;
       }
       toast({ title: "تم الإرسال", description: "تحقق من صندوق بريدك الإلكتروني" });
       setStep("otp");
+      countdown.start();
     } catch {
       toast({ variant: "destructive", title: "خطأ", description: "حدث خطأ، حاول مجدداً" });
     } finally {
@@ -80,6 +98,7 @@ export default function ForgotPassword() {
 
   // ── Resend OTP ──
   async function handleResend() {
+    if (!countdown.canResend) return;
     setLoading(true);
     try {
       const res = await fetch("/api/auth/send-otp", {
@@ -91,6 +110,7 @@ export default function ForgotPassword() {
       const data = await res.json();
       if (!res.ok) { toast({ variant: "destructive", title: "خطأ", description: data.error }); return; }
       toast({ title: "تم إعادة الإرسال", description: "تحقق من صندوق البريد مجدداً" });
+      countdown.start();
     } catch {
       toast({ variant: "destructive", title: "خطأ", description: "فشل إعادة الإرسال" });
     } finally {
@@ -231,15 +251,21 @@ export default function ForgotPassword() {
             </CardContent>
             <CardFooter className="flex flex-col items-center gap-3 border-t pt-6">
               <p className="text-sm text-muted-foreground">
-                لم يصل الرمز؟{" "}
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  disabled={loading}
-                  className="text-primary font-semibold hover:underline disabled:opacity-50"
-                >
-                  إعادة الإرسال
-                </button>
+                {!countdown.canResend ? (
+                  `يمكنك إعادة الإرسال بعد ${formatCountdown(countdown.remaining)}`
+                ) : (
+                  <>
+                    لم يصل الرمز؟{" "}
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      disabled={loading}
+                      className="text-primary font-semibold hover:underline disabled:opacity-50"
+                    >
+                      إعادة الإرسال
+                    </button>
+                  </>
+                )}
               </p>
               <button
                 type="button"
