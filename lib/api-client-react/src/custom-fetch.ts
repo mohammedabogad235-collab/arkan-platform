@@ -18,6 +18,12 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
 
+function shouldIncludeCredentials(url: string): boolean {
+  if (url.startsWith("/api")) return true;
+  if (_baseUrl && url.startsWith(_baseUrl)) return true;
+  return false;
+}
+
 /**
  * Set a base URL that is prepended to every relative request URL
  * (i.e. paths that start with `/`).
@@ -359,8 +365,15 @@ export async function customFetch<T = unknown>(
   }
 
   const requestInfo = { method, url: resolveUrl(input) };
+  const credentials =
+    init.credentials ?? (shouldIncludeCredentials(requestInfo.url) ? "include" : undefined);
 
-  const response = await fetch(input, { ...init, method, headers });
+  const response = await fetch(input, {
+    ...init,
+    method,
+    headers,
+    ...(credentials ? { credentials } : {}),
+  });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

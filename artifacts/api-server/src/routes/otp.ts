@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { hashPassword } from "../lib/crypto";
-import { sendOtpEmail } from "../lib/mailer";
+import { sendResetPasswordOtpEmail } from "../lib/mailer";
 
 const router: IRouter = Router();
 
@@ -35,7 +35,7 @@ router.post("/auth/send-otp", async (req, res): Promise<void> => {
   otpStore.set(trimmed, { otp, expiresAt });
 
   try {
-    await sendOtpEmail(trimmed, otp);
+    await sendResetPasswordOtpEmail(trimmed, otp, user.fullName);
     res.json({ message: "تم إرسال رمز التحقق إلى بريدك الإلكتروني" });
   } catch (err: any) {
     otpStore.delete(trimmed);

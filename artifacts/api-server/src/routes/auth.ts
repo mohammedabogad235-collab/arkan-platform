@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { Api } from "@workspace/api-zod";
 import { hashPassword } from "../lib/crypto";
-import { sendOtpEmail } from "../lib/mailer";
+import { sendSignupOtpEmail } from "../lib/mailer";
 
 const router: IRouter = Router();
 
@@ -40,7 +40,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
   const [existingPhone] = await db.select().from(usersTable).where(eq(usersTable.phone, phone));
   if (existingPhone) {
-    res.status(409).json({ error: "رقم الهاتف مسجل من قبل", field: "phone" });
+    res.status(409).json({ error: "رقم الهاتف مسجل بالفعل", field: "phone" });
     return;
   }
 
@@ -51,14 +51,14 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       try {
         const otp = generateOtp();
         signupOtpStore.set(email.toLowerCase(), { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
-        await sendOtpEmail(email.toLowerCase(), otp);
+        await sendSignupOtpEmail(email.toLowerCase(), otp, existingEmail.fullName);
       } catch {
         // Non-fatal: user can request resend
       }
-      res.status(409).json({ error: "هذا البريد مسجل لكن غير مؤكد — أُرسل لك رمز تأكيد جديد", field: "email", pendingVerification: true });
+      res.status(409).json({ error: "الحساب موجود لكنه غير مؤكد — أُرسل لك رمز تأكيد جديد", field: "email", pendingVerification: true });
       return;
     }
-    res.status(409).json({ error: "هذا البريد مسجل من قبل", field: "email" });
+    res.status(409).json({ error: "الحساب موجود بالفعل", field: "email" });
     return;
   }
 
@@ -79,7 +79,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   try {
     const otp = generateOtp();
     signupOtpStore.set(email.toLowerCase(), { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
-    await sendOtpEmail(email.toLowerCase(), otp);
+    await sendSignupOtpEmail(email.toLowerCase(), otp, user.fullName);
   } catch {
     // OTP sending failed — user can request resend on verify page
   }
@@ -115,7 +115,7 @@ router.post("/auth/send-signup-otp", async (req, res): Promise<void> => {
   signupOtpStore.set(trimmed, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
 
   try {
-    await sendOtpEmail(trimmed, otp);
+    await sendSignupOtpEmail(trimmed, otp, user.fullName);
     res.json({ message: "تم إرسال رمز التأكيد" });
   } catch (err: any) {
     signupOtpStore.delete(trimmed);
@@ -184,8 +184,13 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   if (!user) [user] = await db.select().from(usersTable).where(eq(usersTable.email, trimmed));
   if (!user) [user] = await db.select().from(usersTable).where(eq(usersTable.username, trimmed));
 
-  if (!user || user.passwordHash !== passwordHash) {
-    res.status(401).json({ error: "البيانات غير صحيحة، تحقق من رقم الهاتف أو البريد وكلمة المرور" });
+  if (!user) {
+    res.status(404).json({ error: "هذا الحساب غير موجود" });
+    return;
+  }
+
+  if (user.passwordHash !== passwordHash) {
+    res.status(401).json({ error: "كلمة المرور غير صحيحة" });
     return;
   }
 

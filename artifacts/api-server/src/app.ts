@@ -5,8 +5,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import path from "path";
-import { fileURLToPath } from "url";
+import { normalizedDatabaseUrl } from "@workspace/db";
 
 const app: Express = express();
 
@@ -32,16 +31,27 @@ app.use(
   }),
 );
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(",") 
-  : ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"];
+const allowedOrigins = new Set(
+  [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://arkan-app-1cme.onrender.com",
+    process.env.FRONTEND_URL,
+    process.env.FIREBASE_APP_URL,
+    process.env.FIREBASE_PREVIEW_URL,
+    ...(process.env.ALLOWED_ORIGINS?.split(",") ?? []),
+  ]
+    .map((origin) => origin?.trim())
+    .filter((origin): origin is string => Boolean(origin)),
+);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
+
+    if (allowedOrigins.has(origin)) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
@@ -50,6 +60,7 @@ app.use(cors({
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -59,9 +70,9 @@ const PgSession = connectPgSimple(session);
 app.use(
   session({
     store: new PgSession({
-      conString: process.env.DATABASE_URL,
+      conString: normalizedDatabaseUrl,
       tableName: "session",
-      createTableIfMissing: false,
+      createTableIfMissing: true,
     }),
     secret: process.env.SESSION_SECRET ?? "fallback-secret-change-in-production",
     resave: false,

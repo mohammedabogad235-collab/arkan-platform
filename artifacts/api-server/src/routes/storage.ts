@@ -1,127 +1,71 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { Readable } from "stream";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
-import { ObjectPermission } from "../lib/objectAcl";
-
-function parseUploadBody(body: unknown): { name: string; size: number; contentType: string } | null {
-  if (!body || typeof body !== "object") return null;
-  const b = body as Record<string, unknown>;
-  if (typeof b.name !== "string" || typeof b.size !== "number" || typeof b.contentType !== "string") return null;
-  return { name: b.name, size: b.size, contentType: b.contentType };
-}
+import multer from "multer";
+import { uploadReceiptImage } from "../lib/supabase-storage";
 
 const router: IRouter = Router();
-const objectStorageService = new ObjectStorageService();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 1,
+  },
+  fileFilter: (_req, file, callback) => {
+    if (!file.mimetype.startsWith("image/")) {
+      callback(new Error("يسمح فقط برفع الصور"));
+    return;
+  }
+    callback(null, true);
+  },
+});
 
-/**
- * POST /storage/uploads/request-url
- *
- * Request a presigned URL for file upload.
- * The client sends JSON metadata (name, size, contentType) — NOT the file.
- * Then uploads the file directly to the returned presigned URL.
- */
-router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
-  const parsed = parseUploadBody(req.body);
-  if (!parsed) {
-    res.status(400).json({ error: "Missing or invalid required fields" });
+function runSingleImageUpload(req: Request, res: Response): Promise<void> {
+  return new Promise((resolve, reject) => {
+    upload.single("file")(req, res, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+router.post("/storage/receipts", async (req: Request, res: Response) => {
+  const userId = Number((req.session as any)?.userId ?? 0);
+  if (!userId) {
+    res.status(401).json({ error: "غير مصرح" });
     return;
   }
 
   try {
-    const { name, size, contentType } = parsed;
+    await runSingleImageUpload(req, res);
 
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
-
-    res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
-  } catch (error) {
-    req.log.error({ err: error }, "Error generating upload URL");
-    res.status(500).json({ error: "Failed to generate upload URL" });
-  }
-});
-
-/**
- * GET /storage/public-objects/*
- *
- * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
- * These are unconditionally public — no authentication or ACL checks.
- * IMPORTANT: Always provide this endpoint when object storage is set up.
- */
-router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {
-  try {
-    const raw = req.params.filePath;
-    const filePath = Array.isArray(raw) ? raw.join("/") : raw;
-    const file = await objectStorageService.searchPublicObject(filePath);
+    const file = req.file;
     if (!file) {
-      res.status(404).json({ error: "File not found" });
+      res.status(400).json({ error: "ملف الصورة مطلوب" });
       return;
     }
 
-    const response = await objectStorageService.downloadObject(file);
+    const kind = req.body.kind === "final" ? "final" : "deposit";
+    const orderId = Number(req.body.orderId || 0) || undefined;
 
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
+    const uploaded = await uploadReceiptImage({
+      fileBuffer: file.buffer,
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      userId,
+      orderId,
+      kind,
+    });
 
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
+    res.json({
+      url: uploaded.publicUrl,
+      publicUrl: uploaded.publicUrl,
+      objectPath: uploaded.objectPath,
+      bucket: uploaded.bucket,
+    });
   } catch (error) {
-    req.log.error({ err: error }, "Error serving public object");
-    res.status(500).json({ error: "Failed to serve public object" });
-  }
-});
-
-/**
- * GET /storage/objects/*
- *
- * Serve object entities from PRIVATE_OBJECT_DIR.
- * These are served from a separate path from /public-objects and can optionally
- * be protected with authentication or ACL checks based on the use case.
- */
-router.get("/storage/objects/*path", async (req: Request, res: Response) => {
-  try {
-    const raw = req.params.path;
-    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
-    const objectPath = `/objects/${wildcardPath}`;
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-
-    // --- Protected route example (uncomment when using replit-auth) ---
-    // if (!req.isAuthenticated()) {
-    //   res.status(401).json({ error: "Unauthorized" });
-    //   return;
-    // }
-    // const canAccess = await objectStorageService.canAccessObjectEntity({
-    //   userId: req.user.id,
-    //   objectFile,
-    //   requestedPermission: ObjectPermission.READ,
-    // });
-    // if (!canAccess) {
-    //   res.status(403).json({ error: "Forbidden" });
-    //   return;
-    // }
-
-    const response = await objectStorageService.downloadObject(objectFile);
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
-  } catch (error) {
-    if (error instanceof ObjectNotFoundError) {
-      req.log.warn({ err: error }, "Object not found");
-      res.status(404).json({ error: "Object not found" });
-      return;
-    }
-    req.log.error({ err: error }, "Error serving object");
-    res.status(500).json({ error: "Failed to serve object" });
+    req.log.error({ err: error }, "Error uploading receipt image");
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "فشل رفع صورة الإيصال",
+    });
   }
 });
 

@@ -1,0 +1,135 @@
+[debug] [2026-08-06T10:59:38.242Z] ----------------------------------------------------------------------
+[debug] [2026-08-06T10:59:38.251Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init hosting
+[debug] [2026-08-06T10:59:38.251Z] CLI Version:   15.26.0
+[debug] [2026-08-06T10:59:38.252Z] Platform:      win32
+[debug] [2026-08-06T10:59:38.252Z] Node Version:  v24.14.1
+[debug] [2026-08-06T10:59:38.253Z] Detected Agent: unknown
+[debug] [2026-08-06T10:59:38.253Z] Time:          Thu Aug 06 2026 13:59:38 GMT+0300 (Eastern European Summer Time)
+[debug] [2026-08-06T10:59:38.253Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-08-06T10:59:38.288Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  F:\Web-Arkan-Creation\Web-Creation-Hub
+
+Before we get started, keep in mind:
+
+  * You are initializing within an existing Firebase project directory
+
+[debug] [2026-08-06T10:59:45.417Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-08-06T10:59:45.417Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-08-06T11:00:34.940Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-08-06T11:00:34.941Z] > authorizing via signed-in user (mohammedabogad235@gmail.com)
+[debug] [2026-08-06T11:00:34.944Z] Checked if tokens are valid: false, expires at: 1785918524373
+[debug] [2026-08-06T11:00:34.944Z] Checked if tokens are valid: false, expires at: 1785918524373
+[debug] [2026-08-06T11:00:34.945Z] > refreshing access token with scopes: []
+[debug] [2026-08-06T11:00:34.948Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-08-06T11:00:34.948Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-08-06T11:00:35.250Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-08-06T11:00:35.250Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-08-06T11:00:35.325Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects pageSize=100
+[debug] [2026-08-06T11:00:36.094Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects 200
+[debug] [2026-08-06T11:00:36.095Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects [omitted]
+[info] 
+=== Hosting Setup
+[debug] [2026-08-06T11:01:28.698Z] Error: Cannot find module 'vite'
+Require stack:
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\utils.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\features\hosting\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\features\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\init.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\cli.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)
+    at require.resolve (node:internal/modules/helpers:163:19)
+    at relativeRequire (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\utils.js:259:34)
+    at getConfig (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\vite\index.js:112:65)
+    at discover (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\vite\index.js:65:68)
+    at async C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\vite\index.js:44:55
+    at async discover (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\index.js:50:32)
+    at async Object.askQuestions (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\features\hosting\index.js:23:33)
+    at async init (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\index.js:102:17)
+    at async Command.initAction [as actionFn] (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\init.js:232:5)
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-08-06T11:04:16.085Z] ----------------------------------------------------------------------
+[debug] [2026-08-06T11:04:16.093Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init hosting
+[debug] [2026-08-06T11:04:16.094Z] CLI Version:   15.26.0
+[debug] [2026-08-06T11:04:16.094Z] Platform:      win32
+[debug] [2026-08-06T11:04:16.095Z] Node Version:  v24.14.1
+[debug] [2026-08-06T11:04:16.095Z] Detected Agent: unknown
+[debug] [2026-08-06T11:04:16.095Z] Time:          Thu Aug 06 2026 14:04:16 GMT+0300 (Eastern European Summer Time)
+[debug] [2026-08-06T11:04:16.096Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  F:\Web-Arkan-Creation\Web-Creation-Hub
+
+Before we get started, keep in mind:
+
+  * You are initializing within an existing Firebase project directory
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-08-06T11:04:23.384Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-08-06T11:04:23.385Z] > authorizing via signed-in user (mohammedabogad235@gmail.com)
+[debug] [2026-08-06T11:04:23.421Z] Checked if tokens are valid: true, expires at: 1786017634251
+[debug] [2026-08-06T11:04:23.422Z] Checked if tokens are valid: true, expires at: 1786017634251
+[debug] [2026-08-06T11:04:23.425Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/arkan-web-2 [none]
+[debug] [2026-08-06T11:04:24.053Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/arkan-web-2 200
+[debug] [2026-08-06T11:04:24.054Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/arkan-web-2 {"projectId":"arkan-web-2","projectNumber":"226055596745","displayName":"arkan-web","name":"projects/arkan-web-2","resources":{"hostingSite":"arkan-web-2"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_94a90f6e-2fb3-4a47-abdf-a17b2461a649"}
+[info] i  Using project arkan-web-2 (arkan-web) . 
+[info] 
+=== Hosting Setup
+[debug] [2026-08-06T11:05:06.825Z] Error: Cannot find module 'vite'
+Require stack:
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\utils.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\features\hosting\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\features\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\init.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\index.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\cli.js
+- C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)
+    at require.resolve (node:internal/modules/helpers:163:19)
+    at relativeRequire (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\utils.js:259:34)
+    at getConfig (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\vite\index.js:112:65)
+    at discover (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\vite\index.js:65:68)
+    at async C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\vite\index.js:44:55
+    at async discover (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\index.js:50:32)
+    at async Object.askQuestions (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\features\hosting\index.js:23:33)
+    at async init (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\index.js:102:17)
+    at async Command.initAction [as actionFn] (C:\Users\car and house\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\init.js:232:5)
+[error] 
+[error] Error: An unexpected error has occurred.
