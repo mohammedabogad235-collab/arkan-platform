@@ -9,6 +9,8 @@
     "noImplicitOverride": false,
     "noImplicitReturns": true,
     "noUnusedLocals": false,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
     "strictNullChecks": true,
