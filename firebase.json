@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "artifacts/website-builder/dist/public",
+    "public": "artifacts/website-builder/dist",
     "ignore": [
       "firebase.json",
       "**/.*",
