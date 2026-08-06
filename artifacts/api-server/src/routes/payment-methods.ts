@@ -1,12 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, paymentMethodsTable } from "@workspace/db";
-import {
-  CreatePaymentMethodBody,
-  UpdatePaymentMethodBody,
-  UpdatePaymentMethodParams,
-  DeletePaymentMethodParams,
-} from "@workspace/api-zod";
+import { Api } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -20,7 +15,7 @@ router.get("/payment-methods", async (_req, res): Promise<void> => {
 });
 
 router.post("/payment-methods", async (req, res): Promise<void> => {
-  const parsed = CreatePaymentMethodBody.safeParse(req.body);
+  const parsed = Api.CreatePaymentMethodBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -36,13 +31,13 @@ router.post("/payment-methods", async (req, res): Promise<void> => {
 
 router.patch("/payment-methods/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = UpdatePaymentMethodParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.UpdatePaymentMethodParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const parsed = UpdatePaymentMethodBody.safeParse(req.body);
+  const parsed = Api.UpdatePaymentMethodBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -65,7 +60,7 @@ router.patch("/payment-methods/:id", async (req, res): Promise<void> => {
 
 router.delete("/payment-methods/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = DeletePaymentMethodParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.DeletePaymentMethodParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;

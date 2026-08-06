@@ -197,6 +197,7 @@ function CouponApplier({ orderId, onApplied }: { orderId: number; onApplied: () 
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const handleApply = async () => {
     if (!code.trim()) return;
@@ -216,7 +217,7 @@ function CouponApplier({ orderId, onApplied }: { orderId: number; onApplied: () 
         setErrorMsg(data.error || "الكود غير صحيح أو غير نشط");
       } else {
         toast({ title: "تم تطبيق الكوبون بنجاح!" });
-        onApplied();
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         setOpen(false);
         setCode("");
         setStatus("idle");
@@ -333,16 +334,16 @@ export default function MyOrders() {
                 {groupOrders.map((order) => {
             const requireDeposit = settings?.requireDeposit ?? true;
             const depositPct = order.depositPercentage ?? settings?.depositPercentageValue ?? 50;
-            const totalAmount = order.totalAmount ? Number(order.totalAmount) : null;
-            const discountAmt = order.discountAmount ? Number(order.discountAmount) : 0;
+            const totalAmount = (order as any).totalAmount ? Number((order as any).totalAmount) : null;
+            const discountAmt = (order as any).discountAmount ? Number((order as any).discountAmount) : 0;
             const effectiveAmount = totalAmount !== null ? Math.max(0, totalAmount - discountAmt) : null;
             const depositAmount = effectiveAmount ? Math.round(effectiveAmount * depositPct / 100) : null;
             const remainingAmount = effectiveAmount && depositAmount !== null ? effectiveAmount - depositAmount : null;
             const currencyLabel = order.currency === "EGP" ? "جنيه" : "ريال";
 
             const priceSet = totalAmount !== null && totalAmount > 0;
-            const showReceiptUpload = order.status === "pending" && priceSet && !order.receiptUrl;
-            const receiptUploaded = !!order.receiptUrl;
+            const showReceiptUpload = order.status === "pending" && priceSet && !(order as any).receiptUrl;
+            const receiptUploaded = !!(order as any).receiptUrl;
             const canCancel = order.status === "pending" || order.status === "in_progress";
             const statusCfg = statusMap[order.status] || { label: order.status, color: "", variant: "outline" as const };
 
@@ -392,19 +393,19 @@ export default function MyOrders() {
                         <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                         <div className="space-y-2 flex-1">
                           {/* Coupon discount breakdown */}
-                          {discountAmt > 0 && (
+                          {discountAmt > 0 && totalAmount && (
                             <div className="bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 space-y-1 text-xs">
                               <div className="flex justify-between text-muted-foreground">
                                 <span>السعر الأصلي</span>
-                                <span>{totalAmount?.toLocaleString()} {currencyLabel}</span>
+                                <span>{totalAmount.toLocaleString()} {currencyLabel}</span>
                               </div>
                               <div className="flex justify-between text-purple-700 font-semibold">
-                                <span>🎟 خصم كوبون ({order.couponCode})</span>
+                                <span>🎟 خصم كوبون ({(order as any).couponCode})</span>
                                 <span>− {discountAmt.toLocaleString()} {currencyLabel}</span>
                               </div>
                               <div className="flex justify-between text-green-700 font-bold border-t border-purple-200 pt-1">
                                 <span>المبلغ بعد الخصم</span>
-                                <span>{effectiveAmount?.toLocaleString()} {currencyLabel}</span>
+                                <span>{effectiveAmount ? effectiveAmount.toLocaleString() : ''} {currencyLabel}</span>
                               </div>
                             </div>
                           )}
@@ -474,20 +475,20 @@ export default function MyOrders() {
                 )}
 
                 {/* Completed: Delivered URL */}
-                {order.status === "completed" && order.deliveredUrl && (
+                {order.status === "completed" && (order as any).deliveredUrl && (
                   <div className="px-6 py-4 border-b bg-gradient-to-l from-green-50 to-emerald-50 space-y-3">
                     <div className="flex items-center gap-2 text-green-700 font-semibold text-sm">
                       <PartyPopper className="w-4 h-4" />
                       تم تسليم موقعك بنجاح! 🎉
                     </div>
                     <a
-                      href={order.deliveredUrl}
+                      href={(order as any).deliveredUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 bg-white border border-green-200 rounded-xl px-4 py-3 text-sm font-medium text-green-700 hover:bg-green-50 transition-colors"
                     >
                       <ExternalLink className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{order.deliveredUrl}</span>
+                      <span className="truncate">{(order as any).deliveredUrl}</span>
                     </a>
                     <p className="text-xs text-green-600">يمكنك زيارة موقعك والتحقق من كافة الصفحات.</p>
                   </div>
@@ -509,11 +510,11 @@ export default function MyOrders() {
                         )}
                       </div>
                     </div>
-                    {order.finalReceiptUrl ? (
+                    {(order as any).finalReceiptUrl ? (
                       <div className="flex items-center gap-2 bg-blue-100 rounded-lg px-3 py-2 text-blue-700">
                         <CheckCircle2 className="w-4 h-4 shrink-0" />
                         <span>تم رفع إيصال السداد — بانتظار تأكيد الإدارة وتسليم الصلاحيات.</span>
-                        <a href={order.finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="ms-auto text-xs underline underline-offset-2 hover:text-blue-900 shrink-0">
+                        <a href={(order as any).finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="ms-auto text-xs underline underline-offset-2 hover:text-blue-900 shrink-0">
                           <Image className="w-3.5 h-3.5 inline me-0.5" />عرض الإيصال
                         </a>
                       </div>
@@ -603,23 +604,23 @@ export default function MyOrders() {
                               {discountAmt > 0 && (
                                 <div className="flex justify-between items-center text-muted-foreground line-through">
                                   <span>السعر الأصلي</span>
-                                  <span>{totalAmount.toLocaleString()} {currencyLabel}</span>
+                                  <span>{totalAmount?.toLocaleString()} {currencyLabel}</span>
                                 </div>
                               )}
                               {/* Coupon discount row */}
-                              {order.couponCode && discountAmt > 0 && (
+                              {(order as any).couponCode && discountAmt > 0 && (
                                 <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
                                   <span className="text-purple-700 flex items-center gap-1 text-xs">
-                                    🎟 خصم: <span className="font-mono font-bold">{order.couponCode}</span>
+                                    🎟 خصم: <span className="font-mono font-bold">{(order as any).couponCode}</span>
                                   </span>
                                   <span className="text-purple-600 font-semibold text-xs">− {discountAmt.toLocaleString()} {currencyLabel}</span>
                                 </div>
                               )}
                               {/* Coupon applied but no amount yet (discount = 0) */}
-                              {order.couponCode && discountAmt === 0 && (
+                              {(order as any).couponCode && discountAmt === 0 && (
                                 <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
                                   <span className="text-purple-700 flex items-center gap-1 text-xs">
-                                    🎟 كوبون: <span className="font-mono font-bold">{order.couponCode}</span>
+                                    🎟 كوبون: <span className="font-mono font-bold">{(order as any).couponCode}</span>
                                   </span>
                                   <span className="text-purple-500 text-xs">سيُحسب الخصم عند تحديد المبلغ</span>
                                 </div>
@@ -666,10 +667,10 @@ export default function MyOrders() {
                           ) : (
                             <>
                               <p className="text-muted-foreground text-xs">لم يُحدد المبلغ بعد — ستصلك رسالة من الإدارة.</p>
-                              {order.couponCode && (
+                              {(order as any).couponCode && (
                                 <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
                                   <span className="text-purple-700 flex items-center gap-1 text-xs">
-                                    🎟 كوبون مطبّق: <span className="font-mono font-bold">{order.couponCode}</span>
+                                    🎟 كوبون مطبّق: <span className="font-mono font-bold">{(order as any).couponCode}</span>
                                   </span>
                                   <span className="text-purple-500 text-xs">سيُحسب الخصم مع المبلغ</span>
                                 </div>
@@ -692,8 +693,8 @@ export default function MyOrders() {
                       </div>
 
                       {/* Apply Coupon (only if no coupon applied yet and order not cancelled) */}
-                      {!order.couponCode && order.status !== "cancelled" && (
-                        <CouponApplier orderId={order.id} onApplied={() => queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() })} />
+                      {!(order as any).couponCode && order.status !== "cancelled" && (
+                        <CouponApplier orderId={order.id} onApplied={() => {}} />
                       )}
 
                       {/* Receipt Upload */}
@@ -708,7 +709,7 @@ export default function MyOrders() {
                       )}
                       {receiptUploaded && order.status === "pending" && (
                         <div className="border-t pt-4">
-                          <a href={order.receiptUrl!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                          <a href={(order as any).receiptUrl!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
                             <Image className="w-4 h-4" />
                             عرض الإيصال المرفوع
                           </a>

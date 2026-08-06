@@ -117,7 +117,7 @@ function DeliveredUrlInput({ order }: { order: any }) {
           onClick={() => {
             setSaving(true);
             updateOrder.mutate(
-              { id: order.id, data: { deliveredUrl: urlInput.trim() || null } },
+              { id: order.id, data: { deliveredUrl: urlInput.trim() || null } as any },
               {
                 onSuccess: () => {
                   queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
@@ -171,12 +171,12 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-foreground truncate">{order.siteName}</span>
               <StatusBadge status={order.status} />
-              {order.receiptUrl && !order.depositPaid && (
+              {(order as any).receiptUrl && !order.depositPaid && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200">
                   <FileImage className="w-3 h-3" /> إيصال مقدّم بانتظار التأكيد
                 </span>
               )}
-              {order.finalReceiptUrl && !order.finalPaid && (
+              {(order as any).finalReceiptUrl && !order.finalPaid && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
                   <FileImage className="w-3 h-3" /> إيصال متبقي بانتظار التأكيد
                 </span>
@@ -211,7 +211,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
           <span className="text-muted-foreground text-xs">لم يُحدَّد المبلغ بعد</span>
         )}
         <div className="flex items-center gap-2 ms-auto">
-          {order.couponCode && <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-mono">{order.couponCode}</Badge>}
+          {(order as any).couponCode && <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-mono">{(order as any).couponCode}</Badge>}
           {order.depositPaid && <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">✓ مقدم</Badge>}
           {order.finalPaid && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">✓ متبقي</Badge>}
         </div>
@@ -279,7 +279,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                   </div>
                   {/* Live breakdown preview */}
                   {liveAmount !== null && liveAmount > 0 && (() => {
-                    const liveDiscount = order.discountAmount ? Number(order.discountAmount) : 0;
+                    const liveDiscount = (order as any).discountAmount ? Number((order as any).discountAmount) : 0;
                     const liveEffective = Math.max(0, liveAmount - liveDiscount);
                     const liveDeposit = Math.round(liveEffective * pct / 100);
                     const liveRemaining = liveEffective - liveDeposit;
@@ -292,7 +292,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                               <span>{liveAmount.toLocaleString()} {order.currency}</span>
                             </div>
                             <div className="flex justify-between text-purple-700">
-                              <span>خصم ({order.couponCode})</span>
+                              <span>خصم ({(order as any).couponCode})</span>
                               <span>− {liveDiscount.toLocaleString()} {order.currency}</span>
                             </div>
                             <div className="flex justify-between text-green-700 font-semibold border-t pt-1">
@@ -325,7 +325,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                   return savedAmt ? (
                     <>
                       {/* Coupon breakdown */}
-                      {order.couponCode && (
+                      {(order as any).couponCode && (
                         <div className="pt-1 border-t space-y-1 text-xs">
                           {savedDiscount > 0 ? (
                             <>
@@ -334,7 +334,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                                 <span>{savedAmt.toLocaleString()} {order.currency}</span>
                               </div>
                               <div className="flex justify-between text-purple-700 bg-purple-50 rounded px-2 py-1">
-                                <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> خصم ({order.couponCode})</span>
+                                <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> خصم ({(order as any).couponCode})</span>
                                 <span className="font-bold">− {savedDiscount.toLocaleString()} {order.currency}</span>
                               </div>
                               <div className="flex justify-between text-green-700 font-bold">
@@ -344,7 +344,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                             </>
                           ) : (
                             <div className="flex justify-between text-purple-600 bg-purple-50 rounded px-2 py-1">
-                              <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> كوبون: {order.couponCode}</span>
+                              <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> كوبون: {(order as any).couponCode}</span>
                               <span className="text-purple-400 text-xs">الخصم سيُحسب بعد الحفظ</span>
                             </div>
                           )}
@@ -367,10 +367,10 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                     </>
                   ) : (
                     <>
-                      {order.couponCode && (
+                      {(order as any).couponCode && (
                         <div className="pt-1 border-t">
                           <div className="flex justify-between text-purple-600 bg-purple-50 rounded px-2 py-1 text-xs">
-                            <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> كوبون: {order.couponCode}</span>
+                            <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> كوبون: {(order as any).couponCode}</span>
                             <span className="text-purple-400">سيُطبّق عند تحديد المبلغ</span>
                           </div>
                         </div>
@@ -390,9 +390,9 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
               <DeliveredUrlInput order={order} />
 
               {/* Deposit Receipt */}
-              {order.receiptUrl && (
+              {(order as any).receiptUrl && (
                 <div className="bg-white rounded-xl border p-3 flex items-center justify-between">
-                  <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                  <a href={(order as any).receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
                     <FileImage className="w-4 h-4" />
                     إيصال الدفع المقدّم
                   </a>
@@ -409,9 +409,9 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
               )}
 
               {/* Final Receipt */}
-              {order.finalReceiptUrl && (
+              {(order as any).finalReceiptUrl && (
                 <div className="bg-white rounded-xl border border-blue-200 p-3 flex items-center justify-between">
-                  <a href={order.finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
+                  <a href={(order as any).finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
                     <FileImage className="w-4 h-4" />
                     إيصال سداد المبلغ المتبقي
                   </a>
@@ -1024,11 +1024,11 @@ export default function Admin() {
 
   const allOrders = orders || [];
   const effectiveAmt = (o: any) => Math.max(0, (o.totalAmount || 0) - (o.discountAmount || 0));
-  const totalRevenue = allOrders.reduce((s, o) => s + effectiveAmt(o), 0);
-  const totalDiscounts = allOrders.reduce((s, o) => s + (o.discountAmount || 0), 0);
-  const depositCollected = allOrders.filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o) * p / 100); }, 0);
-  const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o) * (100 - p) / 100); }, 0);
-  const pendingReceipts = allOrders.filter(o => o.receiptUrl && !o.depositPaid).length;
+  const totalRevenue = allOrders.reduce((s, o) => s + effectiveAmt(o as any), 0);
+  const totalDiscounts = allOrders.reduce((s, o) => s + ((o as any).discountAmount || 0), 0);
+  const depositCollected = allOrders.filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * p / 100); }, 0);
+  const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * (100 - p) / 100); }, 0);
+  const pendingReceipts = allOrders.filter(o => (o as any).receiptUrl && !o.depositPaid).length;
 
   // Build visible nav based on role/permissions
   const NAV = isMainAdmin
@@ -1207,7 +1207,7 @@ export default function Admin() {
                   )}
                   {allOrders.filter(o => o.totalAmount).map(order => {
                     const p = order.depositPercentage ?? siteSettings?.depositPercentageValue ?? 50;
-                    const disc = order.discountAmount ? Number(order.discountAmount) : 0;
+                    const disc = (order as any).discountAmount ? Number((order as any).discountAmount) : 0;
                     const eff = Math.max(0, (order.totalAmount || 0) - disc);
                     const dep = Math.round(eff * p / 100);
                     const rem = eff - dep;
@@ -1216,9 +1216,9 @@ export default function Admin() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold">{order.siteName}</p>
-                            {order.couponCode && (
+                            {(order as any).couponCode && (
                               <span className="inline-flex items-center gap-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-0.5 font-mono">
-                                🎟 {order.couponCode}
+                                🎟 {(order as any).couponCode}
                               </span>
                             )}
                           </div>

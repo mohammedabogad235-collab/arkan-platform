@@ -63,14 +63,17 @@ export default function Register() {
           setLocation("/");
         },
         onError: (error) => {
-          const errData = error.error as any;
+          // The error object from react-query often contains server response in `error.response.data`.
+          // Accessing it safely.
+          const errData = (error as any)?.response?.data;
           const msg = errData?.error || "حدث خطأ أثناء إنشاء الحساب";
           const field = errData?.field;
           const pending = errData?.pendingVerification;
 
-          if (pending && errData?.email) {
+          if (pending) {
             toast({ title: "حساب موجود", description: "أُرسل رمز تأكيد جديد — تحقق من بريدك" });
-            setLocation(`/verify-email?email=${encodeURIComponent(errData.email)}`);
+            // The email isn't in the error response, so we use it from the form values.
+            setLocation(`/verify-email?email=${encodeURIComponent(values.email)}`);
             return;
           }
           if (field === "phone") {

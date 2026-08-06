@@ -1,12 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, testimonialsTable } from "@workspace/db";
-import {
-  CreateTestimonialBody,
-  UpdateTestimonialBody,
-  UpdateTestimonialParams,
-  DeleteTestimonialParams,
-} from "@workspace/api-zod";
+import { Api } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -20,7 +15,7 @@ router.get("/testimonials", async (_req, res): Promise<void> => {
 });
 
 router.post("/testimonials", async (req, res): Promise<void> => {
-  const parsed = CreateTestimonialBody.safeParse(req.body);
+  const parsed = Api.CreateTestimonialBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -36,13 +31,13 @@ router.post("/testimonials", async (req, res): Promise<void> => {
 
 router.patch("/testimonials/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = UpdateTestimonialParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.UpdateTestimonialParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const parsed = UpdateTestimonialBody.safeParse(req.body);
+  const parsed = Api.UpdateTestimonialBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -66,7 +61,7 @@ router.patch("/testimonials/:id", async (req, res): Promise<void> => {
 
 router.delete("/testimonials/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = DeleteTestimonialParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.DeleteTestimonialParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;

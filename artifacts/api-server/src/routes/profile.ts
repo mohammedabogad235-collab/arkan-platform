@@ -6,7 +6,7 @@ import { hashPassword } from "../lib/crypto";
 const router: IRouter = Router();
 
 router.patch("/profile", async (req, res): Promise<void> => {
-  const userId = req.session?.userId;
+  const userId = (req.session as any)?.userId;
   if (!userId) { res.status(401).json({ error: "غير مسجّل الدخول" }); return; }
 
   const { phone, email, password } = req.body as Record<string, any>;

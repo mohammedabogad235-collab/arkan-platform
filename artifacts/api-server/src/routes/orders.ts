@@ -1,14 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, sql } from "drizzle-orm";
 import { db, ordersTable, usersTable, packagesTable, paymentMethodsTable, siteSettingsTable, couponsTable } from "@workspace/db";
-import {
-  CreateOrderBody,
-  UpdateOrderBody,
-  GetOrderParams,
-  UpdateOrderParams,
-  DeleteOrderParams,
-  ListOrdersQueryParams,
-} from "@workspace/api-zod";
+import { Api } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -46,7 +39,7 @@ async function enrichOrder(order: typeof ordersTable.$inferSelect) {
 }
 
 router.get("/orders", async (req, res): Promise<void> => {
-  const queryParams = ListOrdersQueryParams.safeParse(req.query);
+  const queryParams = Api.ListOrdersQueryParams.safeParse(req.query);
   
   let orders;
   if (queryParams.success && queryParams.data.userId) {
@@ -62,13 +55,13 @@ router.get("/orders", async (req, res): Promise<void> => {
 });
 
 router.post("/orders", async (req, res): Promise<void> => {
-  const sessionUserId = (req.session as Record<string, unknown>).userId as number | undefined;
+  const sessionUserId = (req.session as unknown as Record<string, unknown>).userId as number | undefined;
   if (!sessionUserId) {
     res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
     return;
   }
 
-  const parsed = CreateOrderBody.safeParse(req.body);
+  const parsed = Api.CreateOrderBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -112,7 +105,7 @@ router.post("/orders", async (req, res): Promise<void> => {
 
 router.get("/orders/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = GetOrderParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.GetOrderParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
@@ -130,13 +123,13 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
 
 router.patch("/orders/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = UpdateOrderParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.UpdateOrderParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const parsed = UpdateOrderBody.safeParse(req.body);
+  const parsed = Api.UpdateOrderBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -180,8 +173,8 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
-  const session = req.session as { userId?: number } | undefined;
-  if (!session?.userId) {
+  const sessionUserId = (req.session as unknown as Record<string, unknown>)?.userId as number | undefined;
+  if (!sessionUserId) {
     res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
     return;
   }
@@ -215,8 +208,8 @@ router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
 
 router.post("/orders/:id/apply-coupon", async (req, res): Promise<void> => {
   try {
-    const session = req.session as { userId?: number } | undefined;
-    if (!session?.userId) {
+    const sessionUserId = (req.session as unknown as Record<string, unknown>)?.userId as number | undefined;
+    if (!sessionUserId) {
       res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
       return;
     }
@@ -236,7 +229,7 @@ router.post("/orders/:id/apply-coupon", async (req, res): Promise<void> => {
 
     // Verify order belongs to user
     const [existingOrder] = await db.select().from(ordersTable)
-      .where(and(eq(ordersTable.id, id), eq(ordersTable.userId, session.userId)));
+      .where(and(eq(ordersTable.id, id), eq(ordersTable.userId, sessionUserId)));
     if (!existingOrder) {
       res.status(404).json({ error: "الطلب غير موجود" });
       return;
@@ -292,8 +285,8 @@ router.post("/orders/:id/apply-coupon", async (req, res): Promise<void> => {
 });
 
 router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
-  const session = req.session as { userId?: number } | undefined;
-  if (!session?.userId) {
+  const sessionUserId = (req.session as unknown as Record<string, unknown>)?.userId as number | undefined;
+  if (!sessionUserId) {
     res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
     return;
   }
@@ -326,8 +319,8 @@ router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
 });
 
 router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
-  const session = req.session as { userId?: number } | undefined;
-  if (!session?.userId) {
+  const sessionUserId = (req.session as unknown as Record<string, unknown>)?.userId as number | undefined;
+  if (!sessionUserId) {
     res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
     return;
   }
@@ -340,7 +333,7 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
   }
 
   const [existing] = await db.select().from(ordersTable).where(
-    and(eq(ordersTable.id, id), eq(ordersTable.userId, session.userId))
+    and(eq(ordersTable.id, id), eq(ordersTable.userId, sessionUserId))
   );
 
   if (!existing) {
@@ -391,7 +384,7 @@ router.post("/orders/:id/confirm-receipt", async (req, res): Promise<void> => {
 
 router.delete("/orders/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = DeleteOrderParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.DeleteOrderParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;

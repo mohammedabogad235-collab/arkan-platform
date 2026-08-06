@@ -35,7 +35,7 @@ export default function AdminLogin() {
     e.preventDefault();
     setError("");
     login.mutate(
-      { data: { username, password } },
+      { data: { identifier: username, password } },
       {
         onSuccess: (data) => {
           const userData = (data as any).user ?? data;

@@ -1,12 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, packagesTable } from "@workspace/db";
-import {
-  CreatePackageBody,
-  UpdatePackageBody,
-  UpdatePackageParams,
-  DeletePackageParams,
-} from "@workspace/api-zod";
+import { Api } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -20,7 +15,7 @@ router.get("/packages", async (_req, res): Promise<void> => {
 });
 
 router.post("/packages", async (req, res): Promise<void> => {
-  const parsed = CreatePackageBody.safeParse(req.body);
+  const parsed = Api.CreatePackageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -36,13 +31,13 @@ router.post("/packages", async (req, res): Promise<void> => {
 
 router.patch("/packages/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = UpdatePackageParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.UpdatePackageParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const parsed = UpdatePackageBody.safeParse(req.body);
+  const parsed = Api.UpdatePackageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -67,7 +62,7 @@ router.patch("/packages/:id", async (req, res): Promise<void> => {
 
 router.delete("/packages/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const params = DeletePackageParams.safeParse({ id: parseInt(raw, 10) });
+  const params = Api.DeletePackageParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;

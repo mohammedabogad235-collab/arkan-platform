@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect } from "react";
-import { useGetMe, User } from "@workspace/api-client-react";
+import { User, getGetMeQueryKey, getMe } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 
 type AuthContextType = {
@@ -15,11 +16,11 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { data: user, isLoading, error } = useGetMe({
-    query: {
-      retry: false,
-      refetchOnWindowFocus: false,
-    }
+  const { data: user, isLoading, error } = useQuery({
+    queryKey: getGetMeQueryKey(),
+    queryFn: () => getMe({}),
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
   return (

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
-import { GetUserParams, DeleteUserParams } from "@workspace/api-zod";
+import { Api } from "@workspace/api-zod";
 import { hashPassword } from "../lib/crypto";
 
 const router: IRouter = Router();
@@ -26,7 +26,7 @@ router.get("/users", async (_req, res): Promise<void> => {
 });
 
 router.get("/users/:id", async (req, res): Promise<void> => {
-  const params = GetUserParams.safeParse({ id: parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10) });
+  const params = Api.GetUserParams.safeParse({ id: parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
@@ -98,7 +98,7 @@ router.post("/admin/create-admin", async (req, res): Promise<void> => {
 });
 
 router.delete("/users/:id", async (req, res): Promise<void> => {
-  const params = DeleteUserParams.safeParse({ id: parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10) });
+  const params = Api.DeleteUserParams.safeParse({ id: parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;

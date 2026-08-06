@@ -60,7 +60,7 @@ export default function Login() {
           setLocation(data.user.role === "admin" || data.user.role === "subadmin" ? "/admin" : "/order");
         },
         onError: (error) => {
-          const errData = error.error as any;
+          const errData = (error as any)?.response?.data;
           if (errData?.pendingVerification && errData?.email) {
             toast({ title: "حساب غير مؤكد", description: "يجب تأكيد بريدك أولاً" });
             setLocation(`/verify-email?email=${encodeURIComponent(errData.email)}`);

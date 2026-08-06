@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
-import { RegisterBody } from "@workspace/api-zod";
+import { Api } from "@workspace/api-zod";
 import { hashPassword } from "../lib/crypto";
 import { sendOtpEmail } from "../lib/mailer";
 
@@ -30,7 +30,7 @@ function sanitizeUser(user: typeof usersTable.$inferSelect) {
 
 // POST /auth/register — create account (unverified), send OTP
 router.post("/auth/register", async (req, res): Promise<void> => {
-  const parsed = RegisterBody.safeParse(req.body);
+  const parsed = Api.RegisterBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -162,8 +162,8 @@ router.post("/auth/verify-signup-otp", async (req, res): Promise<void> => {
   signupOtpStore.delete(trimmed);
 
   // Create session
-  (req.session as Record<string, unknown>).userId = user.id;
-  (req.session as Record<string, unknown>).role = user.role;
+  (req.session as unknown as Record<string, unknown>).userId = user.id;
+  (req.session as unknown as Record<string, unknown>).role = user.role;
 
   res.json({ user: sanitizeUser(user), message: "تم تأكيد الحساب بنجاح" });
 });
@@ -199,8 +199,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  (req.session as Record<string, unknown>).userId = user.id;
-  (req.session as Record<string, unknown>).role = user.role;
+  (req.session as unknown as Record<string, unknown>).userId = user.id;
+  (req.session as unknown as Record<string, unknown>).role = user.role;
 
   res.json({ user: sanitizeUser(user), message: "تم تسجيل الدخول بنجاح" });
 });
@@ -234,7 +234,7 @@ router.post("/auth/logout", async (req, res): Promise<void> => {
 
 // GET /auth/me
 router.get("/auth/me", async (req, res): Promise<void> => {
-  const userId = (req.session as Record<string, unknown>).userId as number | undefined;
+  const userId = (req.session as unknown as Record<string, unknown>).userId as number | undefined;
   if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
