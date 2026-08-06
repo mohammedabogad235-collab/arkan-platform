@@ -11,18 +11,19 @@
   "private": true,
   "devDependencies": {
     "@types/archiver": "^8.0.0",
+    "@types/multer": "^1.4.11",
     "archiver": "^8.0.0",
     "jszip": "^3.10.1",
     "prettier": "^3.8.1",
-    "typescript": "~5.9.2",
-    "@types/multer": "^1.4.11"
+    "typescript": "~5.9.2"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
     "connect-pg-simple": "^10.0.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
-    "@supabase/supabase-js": "^2.45.0",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.20.0"
   },
   "packageManager": "pnpm@11.17.0+sha512.cca3cea332ad254bb84145f966d19f4879615210346fc92c79a047f23a0d7b3cca3c3792f0076ba1f1831d277efbcf0a9119b31a9a60eca7fb3d6231f331ef72"
 }
