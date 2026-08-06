@@ -38,12 +38,16 @@ const DEFAULT_TERMS = [
   },
 ];
 
+// Calculate the date once outside the component to prevent re-calculation on every render.
+const lastUpdatedDate = new Date().toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" });
+
 export default function Terms() {
   const { data: settings, isLoading } = useSettings();
   const customContent = settings?.termsAndConditions?.trim() || "";
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    // Added responsive padding
+    <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-4xl">
       <div className="mb-8">
         <Link href="/">
           <Button variant="ghost" className="mb-4 gap-2">
@@ -58,15 +62,17 @@ export default function Terms() {
           <h1 className="text-3xl font-bold">الشروط والأحكام</h1>
         </div>
         <p className="text-muted-foreground">
-          آخر تحديث: {new Date().toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" })}
+          آخر تحديث: {lastUpdatedDate}
         </p>
       </div>
 
       {isLoading ? (
-        <div className="bg-white rounded-2xl border p-12 text-center text-muted-foreground">جاري التحميل...</div>
+        // Use theme-aware color `bg-card` instead of hardcoded `bg-white`
+        <div className="bg-card rounded-2xl border p-12 text-center text-muted-foreground">جاري التحميل...</div>
       ) : customContent ? (
-        <div className="bg-white rounded-2xl border shadow-sm p-8">
-          <p className="text-foreground leading-loose whitespace-pre-wrap text-base">{customContent}</p>
+        // Use `prose` for consistent typography with the default content.
+        <div className="bg-card rounded-2xl border shadow-sm p-8">
+          <div className="prose prose-lg max-w-none text-foreground leading-loose whitespace-pre-wrap">{customContent}</div>
         </div>
       ) : (
         <div className="prose prose-lg max-w-none space-y-6 text-foreground">

@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       // Firebase Hosting سيستخدم هذا المجلد (راجع firebase.json)
-      outDir: "dist/public",
+      outDir: "dist",
       emptyOutDir: true,
       sourcemap: true,
     },
