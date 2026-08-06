@@ -22,7 +22,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const router: IRouter = Router();
 
-function getSession(req: any): { userId?: number; role?: string } {
+export function getSession(req: any): { userId?: number; role?: string } {
   const session = (req.session ?? {}) as Record<string, unknown>;
   return {
     userId: session.userId as number | undefined,
