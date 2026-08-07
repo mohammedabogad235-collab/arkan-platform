@@ -4,10 +4,10 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
-  const apiTarget = env.VITE_API_URL || "https://arkan-app-1cme.onrender.com";
+  const apiTarget = env.VITE_API_URL || "https://arkan-platform.onrender.com";
 
   return {
-    base: "./",
+    base: "/",
     plugins: [react()],
     resolve: {
       alias: {
@@ -15,7 +15,6 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      // Firebase Hosting سيستخدم هذا المجلد (راجع firebase.json)
       outDir: "dist",
       emptyOutDir: true,
       sourcemap: true,
