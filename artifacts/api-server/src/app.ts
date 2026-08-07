@@ -29,7 +29,7 @@ app.use(
         };
       },
     },
-  }),
+  })
 );
 
 function normalizeOrigin(origin: string) {
@@ -56,7 +56,7 @@ const allowedOrigins = new Set(
     ...(process.env.ALLOWED_ORIGINS?.split(",") ?? []),
   ]
     .map((origin) => (origin ? normalizeOrigin(origin) : null))
-    .filter((origin): origin is string => Boolean(origin)),
+    .filter((origin): origin is string => Boolean(origin))
 );
 
 function isAllowedOrigin(origin?: string) {
@@ -125,19 +125,20 @@ app.use(
   })
 );
 
-// 1. تشغيل مسارات الـ API (الباك إند)
-app.use(router);
+// --- التعديل السحري هنا ---
+// 1. تشغيل مسارات الـ API (يجب أن تكون مسبوقة بـ /api لكي لا تعترض ملفات التصميم)
+app.use("/api", router);
 
 // 2. مسار فحص صحة السيرفر
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// 3. ربط ملفات الواجهة (الفرونت إند) بالسيرفر
+// 3. ربط ملفات الواجهة (الفرونت إند) بالسيرفر لتعمل بسلام
 const frontendDistPath = path.join(process.cwd(), "artifacts/website-builder/dist");
 app.use(express.static(frontendDistPath));
 
-// 4. توجيه أي مسار آخر لصفحة الواجهة (التعديل الأخير هنا لتجنب خطأ PathError)
+// 4. توجيه أي مسار آخر لصفحة الواجهة
 app.get(/.*/, (req: Request, res: Response) => {
   res.sendFile(path.join(frontendDistPath, "index.html"));
 });
