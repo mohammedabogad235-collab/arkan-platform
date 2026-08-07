@@ -29,7 +29,7 @@ app.use(
         };
       },
     },
-  })
+  }),
 );
 
 function normalizeOrigin(origin: string) {
@@ -47,6 +47,7 @@ const allowedOrigins = new Set(
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://arkan-platform.onrender.com", // <-- الرابط الجديد المضاف
     "https://arkan-app-1cme.onrender.com",
     "https://arkan-web-2.web.app",
     "https://arkan-web-2.firebaseapp.com",
@@ -56,7 +57,7 @@ const allowedOrigins = new Set(
     ...(process.env.ALLOWED_ORIGINS?.split(",") ?? []),
   ]
     .map((origin) => (origin ? normalizeOrigin(origin) : null))
-    .filter((origin): origin is string => Boolean(origin))
+    .filter((origin): origin is string => Boolean(origin)),
 );
 
 function isAllowedOrigin(origin?: string) {
@@ -104,8 +105,12 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const PgSession = connectPgSimple(session);
+// 1. --- تقديم ملفات الواجهة أولاً لتجنب حظر الـ CORS أو أخطاء 500 ---
+const frontendDistPath = path.join(process.cwd(), "artifacts/website-builder/dist");
+app.use(express.static(frontendDistPath));
 
+// 2. --- إعدادات الجلسات وقاعدة البيانات ---
+const PgSession = connectPgSimple(session);
 app.use(
   session({
     store: new PgSession({
@@ -125,25 +130,20 @@ app.use(
   })
 );
 
-// --- التعديل السحري هنا ---
-// 1. تشغيل مسارات الـ API (يجب أن تكون مسبوقة بـ /api لكي لا تعترض ملفات التصميم)
+// 3. --- مسارات الـ API الخاصة بالباك إند ---
 app.use("/api", router);
 
-// 2. مسار فحص صحة السيرفر
+// 4. --- مسار فحص صحة السيرفر ---
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// 3. ربط ملفات الواجهة (الفرونت إند) بالسيرفر لتعمل بسلام
-const frontendDistPath = path.join(process.cwd(), "artifacts/website-builder/dist");
-app.use(express.static(frontendDistPath));
-
-// 4. توجيه أي مسار آخر لصفحة الواجهة
+// 5. --- توجيه أي مسار آخر لصفحة الواجهة (React Router) ---
 app.get(/.*/, (req: Request, res: Response) => {
   res.sendFile(path.join(frontendDistPath, "index.html"));
 });
 
-// 5. صائد الأخطاء العام (يجب أن يكون في النهاية تماماً)
+// 6. --- صائد الأخطاء العام ---
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   logger.error(err, "An unhandled error occurred");
   res.status(500).json({ error: err.message || "حدث خطأ في السيرفر" });
