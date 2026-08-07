@@ -137,8 +137,8 @@ app.get("/health", (_req, res) => {
 const frontendDistPath = path.join(process.cwd(), "artifacts/website-builder/dist");
 app.use(express.static(frontendDistPath));
 
-// 4. توجيه أي مسار آخر لصفحة الواجهة (مهم جداً عشان React Router)
-app.get("*", (req: Request, res: Response) => {
+// 4. توجيه أي مسار آخر لصفحة الواجهة (تم التعديل هنا لتجنب خطأ PathError)
+app.get("(.*)", (req: Request, res: Response) => {
   res.sendFile(path.join(frontendDistPath, "index.html"));
 });
 
