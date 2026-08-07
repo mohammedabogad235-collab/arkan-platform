@@ -6,6 +6,7 @@ import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { normalizedDatabaseUrl } from "@workspace/db";
+import path from "path"; // Import path module
 
 const app: Express = express();
 
@@ -124,20 +125,27 @@ app.use(
   })
 );
 
-// By mounting the router at the root, we assume that the routes within `router`
-// are already prefixed with `/api`. This is to fix a suspected double-prefix
-// issue (e.g., /api/api/route) that was causing the 404 errors.
+// 1. تشغيل مسارات الـ API (الباك إند)
 app.use(router);
 
-// Global JSON error handler — must come after routes
+// 2. مسار فحص صحة السيرفر
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// 3. ربط ملفات الواجهة (الفرونت إند) بالسيرفر
+const frontendDistPath = path.join(process.cwd(), "artifacts/website-builder/dist");
+app.use(express.static(frontendDistPath));
+
+// 4. توجيه أي مسار آخر لصفحة الواجهة (مهم جداً عشان React Router)
+app.get("*", (req: Request, res: Response) => {
+  res.sendFile(path.join(frontendDistPath, "index.html"));
+});
+
+// 5. صائد الأخطاء العام (يجب أن يكون في النهاية تماماً)
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   logger.error(err, "An unhandled error occurred");
   res.status(500).json({ error: err.message || "حدث خطأ في السيرفر" });
-});
-
-// Health check endpoint
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 export default app;
