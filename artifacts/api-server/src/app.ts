@@ -6,7 +6,7 @@ import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { normalizedDatabaseUrl } from "@workspace/db";
-import path from "path"; // Import path module
+import path from "path";
 
 const app: Express = express();
 
@@ -137,8 +137,8 @@ app.get("/health", (_req, res) => {
 const frontendDistPath = path.join(process.cwd(), "artifacts/website-builder/dist");
 app.use(express.static(frontendDistPath));
 
-// 4. توجيه أي مسار آخر لصفحة الواجهة (تم التعديل هنا لتجنب خطأ PathError)
-app.get("(.*)", (req: Request, res: Response) => {
+// 4. توجيه أي مسار آخر لصفحة الواجهة (التعديل الأخير هنا لتجنب خطأ PathError)
+app.get(/.*/, (req: Request, res: Response) => {
   res.sendFile(path.join(frontendDistPath, "index.html"));
 });
 
