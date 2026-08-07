@@ -124,10 +124,14 @@ app.use(
   })
 );
 
-app.use("/api", router);
+// By mounting the router at the root, we assume that the routes within `router`
+// are already prefixed with `/api`. This is to fix a suspected double-prefix
+// issue (e.g., /api/api/route) that was causing the 404 errors.
+app.use(router);
 
 // Global JSON error handler — must come after routes
-app.use("/api", (err: Error, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  logger.error(err, "An unhandled error occurred");
   res.status(500).json({ error: err.message || "حدث خطأ في السيرفر" });
 });
 
