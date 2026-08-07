@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_URL || "https://arkan-platform.onrender.com";
 
   return {
-    base: "./", // رجعناها نقطة وشرطة مائلة عشان تضبط مسارات ملفات التصميم تماماً
+    base: "/",
     plugins: [react()],
     resolve: {
       alias: {
