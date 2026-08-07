@@ -1,14 +1,12 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "composite": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
+    "composite": false,
+    "noEmit": true,
     "moduleResolution": "bundler",
-    "tsBuildInfoFile": "./node_modules/.tsbuildinfo/api-server.tsbuildinfo"
+    "strict": true,
+    "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*"],
+  "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

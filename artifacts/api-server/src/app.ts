@@ -31,6 +31,15 @@ app.use(
   }),
 );
 
+function normalizeOrigin(origin: string) {
+  try {
+    const url = new URL(origin.trim());
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+}
+
 const allowedOrigins = new Set(
   [
     "http://localhost:5173",
@@ -38,22 +47,51 @@ const allowedOrigins = new Set(
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://arkan-app-1cme.onrender.com",
+    "https://arkan-web-2.web.app",
+    "https://arkan-web-2.firebaseapp.com",
     process.env.FRONTEND_URL,
     process.env.FIREBASE_APP_URL,
     process.env.FIREBASE_PREVIEW_URL,
     ...(process.env.ALLOWED_ORIGINS?.split(",") ?? []),
   ]
-    .map((origin) => origin?.trim())
+    .map((origin) => (origin ? normalizeOrigin(origin) : null))
     .filter((origin): origin is string => Boolean(origin)),
 );
+
+function isAllowedOrigin(origin?: string) {
+  if (!origin) return true;
+
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!normalizedOrigin) return false;
+
+  if (allowedOrigins.has(normalizedOrigin)) {
+    return true;
+  }
+
+  try {
+    const { protocol, hostname } = new URL(normalizedOrigin);
+
+    if (
+      protocol === "https:" &&
+      (hostname.endsWith(".web.app") || hostname.endsWith(".firebaseapp.com"))
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.has(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
+      logger.warn({ origin }, "Blocked CORS origin");
       callback(new Error("Not allowed by CORS"));
     }
   },

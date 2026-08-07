@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_URL || "https://arkan-app-1cme.onrender.com";
 
   return {
+    base: "./",
     plugins: [react()],
     resolve: {
       alias: {
