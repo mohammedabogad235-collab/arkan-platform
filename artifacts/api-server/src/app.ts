@@ -6,16 +6,24 @@ import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { normalizedDatabaseUrl } from "@workspace/db";
-import { fileURLToPath } from "url";
-import { dirname, extname, join } from "path";
+import { existsSync } from "node:fs";
+import { dirname, extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const app: Express = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const frontendDistPath = join(__dirname, "../../website-builder/dist");
-const frontendIndexPath = join(frontendDistPath, "index.html");
+const frontendDistPath = resolve(__dirname, "../../website-builder/dist");
+const frontendIndexPath = resolve(frontendDistPath, "index.html");
 
-console.log("🚀 ALERT: Serving static files from:", frontendDistPath);
+logger.info(
+  {
+    frontendDistPath,
+    frontendDistExists: existsSync(frontendDistPath),
+    frontendIndexExists: existsSync(frontendIndexPath),
+  },
+  "Resolved frontend static assets path",
+);
 
 app.set("trust proxy", 1);
 app.use(
