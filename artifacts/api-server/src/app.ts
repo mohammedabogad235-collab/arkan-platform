@@ -6,9 +6,20 @@ import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { normalizedDatabaseUrl } from "@workspace/db";
+import { existsSync } from "fs";
 import path from "path";
 
 const app: Express = express();
+const frontendDistCandidates = [
+  path.resolve(process.cwd(), "artifacts/website-builder/dist"),
+  path.resolve(process.cwd(), "../website-builder/dist"),
+  path.resolve(__dirname, "../../website-builder/dist"),
+  path.resolve(__dirname, "../../../artifacts/website-builder/dist"),
+];
+const frontendDistPath =
+  frontendDistCandidates.find((candidate) => existsSync(candidate)) ??
+  frontendDistCandidates[0];
+const frontendIndexPath = path.join(frontendDistPath, "index.html");
 
 app.set("trust proxy", 1);
 app.use(
@@ -81,7 +92,11 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(express.static(path.join(process.cwd(), "artifacts/website-builder/dist")));
+app.use(
+  express.static(frontendDistPath, {
+    index: false,
+  }),
+);
 
 const PgSession = connectPgSimple(session);
 app.use(
@@ -109,8 +124,12 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-app.get(/.*/, (_req: Request, res: Response) => {
-  res.sendFile(path.join(process.cwd(), "artifacts/website-builder/dist/index.html"));
+app.get(/^(?!\/api(?:\/|$)).*/, (req: Request, res: Response, next: NextFunction) => {
+  if (path.extname(req.path)) {
+    return next();
+  }
+
+  res.sendFile(frontendIndexPath);
 });
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
