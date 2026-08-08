@@ -3,11 +3,10 @@ import App from "./App";
 import "./index.css";
 import { setBaseUrl } from "@workspace/api-client-react";
 
-const apiUrl = (
-  import.meta.env.VITE_API_URL || "https://arkan-app-1cme.onrender.com"
-).replace(/\/+$/, "");
+const apiUrl = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
+const apiOrigin = apiUrl === "/api" ? "" : apiUrl;
 
-setBaseUrl(apiUrl);
+setBaseUrl(apiOrigin || null);
 
 const originalFetch = globalThis.fetch.bind(globalThis);
 
@@ -20,9 +19,9 @@ globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
         : input.url;
 
   const rewrittenUrl = rawUrl.startsWith("/api")
-    ? `${apiUrl}${rawUrl}`
+    ? `${apiOrigin}${rawUrl}`
     : rawUrl.startsWith(`${window.location.origin}/api`)
-      ? `${apiUrl}${rawUrl.slice(window.location.origin.length)}`
+      ? `${apiOrigin}${rawUrl.slice(window.location.origin.length)}`
       : rawUrl;
 
   const nextInput = rewrittenUrl === rawUrl ? input : rewrittenUrl;

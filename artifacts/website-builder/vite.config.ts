@@ -6,11 +6,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
 
   const apiTarget =
-    env.VITE_API_URL || "https://arkan-platform.onrender.com";
+    env.VITE_PROXY_TARGET || "https://arkan-platform.onrender.com";
 
   return {
-    // ✅ أهم تعديل (حل مشكلة CSS)
-    base: "./",
+    base: "/",
 
     plugins: [react()],
 
