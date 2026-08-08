@@ -6,20 +6,16 @@ import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { normalizedDatabaseUrl } from "@workspace/db";
-import { existsSync } from "fs";
-import path from "path";
+import { fileURLToPath } from "url";
+import { dirname, extname, join } from "path";
 
 const app: Express = express();
-const frontendDistCandidates = [
-  path.resolve(process.cwd(), "artifacts/website-builder/dist"),
-  path.resolve(process.cwd(), "../website-builder/dist"),
-  path.resolve(__dirname, "../../website-builder/dist"),
-  path.resolve(__dirname, "../../../artifacts/website-builder/dist"),
-];
-const frontendDistPath =
-  frontendDistCandidates.find((candidate) => existsSync(candidate)) ??
-  frontendDistCandidates[0];
-const frontendIndexPath = path.join(frontendDistPath, "index.html");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const frontendDistPath = join(__dirname, "../../website-builder/dist");
+const frontendIndexPath = join(frontendDistPath, "index.html");
+
+console.log("🚀 ALERT: Serving static files from:", frontendDistPath);
 
 app.set("trust proxy", 1);
 app.use(
@@ -125,7 +121,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.get(/^(?!\/api(?:\/|$)).*/, (req: Request, res: Response, next: NextFunction) => {
-  if (path.extname(req.path)) {
+  if (extname(req.path)) {
     return next();
   }
 
