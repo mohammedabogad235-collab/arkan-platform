@@ -555,13 +555,21 @@ app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 // ══════════════════════════════════════════════════════════════════════════════
 // SERVE FRONTEND
 // ══════════════════════════════════════════════════════════════════════════════
-const frontendDist = path.join(__dirname, "public");
-if (fs.existsSync(frontendDist)) {
-  app.use(express.static(frontendDist));
-  app.use((req, res) => res.sendFile(path.join(frontendDist, "index.html")));
+const frontendDist = path.resolve(__dirname, "artifacts/website-builder/dist");
+const frontendIndex = path.join(frontendDist, "index.html");
+
+if (fs.existsSync(frontendDist) && fs.existsSync(frontendIndex)) {
+  app.use(express.static(frontendDist, { index: false }));
+  app.get(/^(?!\/api(?:\/|$)).*/, (req, res, next) => {
+    if (path.extname(req.path)) {
+      return next();
+    }
+
+    return res.sendFile(frontendIndex);
+  });
 } else {
-  console.warn("[تحذير] مجلد public غير موجود — انسخ artifacts/website-builder/dist/public إلى public/");
-  app.use((req, res) => res.status(404).send("Frontend not found. Copy dist/public/ to public/"));
+  console.warn("[تحذير] مجلد الواجهة المبنية غير موجود — تأكد من وجود artifacts/website-builder/dist");
+  app.use((req, res) => res.status(404).send("Frontend not found. Build artifacts/website-builder first."));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
