@@ -65,42 +65,37 @@ The `firebase.json` file is pre-configured with:
 - SPA rewrites for client-side routing
 - Cache headers for static assets
 
-## Backend Deployment (Render)
+## Backend & Full-Stack Deployment (Render Web Service)
 
 ### Prerequisites
 - Render account
 - PostgreSQL database (Supabase recommended)
 
-### Build Steps
+### Render Service Settings
 
-1. **Set environment variables in Render:**
-   Copy from `artifacts/api-server/.env.example`:
-   ```
-   DATABASE_URL=postgresql://...
-   SESSION_SECRET=your-secret-key
-   PORT=8080
-   ALLOWED_ORIGINS=https://your-firebase-app.web.app,https://your-firebase-app.firebaseapp.com
-   NODE_ENV=production
-   ```
+When creating a **Web Service** on Render:
 
-2. **Build the backend:**
+1. **Environment**: `Node`
+2. **Build Command**:
    ```bash
-   cd artifacts/api-server
-   pnpm run build
+   pnpm install && pnpm run build
+   ```
+3. **Start Command**:
+   ```bash
+   pnpm run start
+   ```
+4. **Environment Variables**:
+   ```env
+   NODE_ENV=production
+   PORT=10000
+   DATABASE_URL=postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres
+   SESSION_SECRET=your-secure-random-secret-key
+   ALLOWED_ORIGINS=https://arkan-platform.onrender.com
    ```
 
-3. **Deploy to Render:**
-   - Connect your GitHub repository
-   - Set build command: `cd artifacts/api-server && pnpm run build`
-   - Set start command: `cd artifacts/api-server && pnpm run start`
-   - Add environment variables
-
-### CORS Configuration
-
-The backend is configured to accept requests from specific origins via the `ALLOWED_ORIGINS` environment variable. For production, include your Firebase hosting URLs:
-```
-ALLOWED_ORIGINS=https://your-app.web.app,https://your-app.firebaseapp.com
-```
+### How Full-Stack Single Deployment Works
+- `pnpm run build` compiles both the React frontend (Vite + Tailwind CSS v4) into `artifacts/website-builder/dist` and the Express backend into `artifacts/api-server/dist`.
+- `pnpm run start` launches the Express backend which serves all API endpoints on `/api/*` and static frontend assets + single-page app fallback for all other routes.
 
 ## Local Development
 
