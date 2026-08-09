@@ -26,7 +26,10 @@ logger.info(
   "Resolved frontend static assets path",
 );
 
+// --- تم إضافة هذا السطر بنجاح لحل مشكلة الجلسات (Sessions) على خوادم Render ---
 app.set("trust proxy", 1);
+// -------------------------------------------------------------------------
+
 app.use(
   pinoHttp({
     logger,

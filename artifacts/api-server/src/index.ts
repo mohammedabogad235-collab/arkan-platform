@@ -5,6 +5,11 @@ import { logger } from "./lib/logger";
 
 const PORT = Number(process.env.PORT || 8080);
 
+// --- السطر السحري لحل مشكلة "غير مصرح" (Unauthorized) ---
+// ده بيعرف السيرفر إنه شغال ورا Proxy (زي Render) وبيخليه يحفظ الجلسات (Sessions) بنجاح
+app.set("trust proxy", 1);
+// ---------------------------------------------------------
+
 process.on("unhandledRejection", (reason) => {
   logger.error({ err: reason }, "Unhandled promise rejection");
 });

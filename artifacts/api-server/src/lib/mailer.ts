@@ -69,10 +69,11 @@ function toMailError(error: unknown): ApiError {
     || normalized.includes("timed out")
     || normalized.includes("etimedout")
     || normalized.includes("greetingneverreceived")
+    || normalized.includes("enetunreach")
   ) {
     return new ApiError(
       503,
-      "تعذر إرسال البريد الإلكتروني بسبب انتهاء مهلة الاتصال بخادم جوجل. يرجى المحاولة مرة أخرى.",
+      "تعذر إرسال البريد الإلكتروني بسبب مشكلة في الاتصال بخادم جوجل. يرجى المحاولة مرة أخرى.",
       { code: "SMTP_TIMEOUT", cause: error }
     );
   }
@@ -114,6 +115,7 @@ async function getMailTransport(): Promise<MailTransportInfo> {
         pass: emailPass, // يجب أن تكون App Password بدون مسافات
       },
       pool: false, // تعطيل الـ pool لمنع بقاء الاتصالات مفتوحة
+      family: 4, // إجبار السيرفر على استخدام IPv4 لمنع خطأ ENETUNREACH على Render
       connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
       greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
       socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
