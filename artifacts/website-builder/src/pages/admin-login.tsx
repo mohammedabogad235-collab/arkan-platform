@@ -21,9 +21,10 @@ export default function AdminLogin() {
   const [, setLocation] = useLocation();
   const { user, isLoading, isAuthenticated } = useAuth();
 
+  // السماح للأدمن والمشرف الفرعي بالدخول للوحة التحكم أوتوماتيكياً
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      if (user?.role === "admin") {
+      if (user?.role === "admin" || user?.role === "subadmin") {
         setLocation("/admin");
       } else {
         setLocation("/");
@@ -40,10 +41,12 @@ export default function AdminLogin() {
         onSuccess: (data) => {
           const userData = (data as any).user ?? data;
           queryClient.setQueryData(getGetMeQueryKey(), userData);
-          if (userData.role === "admin") {
+          
+          // السماح للأدمن والمشرف الفرعي بالمرور من هنا أيضاً
+          if (userData.role === "admin" || userData.role === "subadmin") {
             setLocation("/admin");
           } else {
-            setError("هذا الحساب لا يملك صلاحيات الأدمن.");
+            setError("هذا الحساب لا يملك صلاحيات الإدارة.");
           }
         },
         onError: () => {
@@ -80,7 +83,7 @@ export default function AdminLogin() {
 
         <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 shadow-2xl">
           <h2 className="text-white font-bold text-xl mb-1">تسجيل الدخول</h2>
-          <p className="text-white/40 text-sm mb-7">أدخل بيانات حساب الأدمن للمتابعة</p>
+          <p className="text-white/40 text-sm mb-7">أدخل بيانات حساب الإدارة للمتابعة</p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">

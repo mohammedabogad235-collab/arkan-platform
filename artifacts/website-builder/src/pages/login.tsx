@@ -29,13 +29,19 @@ const loginSchema = z.object({
 export default function Login() {
   const login = useLogin();
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
+  // توجيه تلقائي لو المستخدم مسجل دخول بالفعل
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      setLocation("/");
+    if (!isLoading && isAuthenticated && user) {
+      if (user.role === "admin" || user.role === "subadmin") {
+        setLocation("/admin");
+      } else {
+        setLocation("/");
+      }
     }
-  }, [isAuthenticated, isLoading, setLocation]);
+  }, [isAuthenticated, isLoading, user, setLocation]);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
@@ -58,7 +64,13 @@ export default function Login() {
             title: "تم تسجيل الدخول بنجاح",
             description: `أهلاً بك ${data.user.fullName}`,
           });
-          setLocation(data.user.role === "admin" || data.user.role === "subadmin" ? "/admin" : "/order");
+          
+          // التوجيه الصحيح للأدمن والمشرف الفرعي إلى لوحة التحكم
+          if (data.user.role === "admin" || data.user.role === "subadmin") {
+            setLocation("/admin");
+          } else {
+            setLocation("/order");
+          }
         },
         onError: (error) => {
           const errData = getApiErrorData(error);
