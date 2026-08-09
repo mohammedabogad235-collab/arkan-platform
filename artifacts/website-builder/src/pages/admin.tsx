@@ -63,22 +63,21 @@ function getAdminOrderStatus(order: any): { label: string; color: string; bg: st
     return { label: "قيد المراجعة (تحديد السعر)", color: "text-gray-700", bg: "bg-gray-100 border-gray-200", dot: "bg-gray-500" };
   }
 
-  // Fallback
   return { label: status, color: "text-gray-700", bg: "bg-gray-100 border-gray-200", dot: "bg-gray-500" };
 }
 
 const ALL_NAV = [
-  { id: "overview",   label: "الإحصائيات",     icon: BarChart3,     adminOnly: false },
-  { id: "orders",     label: "الطلبات",         icon: ShoppingCart,  adminOnly: false },
-  { id: "finances",   label: "المالية",         icon: TrendingUp,    adminOnly: false },
-  { id: "users",      label: "المستخدمين",      icon: Users,         adminOnly: false },
-  { id: "packages",   label: "الباقات",         icon: Package,       adminOnly: false },
-  { id: "payments",   label: "طرق الدفع",       icon: CreditCard,    adminOnly: false },
-  { id: "reviews",    label: "الآراء",           icon: MessageSquare, adminOnly: false },
-  { id: "coupons",    label: "الكوبونات",        icon: Tag,           adminOnly: false },
-  { id: "settings",     label: "الإعدادات",        icon: Settings,      adminOnly: false },
-  { id: "otp-settings", label: "إعدادات OTP",     icon: Mail,          adminOnly: true  },
-  { id: "subadmins",   label: "مشرفون فرعيون",   icon: Shield,        adminOnly: true  },
+  { id: "overview",    label: "الإحصائيات",      icon: BarChart3,     adminOnly: false },
+  { id: "orders",      label: "الطلبات",          icon: ShoppingCart,  adminOnly: false },
+  { id: "finances",    label: "المالية",          icon: TrendingUp,    adminOnly: false },
+  { id: "users",       label: "المستخدمين",      icon: Users,         adminOnly: false },
+  { id: "packages",    label: "الباقات",          icon: Package,       adminOnly: false },
+  { id: "payments",    label: "طرق الدفع",        icon: CreditCard,    adminOnly: false },
+  { id: "reviews",     label: "الآراء",            icon: MessageSquare, adminOnly: false },
+  { id: "coupons",     label: "الكوبونات",        icon: Tag,           adminOnly: false },
+  { id: "settings",    label: "الإعدادات",        icon: Settings,      adminOnly: false },
+  { id: "otp-settings", label: "إعدادات البريد",   icon: Mail,          adminOnly: true  },
+  { id: "subadmins",   label: "مشرفون فرعيون",    icon: Shield,        adminOnly: true  },
 ];
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
@@ -163,7 +162,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden">
-      {/* Header */}
       <div
         className="flex items-center justify-between px-5 py-4 border-b bg-muted/20 cursor-pointer select-none"
         onClick={() => onToggle(order.id)}
@@ -190,7 +188,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
         </div>
       </div>
 
-      {/* Summary row */}
       <div className="px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <Users className="w-3.5 h-3.5 text-muted-foreground" />
@@ -212,11 +209,9 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
         </div>
       </div>
 
-      {/* Expanded content */}
       {expanded && (
         <div className="border-t bg-muted/10 px-5 py-4 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Left: Details */}
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">تفاصيل الطلب</h4>
               <p className="text-sm leading-relaxed bg-white p-3 rounded-xl border whitespace-pre-line break-words overflow-hidden">{order.details}</p>
@@ -240,11 +235,9 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
               )}
             </div>
 
-            {/* Right: Financial */}
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">الحالة المالية</h4>
               <div className="bg-white rounded-xl border p-4 space-y-3">
-                {/* Amount input + live breakdown */}
                 <div className="space-y-2">
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">إجمالي المبلغ ({order.currency})</Label>
@@ -272,7 +265,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                       </Button>
                     </div>
                   </div>
-                  {/* Live breakdown preview */}
                   {liveAmount !== null && liveAmount > 0 && (() => {
                     const liveDiscount = (order as any).discountAmount ? Number((order as any).discountAmount) : 0;
                     const liveEffective = Math.max(0, liveAmount - liveDiscount);
@@ -319,7 +311,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                   const savedRemaining = savedEffective && savedDeposit !== null ? savedEffective - savedDeposit : null;
                   return savedAmt ? (
                     <>
-                      {/* Coupon breakdown */}
                       {(order as any).couponCode && (
                         <div className="pt-1 border-t space-y-1 text-xs">
                           {savedDiscount > 0 ? (
@@ -381,10 +372,8 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                 })()}
               </div>
 
-              {/* Delivered URL */}
               <DeliveredUrlInput order={order} />
 
-              {/* Deposit Receipt */}
               {(order as any).receiptUrl && (
                 <div className="bg-white rounded-xl border p-3 flex items-center justify-between">
                   <a href={(order as any).receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
@@ -403,7 +392,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                 </div>
               )}
 
-              {/* Final Receipt */}
               {(order as any).finalReceiptUrl && (
                 <div className="bg-white rounded-xl border border-blue-200 p-3 flex items-center justify-between">
                   <a href={(order as any).finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
@@ -424,7 +412,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">الحالة:</span>
@@ -437,8 +424,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                   <SelectItem value="started">بدأ التنفيذ</SelectItem>
                   <SelectItem value="in_progress">قيد التنفيذ</SelectItem>
                   <SelectItem value="completed">مكتمل</SelectItem>
-                  {/* Admin can manually set to awaiting_payment etc. if needed, but the main flow is automatic */}
-                  {/* Let's keep it simple as per original statuses */}
                   <SelectItem value="cancelled">ملغي</SelectItem>
                 </SelectContent>
               </Select>
@@ -548,7 +533,6 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("overview");
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
 
-  // Profile dialog for sub-admins
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({ phone: "", email: "", password: "", confirm: "" });
   const [profileSaving, setProfileSaving] = useState(false);
@@ -560,7 +544,6 @@ export default function Admin() {
       return next;
     });
 
-  // Settings
   const { data: siteSettings } = useSettings();
   const updateSettings = useUpdateSettings();
   const [contactForm, setContactForm] = useState({ phone1: "", phone2: "", email: "", whatsapp: "", address: "", facebookUrl: "", instagramUrl: "", twitterUrl: "" });
@@ -575,7 +558,6 @@ export default function Admin() {
   const [termsSaving, setTermsSaving] = useState(false);
   const [privacySaving, setPrivacySaving] = useState(false);
 
-  // OTP Settings
   const [otpForm, setOtpForm] = useState({ emailUser: "", emailPass: "" });
   const [savedOtpForm, setSavedOtpForm] = useState({ emailUser: "", emailPass: "" });
   const [otpSaving, setOtpSaving] = useState(false);
@@ -605,13 +587,11 @@ export default function Admin() {
     if (activeTab === "subadmins") fetchSubadmins();
   }, [activeTab]);
 
-  // For sub-admins: set initial tab to first permitted tab
   useEffect(() => {
     if (currentUser?.role === "subadmin") {
       const perms: string[] = (currentUser as any).permissions || [];
       const firstAllowed = ALL_NAV.find(n => !n.adminOnly && perms.includes(n.id));
       if (firstAllowed) setActiveTab(firstAllowed.id);
-      // Pre-fill profile form with current sub-admin data
       setProfileForm(f => ({
         ...f,
         phone: (currentUser as any).phone?.startsWith("sub_") ? "" : ((currentUser as any).phone || ""),
@@ -620,7 +600,6 @@ export default function Admin() {
     }
   }, [currentUser?.id]);
 
-  // Auth
   const [createAdminOpen, setCreateAdminOpen] = useState(false);
   const [adminForm, setAdminForm] = useState({ fullName: "", phone: "", email: "", username: "", password: "" });
   const [adminFormLoading, setAdminFormLoading] = useState(false);
@@ -629,19 +608,16 @@ export default function Admin() {
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
 
-  // Packages
   const emptyPkg = { name: "", description: "", priceEgp: 0, priceSar: 0, features: "", isActive: true };
   const [pkgDialogOpen, setPkgDialogOpen] = useState(false);
   const [pkgEditTarget, setPkgEditTarget] = useState<{ id: number } | null>(null);
   const [pkgForm, setPkgForm] = useState(emptyPkg);
 
-  // Payment methods
   const emptyPm = { name: "", details: "", isActive: true, currency: "both" };
   const [pmDialogOpen, setPmDialogOpen] = useState(false);
   const [pmEditTarget, setPmEditTarget] = useState<{ id: number } | null>(null);
   const [pmForm, setPmForm] = useState(emptyPm);
 
-  // Coupons
   const emptyCoupon = { code: "", discountType: "percentage", discountValue: 10, minOrderAmount: "" as string | number, maxUses: "" as string | number, isActive: true, expiresAt: "" };
   const [couponDialogOpen, setCouponDialogOpen] = useState(false);
   const [couponEditId, setCouponEditId] = useState<number | null>(null);
@@ -649,7 +625,6 @@ export default function Admin() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [couponsLoading, setCouponsLoading] = useState(false);
 
-  // Sub-admins
   const emptySubAdmin = { fullName: "", phone: "", email: "", username: "", password: "", permissions: [] as string[] };
   const [subadmins, setSubadmins] = useState<any[]>([]);
   const [subadminsLoading, setSubadminsLoading] = useState(false);
@@ -936,15 +911,6 @@ export default function Admin() {
     }
   };
 
-  const toggleSubadminPermission = (perm: string) => {
-    setSubadminForm(f => ({
-      ...f,
-      permissions: f.permissions.includes(perm)
-        ? f.permissions.filter(p => p !== perm)
-        : [...f.permissions, perm],
-    }));
-  };
-
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (profileForm.password && profileForm.password !== profileForm.confirm) {
@@ -969,7 +935,7 @@ export default function Admin() {
   const handleSaveOtp = async (e: React.FormEvent) => {
     e.preventDefault(); setOtpSaving(true);
     updateSettings.mutate({ emailUser: otpForm.emailUser, emailPass: otpForm.emailPass } as any, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); setSavedOtpForm({ ...otpForm }); toast({ title: "تم حفظ إعدادات OTP", duration: 2000 }); setOtpSaving(false); },
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); setSavedOtpForm({ ...otpForm }); toast({ title: "تم حفظ إعدادات البريد", duration: 2000 }); setOtpSaving(false); },
       onError: () => { toast({ variant: "destructive", title: "خطأ في الحفظ", duration: 2000 }); setOtpSaving(false); },
     });
   };
@@ -1028,14 +994,12 @@ export default function Admin() {
   const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * (100 - p) / 100); }, 0);
   const pendingReceipts = allOrders.filter(o => (o as any).receiptUrl && !o.depositPaid).length;
 
-  // Build visible nav based on role/permissions
   const NAV = isMainAdmin
     ? ALL_NAV
     : ALL_NAV.filter(n => !n.adminOnly && userPermissions.includes(n.id));
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" dir="rtl">
-      {/* Top header */}
       <header className="bg-white border-b px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
@@ -1071,7 +1035,6 @@ export default function Admin() {
       </header>
 
       <div className="flex flex-1">
-        {/* Sidebar — desktop only */}
         <aside className="hidden md:flex w-52 bg-white border-l sticky top-14 self-start h-[calc(100vh-3.5rem)] flex-col py-4 shadow-sm shrink-0">
           <nav className="flex flex-col gap-1 px-3 flex-1">
             {NAV.map(item => {
@@ -1091,10 +1054,8 @@ export default function Admin() {
           </nav>
         </aside>
 
-        {/* Main content */}
         <main className="flex-1 p-3 md:p-6 min-w-0 pb-20 md:pb-6">
 
-          {/* ─── Overview ─── */}
           {activeTab === "overview" && (
             <div className="space-y-6">
               <div>
@@ -1108,7 +1069,6 @@ export default function Admin() {
                 <StatCard icon={DollarSign} label="إجمالي الإيرادات" value={`${totalRevenue.toLocaleString()}`} sub="قيمة جميع الطلبات" color="bg-amber-100 text-amber-600" />
               </div>
 
-              {/* Recent orders */}
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold">آخر الطلبات</h2>
@@ -1135,25 +1095,12 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Orders ─── */}
           {activeTab === "orders" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold">الطلبات</h1>
                   <p className="text-muted-foreground text-sm mt-1">{allOrders.length} طلب إجمالاً</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {[
-                    { label: "الكل", value: "" },
-                    { label: "انتظار", value: "pending" },
-                    { label: "تنفيذ", value: "in_progress" },
-                    { label: "مكتمل", value: "completed" },
-                  ].map(f => (
-                    <button key={f.value} onClick={() => {}} className="px-3 py-1.5 text-xs rounded-lg bg-white border text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                      {f.label}
-                    </button>
-                  ))}
                 </div>
               </div>
               {allOrders.length === 0 ? (
@@ -1182,7 +1129,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Finances ─── */}
           {activeTab === "finances" && (
             <div className="space-y-6">
               <div>
@@ -1193,7 +1139,7 @@ export default function Admin() {
                 <StatCard icon={DollarSign}  label="صافي الإيرادات (بعد الخصم)" value={totalRevenue.toLocaleString()}     color="bg-primary/10 text-primary" />
                 <StatCard icon={Banknote}    label="مقدمات محصلة"               value={depositCollected.toFixed(0)}        color="bg-amber-100 text-amber-600" />
                 <StatCard icon={CheckCircle} label="مبالغ نهائية محصلة"         value={finalCollected.toFixed(0)}          color="bg-green-100 text-green-600" />
-                <StatCard icon={Tag}         label="إجمالي الخصومات الممنوحة"   value={totalDiscounts.toLocaleString()}    color="bg-purple-100 text-purple-600" />
+                <StatCard icon={Tag}         label="إجمالي الخصومات الممنوحة"    value={totalDiscounts.toLocaleString()}    color="bg-purple-100 text-purple-600" />
               </div>
               <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b">
@@ -1254,7 +1200,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Users ─── */}
           {activeTab === "users" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1301,7 +1246,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Packages ─── */}
           {activeTab === "packages" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1356,7 +1300,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Payment methods ─── */}
           {activeTab === "payments" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1404,7 +1347,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Reviews ─── */}
           {activeTab === "reviews" && (
             <div className="space-y-4">
               <div>
@@ -1453,7 +1395,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Coupons ─── */}
           {activeTab === "coupons" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1522,7 +1463,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Settings ─── */}
           {activeTab === "settings" && (
             <div className="space-y-6 max-w-2xl">
               <div>
@@ -1530,7 +1470,6 @@ export default function Admin() {
                 <p className="text-muted-foreground text-sm mt-1">ضبط إعدادات الموقع والتواصل</p>
               </div>
 
-              {/* Contact info */}
               <div className="bg-white rounded-2xl border shadow-sm p-6">
                 <h2 className="font-bold mb-1 flex items-center gap-2"><Phone className="w-4 h-4 text-primary" />بيانات التواصل</h2>
                 <p className="text-sm text-muted-foreground mb-5">تظهر في أسفل الصفحة الرئيسية</p>
@@ -1556,7 +1495,6 @@ export default function Admin() {
                 </form>
               </div>
 
-              {/* Deposit settings */}
               <div className="bg-white rounded-2xl border shadow-sm p-6">
                 <h2 className="font-bold mb-1 flex items-center gap-2"><Percent className="w-4 h-4 text-primary" />إعدادات المقدّم</h2>
                 <p className="text-sm text-muted-foreground mb-5">تحكم في اشتراط دفع مقدم ونسبته</p>
@@ -1578,7 +1516,6 @@ export default function Admin() {
                           <span className="text-sm text-muted-foreground">من إجمالي قيمة الطلب</span>
                         </div>
                       </div>
-                      {/* Live visual split */}
                       <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">معاينة التقسيم</p>
                         <div className="w-full h-4 rounded-full overflow-hidden flex">
@@ -1610,7 +1547,6 @@ export default function Admin() {
                 </form>
               </div>
 
-              {/* Terms & Conditions */}
               <div className="bg-white rounded-2xl border shadow-sm p-6">
                 <h2 className="font-bold mb-1 flex items-center gap-2"><BadgeCheck className="w-4 h-4 text-primary" />الشروط والأحكام</h2>
                 <p className="text-sm text-muted-foreground mb-4">تظهر لعملائك عند التسجيل وفي صفحة مستقلة</p>
@@ -1629,7 +1565,6 @@ export default function Admin() {
                 </form>
               </div>
 
-              {/* Privacy Policy */}
               <div className="bg-white rounded-2xl border shadow-sm p-6">
                 <h2 className="font-bold mb-1 flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" />سياسة الخصوصية</h2>
                 <p className="text-sm text-muted-foreground mb-4">تظهر لعملائك عند التسجيل وفي صفحة مستقلة</p>
@@ -1648,7 +1583,6 @@ export default function Admin() {
                 </form>
               </div>
 
-              {/* Change password */}
               <div className="bg-white rounded-2xl border shadow-sm p-6 max-w-sm">
                 <h2 className="font-bold mb-1">تغيير كلمة المرور</h2>
                 <p className="text-sm text-muted-foreground mb-5">تغيير كلمة مرور حساب الأدمن</p>
@@ -1676,44 +1610,42 @@ export default function Admin() {
               </div>
             </div>
           )}
-          {/* ─── OTP Settings ─── */}
+
           {activeTab === "otp-settings" && isMainAdmin && (
             <div className="space-y-6 max-w-xl">
               <div>
-                <h1 className="text-2xl font-bold flex items-center gap-2"><Mail className="w-6 h-6 text-primary" />إعدادات OTP</h1>
-                <p className="text-muted-foreground text-sm mt-1">إعداد البريد الإلكتروني لإرسال رموز التحقق عند نسيان كلمة المرور</p>
+                <h1 className="text-2xl font-bold flex items-center gap-2"><Mail className="w-6 h-6 text-primary" />إعدادات البريد الإلكتروني (SMTP / Brevo)</h1>
+                <p className="text-muted-foreground text-sm mt-1">أدخل بيانات مزود البريد (مثل Brevo) لإرسال رموز التحقق OTP وإشعارات النظام بدقة</p>
               </div>
 
-              {/* Config card */}
               <div className="bg-white rounded-2xl border shadow-sm p-6">
-                <h2 className="font-bold mb-1 flex items-center gap-2"><Settings className="w-4 h-4 text-primary" />بيانات Gmail</h2>
+                <h2 className="font-bold mb-1 flex items-center gap-2"><Settings className="w-4 h-4 text-primary" />بيانات خادم البريد (SMTP)</h2>
                 <p className="text-sm text-muted-foreground mb-5">
-                  يُستخدم حساب Gmail مع <strong>App Password</strong> (وليس كلمة المرور العادية).
-                  {" "}<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-primary underline text-xs">إنشاء App Password ←</a>
+                  أدخل اسم المستخدم (Username/Email) ومفتاح المرور السري الخاص بالخدمة (مثل Brevo).
                 </p>
                 <form onSubmit={handleSaveOtp} className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label>بريد Gmail <span className="text-red-500">*</span></Label>
+                    <Label>اسم المستخدم / البريد (Username / Email) <span className="text-red-500">*</span></Label>
                     <Input
-                      type="email"
+                      type="text"
                       value={otpForm.emailUser}
                       onChange={e => setOtpForm(f => ({ ...f, emailUser: e.target.value }))}
-                      placeholder="example@gmail.com"
+                      placeholder="b4f52d001@smtp-brevo.com أو بريدك"
                       dir="ltr"
                       required
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>App Password <span className="text-red-500">*</span></Label>
+                    <Label>كلمة المرور / مفتاح SMTP (Password / API Key) <span className="text-red-500">*</span></Label>
                     <Input
                       type="password"
                       value={otpForm.emailPass}
                       onChange={e => setOtpForm(f => ({ ...f, emailPass: e.target.value }))}
-                      placeholder="xxxx xxxx xxxx xxxx"
+                      placeholder="xsmtpsib-..."
                       dir="ltr"
                       required
                     />
-                    <p className="text-xs text-muted-foreground">كلمة المرور المُولَّدة من Google — غير كلمة المرور العادية</p>
+                    <p className="text-xs text-muted-foreground">مفتاح السر الخاص بخدمة الإرسال أو App Password</p>
                   </div>
                   {(otpForm.emailUser !== savedOtpForm.emailUser || otpForm.emailPass !== savedOtpForm.emailPass) && (
                     <Button type="submit" disabled={otpSaving} className="gap-1.5">
@@ -1723,7 +1655,6 @@ export default function Admin() {
                 </form>
               </div>
 
-              {/* Status card */}
               <div className="bg-white rounded-2xl border shadow-sm p-6">
                 <h2 className="font-bold mb-1">حالة الإعداد</h2>
                 <p className="text-sm text-muted-foreground mb-4">المصدر الفعلي الذي يُستخدم عند الإرسال (DB يأخذ الأولوية على .env)</p>
@@ -1738,7 +1669,6 @@ export default function Admin() {
                 </div>
               </div>
 
-              {/* Test card */}
               <div className="bg-white rounded-2xl border shadow-sm p-6">
                 <h2 className="font-bold mb-1">اختبار الإرسال</h2>
                 <p className="text-sm text-muted-foreground mb-4">أرسل OTP تجريبياً للتحقق من صحة الإعداد</p>
@@ -1759,7 +1689,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* ─── Sub-admins ─── */}
           {activeTab === "subadmins" && isMainAdmin && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -1784,7 +1713,6 @@ export default function Admin() {
                 <div className="space-y-4">
                   {subadmins.map(sub => (
                     <div key={sub.id} className={`bg-white rounded-2xl border shadow-sm p-5 transition-opacity ${!sub.isActive ? "opacity-60" : ""}`}>
-                      {/* Header */}
                       <div className="flex items-center justify-between gap-4 mb-5">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${sub.isActive ? "bg-primary/10" : "bg-gray-100"}`}>
@@ -1796,7 +1724,6 @@ export default function Admin() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          {/* Active toggle */}
                           <div className="flex items-center gap-2">
                             <span className={`text-xs font-medium ${sub.isActive ? "text-green-600" : "text-red-500"}`}>
                               {sub.isActive ? "مفعّل" : "موقوف"}
@@ -1809,7 +1736,6 @@ export default function Admin() {
                         </div>
                       </div>
 
-                      {/* Permissions — inline toggles */}
                       <div className="border-t pt-4">
                         <p className="text-xs font-semibold text-muted-foreground mb-3">الصلاحيات</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1850,9 +1776,6 @@ export default function Admin() {
         </main>
       </div>
 
-      {/* ─── Dialogs ─── */}
-
-      {/* Create admin dialog */}
       <Dialog open={createAdminOpen} onOpenChange={setCreateAdminOpen}>
         <DialogContent className="max-w-md" dir="rtl">
           <DialogHeader><DialogTitle>إنشاء حساب أدمن جديد</DialogTitle></DialogHeader>
@@ -1868,7 +1791,6 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* Package dialog */}
       <Dialog open={pkgDialogOpen} onOpenChange={setPkgDialogOpen}>
         <DialogContent className="max-w-lg" dir="rtl">
           <DialogHeader>
@@ -1889,7 +1811,6 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* Payment method dialog */}
       <Dialog open={pmDialogOpen} onOpenChange={setPmDialogOpen}>
         <DialogContent className="max-w-md" dir="rtl">
           <DialogHeader>
@@ -1926,7 +1847,6 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* Sub-admin create dialog */}
       <Dialog open={subadminDialogOpen} onOpenChange={setSubadminDialogOpen}>
         <DialogContent className="max-w-sm" dir="rtl">
           <DialogHeader>
@@ -1961,7 +1881,6 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* Profile dialog for sub-admins */}
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
         <DialogContent className="max-w-sm" dir="rtl">
           <DialogHeader>
@@ -2000,7 +1919,6 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* Coupon dialog */}
       <Dialog open={couponDialogOpen} onOpenChange={setCouponDialogOpen}>
         <DialogContent className="max-w-md" dir="rtl">
           <DialogHeader>
@@ -2070,7 +1988,6 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* Mobile bottom navigation */}
       <nav className="md:hidden fixed bottom-0 right-0 left-0 z-30 bg-white border-t shadow-lg" dir="rtl">
         <div className="flex overflow-x-auto scrollbar-hide">
           {NAV.map(item => {

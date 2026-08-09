@@ -73,13 +73,13 @@ function toMailError(error: unknown): ApiError {
   ) {
     return new ApiError(
       503,
-      "تعذر إرسال البريد الإلكتروني بسبب مشكلة في الاتصال بخادم جوجل. يرجى المحاولة مرة أخرى.",
+      "تعذر إرسال البريد الإلكتروني بسبب مشكلة في الاتصال بخادم البريد. يرجى المحاولة مرة أخرى.",
       { code: "SMTP_TIMEOUT", cause: error }
     );
   }
 
   if (normalized.includes("auth") || normalized.includes("invalid login")) {
-    return new ApiError(503, "فشل المصادقة مع خادم البريد. تأكد من استخدام 'كلمة مرور التطبيقات' (App Password) الصحيحة في الإعدادات.", {
+    return new ApiError(503, "فشل المصادقة مع خادم البريد. تأكد من صحة بيانات الدخول في الإعدادات.", {
       code: "SMTP_AUTH_FAILED",
       cause: error,
     });
@@ -90,6 +90,8 @@ function toMailError(error: unknown): ApiError {
 
 async function getMailTransport(): Promise<MailTransportInfo> {
   const [settings] = await db.select().from(siteSettingsTable).limit(1);
+  
+  // الأولوية لإعدادات الداتا بيز (لوحة التحكم)، ثم الـ Environment Variables
   const emailUser = settings?.emailUser?.trim() || process.env.SMTP_USER?.trim() || process.env.EMAIL_USER?.trim();
   const emailPass = settings?.emailPass?.trim() || process.env.SMTP_PASS?.trim() || process.env.EMAIL_PASS?.trim();
 
@@ -99,10 +101,12 @@ async function getMailTransport(): Promise<MailTransportInfo> {
     });
   }
 
-  // إجبار الإعدادات القياسية لـ Gmail لضمان عدم التعليق
-  const host = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
-  const port = 465; // استخدام بورت 465 الإجباري لجوجل
-  const secure = true; // إجباري لـ بورت 465
+  // التعرف التلقائي على ما إذا كان المستخدم يود استخدام Brevo بناءً على اسم المستخدم أو الإعدادات
+  const isBrevo = emailUser.includes("smtp-brevo.com") || emailUser.includes("@smtp-brevo.com") || (process.env.SMTP_HOST?.includes("brevo.com") ?? false);
+
+  const host = process.env.SMTP_HOST?.trim() || (isBrevo ? "smtp-relay.brevo.com" : "smtp.gmail.com");
+  const port = Number(process.env.SMTP_PORT || (isBrevo ? 587 : 465));
+  const secure = port === 465; // بورت 465 آمن بشكل مباشر، بورت 587 يستخدم TLS
 
   return {
     fromEmail: emailUser,
@@ -112,15 +116,15 @@ async function getMailTransport(): Promise<MailTransportInfo> {
       secure,
       auth: {
         user: emailUser,
-        pass: emailPass, // يجب أن تكون App Password بدون مسافات
+        pass: emailPass,
       },
-      pool: false, // تعطيل الـ pool لمنع بقاء الاتصالات مفتوحة
-      family: 4, // إجبار السيرفر على استخدام IPv4 لمنع خطأ ENETUNREACH على Render
+      pool: false,
+      family: 4, // إجبار السيرفر على استخدام IPv4 لمنع أخطاء الشبكة على Render
       connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
       greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
       socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
       dnsTimeout: SMTP_CONNECTION_TIMEOUT_MS,
-    } as any), // <-- تم إضافة as any هنا لتخطي خطأ TypeScript
+    } as any),
   };
 }
 
