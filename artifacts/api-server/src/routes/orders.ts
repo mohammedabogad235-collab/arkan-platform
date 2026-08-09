@@ -286,7 +286,7 @@ router.post("/orders", asyncHandler(async (req, res): Promise<void> => {
 
 // GET /orders/:id
 router.get("/orders/:id", async (req, res): Promise<void> => {
-  const params = Api.GetOrderParams.safeParse({ id: parseInt(req.params.id, 10) });
+  const params = Api.GetOrderParams.safeParse({ id: parseInt(req.params.id as string, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return; // Explicit return
@@ -371,7 +371,7 @@ router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
 
 // POST /orders/:id/final-receipt — user uploads final receipt
 router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(req.params.id as string, 10);
   if (isNaN(orderId)) {
     res.status(400).json({ error: "معرف غير صالح" });
     return; // Explicit return
@@ -426,7 +426,7 @@ router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
 
 // POST /orders/:id/cancel — user cancels order
 router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(req.params.id as string, 10);
   if (isNaN(orderId)) {
     res.status(400).json({ error: "معرف غير صالح" });
     return; // Explicit return
@@ -459,7 +459,7 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
 
 // POST /orders/:id/apply-coupon — user applies coupon
 router.post("/orders/:id/apply-coupon", asyncHandler(async (req, res): Promise<void> => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(req.params.id as string, 10);
   if (isNaN(orderId)) {
     res.status(400).json({ error: "معرف غير صالح" });
     return; // Explicit return
@@ -555,7 +555,7 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
     return; // Explicit return
   }
 
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(req.params.id as string, 10);
   if (isNaN(orderId)) {
     res.status(400).json({ error: "معرف غير صالح" });
     return; // Explicit return

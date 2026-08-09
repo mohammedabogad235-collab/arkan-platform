@@ -118,7 +118,7 @@ router.put("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
     return;
   }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) {
     res.status(400).json({ error: "معرف غير صالح" });
     return;
@@ -182,7 +182,7 @@ router.delete("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
     return;
   }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) {
     res.status(400).json({ error: "معرف غير صالح" });
     return;

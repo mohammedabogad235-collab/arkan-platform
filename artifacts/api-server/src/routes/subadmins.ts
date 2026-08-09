@@ -159,7 +159,7 @@ router.post("/subadmins", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/subadmins/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!await isAdmin(req)) { res.status(403).json({ error: "غير مصرح" }); return; }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "معرّف غير صالح" }); return; }
 
   const [currentUser] = await db.select().from(usersTable)
@@ -208,7 +208,7 @@ router.patch("/subadmins/:id", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/subadmins/:id/toggle", asyncHandler(async (req, res): Promise<void> => {
   if (!await isAdmin(req)) { res.status(403).json({ error: "غير مصرح" }); return; }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "معرّف غير صالح" }); return; }
 
   const [current] = await db.select().from(usersTable)
@@ -226,7 +226,7 @@ router.patch("/subadmins/:id/toggle", asyncHandler(async (req, res): Promise<voi
 router.delete("/subadmins/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!await isAdmin(req)) { res.status(403).json({ error: "غير مصرح" }); return; }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "معرّف غير صالح" }); return; }
 
   const [deleted] = await db.delete(usersTable)
