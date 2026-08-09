@@ -26,9 +26,7 @@ logger.info(
   "Resolved frontend static assets path",
 );
 
-// --- تم إضافة هذا السطر بنجاح لحل مشكلة الجلسات (Sessions) على خوادم Render ---
 app.set("trust proxy", 1);
-// -------------------------------------------------------------------------
 
 app.use(
   pinoHttp({
@@ -112,7 +110,7 @@ app.use(
     store: new PgSession({
       conString: normalizedDatabaseUrl,
       tableName: "session",
-      createTableIfMissing: true,
+      createTableIfMissing: false, // تم التعديل لمنع البحث عن ملف table.sql المفقود
     }),
     secret: process.env.SESSION_SECRET ?? "fallback-secret-change-in-production",
     resave: false,
