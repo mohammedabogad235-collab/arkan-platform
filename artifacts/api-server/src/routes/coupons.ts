@@ -9,18 +9,20 @@ import {
   validateCouponInputSchema,
 } from "@workspace/db";
 import { asyncHandler } from "../lib/http";
+import { logger } from "../lib/logger"; // إضافة التتبع لمعرفة أي خطأ صامت
 
 const router: IRouter = Router();
 
+// تحديث شامل لدالة التحقق لتدعم الـ Token والـ Session وتسمح للمشرفين الفرعيين
 async function isAdmin(req: any): Promise<boolean> {
-  const session = req.session as Record<string, unknown> | undefined;
-  const userId = session?.userId as number | undefined;
+  const role = req.session?.role || req.user?.role;
+  const userId = req.session?.userId || req.user?.id || req.user?.userId;
+
+  if (role === "admin" || role === "subadmin") return true;
   if (!userId) return false;
-  // Fast path: role stored in session at login
-  if (session?.role === "admin") return true;
-  // Fallback: look up role in DB (for older sessions without role)
+  
   const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
-  return user?.role === "admin";
+  return user?.role === "admin" || user?.role === "subadmin";
 }
 
 function normalizeCouponCode(code: string): string {
@@ -57,11 +59,11 @@ function validateCouponAvailability(
   }
 
   if (isCouponExpired(coupon)) {
-    return "انتهت صلاحية هذا الكود";
+    return "عذراً، انتهت صلاحية هذا الكود";
   }
 
   if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
-    return "تم استنفاد هذا الكود بالكامل";
+    return "تم استنفاد الحد الأقصى لاستخدام هذا الكود";
   }
 
   if (typeof orderAmount === "number" && coupon.minOrderAmount !== null && orderAmount < coupon.minOrderAmount) {
@@ -73,7 +75,7 @@ function validateCouponAvailability(
 
 router.get("/coupons", asyncHandler(async (req, res): Promise<void> => {
   if (!await isAdmin(req)) {
-    res.status(403).json({ error: "غير مصرح" });
+    res.status(403).json({ error: "غير مصرح لك بعرض الكوبونات" });
     return;
   }
   const coupons = await db.select().from(couponsTable).orderBy(couponsTable.id);
@@ -82,7 +84,7 @@ router.get("/coupons", asyncHandler(async (req, res): Promise<void> => {
 
 router.post("/coupons", asyncHandler(async (req, res): Promise<void> => {
   if (!await isAdmin(req)) {
-    res.status(403).json({ error: "غير مصرح" });
+    res.status(403).json({ error: "غير مصرح لك بإنشاء كوبونات" });
     return;
   }
 
@@ -95,32 +97,37 @@ router.post("/coupons", asyncHandler(async (req, res): Promise<void> => {
   const code = normalizeCouponCode(parsed.data.code);
   const existing = await db.select({ id: couponsTable.id }).from(couponsTable).where(eq(couponsTable.code, code));
   if (existing.length > 0) {
-    res.status(409).json({ error: "هذا الكود موجود مسبقاً" });
+    res.status(409).json({ error: "كود الخصم هذا موجود مسبقاً، يرجى اختيار كود آخر" });
     return;
   }
 
-  const [coupon] = await db.insert(couponsTable).values({
-    code,
-    discountType: parsed.data.discountType,
-    discountValue: parsed.data.discountValue,
-    minOrderAmount: parsed.data.minOrderAmount ?? null,
-    maxUses: parsed.data.maxUses ?? null,
-    isActive: parsed.data.isActive ?? true,
-    expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
-  }).returning();
+  try {
+    const [coupon] = await db.insert(couponsTable).values({
+      code,
+      discountType: parsed.data.discountType,
+      discountValue: parsed.data.discountValue,
+      minOrderAmount: parsed.data.minOrderAmount ?? null,
+      maxUses: parsed.data.maxUses ?? null,
+      isActive: parsed.data.isActive ?? true,
+      expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+    }).returning();
 
-  res.status(201).json(formatCoupon(coupon));
+    res.status(201).json(formatCoupon(coupon));
+  } catch (error: any) {
+    logger.error("Error creating coupon:", error);
+    res.status(500).json({ error: "حدث خطأ في الخادم أثناء إنشاء الكوبون" });
+  }
 }));
 
 router.put("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!await isAdmin(req)) {
-    res.status(403).json({ error: "غير مصرح" });
+    res.status(403).json({ error: "غير مصرح لك بتعديل الكوبونات" });
     return;
   }
 
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) {
-    res.status(400).json({ error: "معرف غير صالح" });
+    res.status(400).json({ error: "معرف الكوبون غير صالح" });
     return;
   }
 
@@ -152,7 +159,7 @@ router.put("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
     && updateData.maxUses !== null
     && updateData.maxUses < existingCoupon.usedCount
   ) {
-    res.status(400).json({ error: "عدد مرات الاستخدام لا يمكن أن يكون أقل من الاستخدام الحالي" });
+    res.status(400).json({ error: "عدد مرات الاستخدام الأقصى لا يمكن أن يكون أقل من الاستخدام الحالي" });
     return;
   }
 
@@ -162,23 +169,28 @@ router.put("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
       .from(couponsTable)
       .where(eq(couponsTable.code, updateData.code));
     if (duplicateCode) {
-      res.status(409).json({ error: "هذا الكود موجود مسبقاً" });
+      res.status(409).json({ error: "كود الخصم الجديد مستخدم مسبقاً" });
       return;
     }
   }
 
-  const [coupon] = await db.update(couponsTable).set(updateData).where(eq(couponsTable.id, id)).returning();
-  if (!coupon) {
-    res.status(404).json({ error: "الكوبون غير موجود" });
-    return;
-  }
+  try {
+    const [coupon] = await db.update(couponsTable).set(updateData).where(eq(couponsTable.id, id)).returning();
+    if (!coupon) {
+      res.status(404).json({ error: "الكوبون غير موجود" });
+      return;
+    }
 
-  res.json(formatCoupon(coupon));
+    res.json(formatCoupon(coupon));
+  } catch (error: any) {
+    logger.error("Error updating coupon:", error);
+    res.status(500).json({ error: "حدث خطأ أثناء تحديث الكوبون" });
+  }
 }));
 
 router.delete("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!await isAdmin(req)) {
-    res.status(403).json({ error: "غير مصرح" });
+    res.status(403).json({ error: "غير مصرح لك بحذف الكوبونات" });
     return;
   }
 
@@ -188,8 +200,13 @@ router.delete("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
     return;
   }
 
-  await db.delete(couponsTable).where(eq(couponsTable.id, id));
-  res.json({ success: true });
+  try {
+    await db.delete(couponsTable).where(eq(couponsTable.id, id));
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error("Error deleting coupon:", error);
+    res.status(500).json({ error: "حدث خطأ أثناء حذف الكوبون" });
+  }
 }));
 
 router.post("/coupons/validate", asyncHandler(async (req, res): Promise<void> => {
@@ -203,7 +220,7 @@ router.post("/coupons/validate", asyncHandler(async (req, res): Promise<void> =>
   const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, code));
 
   if (!coupon) {
-    res.status(404).json({ valid: false, error: "الكود غير موجود" });
+    res.status(404).json({ valid: false, error: "كود الخصم غير موجود أو غير صحيح" });
     return;
   }
 
