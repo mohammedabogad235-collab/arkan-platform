@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
+import { isApiError } from "./lib/http";
 import { logger } from "./lib/logger";
 import { normalizedDatabaseUrl } from "@workspace/db";
 import { existsSync } from "node:fs";
@@ -123,6 +124,12 @@ app.use(
 );
 
 app.use("/api", router);
+app.use("/api", (_req, res) => {
+  res.status(404).json({
+    error: "المسار المطلوب غير موجود",
+    code: "API_ROUTE_NOT_FOUND",
+  });
+});
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -137,8 +144,24 @@ app.get(/^(?!\/api(?:\/|$)).*/, (req: Request, res: Response, next: NextFunction
 });
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  logger.error(err, "An unhandled error occurred");
-  res.status(500).json({ error: err.message || "حدث خطأ في السيرفر" });
+  const statusCode = isApiError(err) ? err.statusCode : 500;
+  const errorCode = isApiError(err) ? err.code : "INTERNAL_SERVER_ERROR";
+  const details = isApiError(err) ? err.details : undefined;
+
+  logger.error(
+    {
+      err,
+      statusCode,
+      errorCode,
+    },
+    "An unhandled error occurred",
+  );
+
+  res.status(statusCode).json({
+    error: err.message || "حدث خطأ في السيرفر",
+    code: errorCode,
+    ...(details !== undefined ? { details } : {}),
+  });
 });
 
 export default app;

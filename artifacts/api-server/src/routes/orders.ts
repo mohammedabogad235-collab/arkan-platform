@@ -12,6 +12,7 @@ import {
 import { Api } from "@workspace/api-zod";
 import {
   sendOrderCompletedEmail,
+  sendOrderInProgressPaymentDetailsEmail,
   sendOrderPaymentApprovedEmail,
   sendOrderPhaseEmail,
   sendOrderReceiptAcceptedEmail,
@@ -19,8 +20,39 @@ import {
   sendOrderReceivedEmail,
 } from "../lib/mailer";
 import { createClient } from "@supabase/supabase-js";
+import { asyncHandler } from "../lib/http";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+function normalizeCouponCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+function isCouponExpired(coupon: typeof couponsTable.$inferSelect): boolean {
+  return Boolean(coupon.expiresAt && coupon.expiresAt.getTime() < Date.now());
+}
+
+function calculateCouponDiscountAmount(coupon: typeof couponsTable.$inferSelect, amount: number): number {
+  const rawDiscount =
+    coupon.discountType === "percentage"
+      ? (amount * coupon.discountValue) / 100
+      : coupon.discountValue;
+
+  return Math.min(amount, Math.max(0, Math.round(rawDiscount * 100) / 100));
+}
+
+async function resolveNotificationPaymentMethod(order: typeof ordersTable.$inferSelect) {
+  if (order.paymentMethodId != null) {
+    const [selectedMethod] = await db.select().from(paymentMethodsTable).where(eq(paymentMethodsTable.id, order.paymentMethodId));
+    if (selectedMethod) {
+      return selectedMethod;
+    }
+  }
+
+  const methods = await db.select().from(paymentMethodsTable).where(eq(paymentMethodsTable.isActive, true));
+  return methods.find((method) => method.currency === order.currency || method.currency === "both") ?? null;
+}
 
 export function getSession(req: any): { userId?: number; role?: string } {
   const session = (req.session ?? {}) as Record<string, unknown>;
@@ -124,6 +156,24 @@ async function getOrCreateSettings() {
   return row;
 }
 
+async function notifySafely(
+  label: string,
+  task: () => Promise<void>,
+  context?: Record<string, unknown>,
+) {
+  try {
+    await task();
+  } catch (error) {
+    logger.error(
+      {
+        err: error,
+        ...context,
+      },
+      label,
+    );
+  }
+}
+
 // GET /orders — admin: all orders, user: own orders
 router.get("/orders", async (req, res): Promise<void> => {
   const parsed = Api.ListOrdersQueryParams.safeParse(req.query);
@@ -180,7 +230,7 @@ router.get("/orders", async (req, res): Promise<void> => {
 });
 
 // POST /orders — create order (user)
-router.post("/orders", async (req, res): Promise<void> => {
+router.post("/orders", asyncHandler(async (req, res): Promise<void> => {
   const { userId } = getSession(req);
   if (!userId) {
     res.status(401).json({ error: "غير مصرح" });
@@ -222,16 +272,17 @@ router.post("/orders", async (req, res): Promise<void> => {
     .returning();
 
   // Email: order received
-  try {
-    await sendOrderReceivedEmail(user.email, user.fullName, order.id, order.siteName);
-  } catch (err) {
-    // non-blocking
-    console.error("Failed to send order received email:", err);
-  }
+  await notifySafely(
+    "Failed to send order received email",
+    async () => {
+      await sendOrderReceivedEmail(user.email, user.fullName, order.id, order.siteName);
+    },
+    { orderId: order.id, userId: user.id },
+  );
 
   const full = await loadOrderWithRelations(order.id);
   res.status(201).json(full ?? { id: order.id }); // Explicit return
-});
+}));
 
 // GET /orders/:id
 router.get("/orders/:id", async (req, res): Promise<void> => {
@@ -264,7 +315,8 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
 
 // POST /orders/:id/receipt — user uploads deposit receipt
 router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderIdParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const orderId = parseInt(orderIdParam, 10);
   if (isNaN(orderId)) {
     res.status(400).json({ error: "معرف غير صالح" });
     return; // Explicit return
@@ -406,7 +458,7 @@ router.post("/orders/:id/cancel", async (req, res): Promise<void> => {
 });
 
 // POST /orders/:id/apply-coupon — user applies coupon
-router.post("/orders/:id/apply-coupon", async (req, res): Promise<void> => {
+router.post("/orders/:id/apply-coupon", asyncHandler(async (req, res): Promise<void> => {
   const orderId = parseInt(req.params.id, 10);
   if (isNaN(orderId)) {
     res.status(400).json({ error: "معرف غير صالح" });
@@ -435,7 +487,7 @@ router.post("/orders/:id/apply-coupon", async (req, res): Promise<void> => {
     return; // Explicit return
   }
 
-  const normalized = code.trim().toUpperCase();
+  const normalized = normalizeCouponCode(code);
   const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, normalized));
   if (!coupon) {
     res.status(404).json({ error: "الكود غير موجود" });
@@ -445,7 +497,7 @@ router.post("/orders/:id/apply-coupon", async (req, res): Promise<void> => {
     res.status(400).json({ error: "هذا الكود غير مفعّل" });
     return; // Explicit return
   }
-  if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
+  if (isCouponExpired(coupon)) {
     res.status(400).json({ error: "انتهت صلاحية هذا الكود" });
     return; // Explicit return
   }
@@ -454,38 +506,50 @@ router.post("/orders/:id/apply-coupon", async (req, res): Promise<void> => {
     return; // Explicit return
   }
 
-  // discount applies only when totalAmount is set
-  const amount = order.totalAmount ?? 0;
-  if (coupon.minOrderAmount && amount < coupon.minOrderAmount) {
+  if (order.totalAmount == null || order.totalAmount <= 0) {
+    res.status(400).json({ error: "لا يمكن تطبيق الكوبون قبل اعتماد سعر الطلب من الإدارة" });
+    return; // Explicit return
+  }
+
+  const amount = order.totalAmount;
+  if (coupon.minOrderAmount !== null && amount < coupon.minOrderAmount) {
     res.status(400).json({ error: `الحد الأدنى للطلب ${coupon.minOrderAmount} لاستخدام هذا الكود` });
     return; // Explicit return
   }
 
-  let discountAmount = 0;
-  if (coupon.discountType === "percentage") {
-    discountAmount = (amount * coupon.discountValue) / 100;
-  } else {
-    discountAmount = coupon.discountValue;
-  }
+  const discountAmount = calculateCouponDiscountAmount(coupon, amount);
+  const previousCouponCode = order.couponCode ? normalizeCouponCode(order.couponCode) : null;
 
-  const rounded = Math.round(discountAmount);
+  await db.transaction(async (tx) => {
+    if (previousCouponCode && previousCouponCode !== normalized) {
+      const [previousCoupon] = await tx.select().from(couponsTable).where(eq(couponsTable.code, previousCouponCode));
+      if (previousCoupon && previousCoupon.usedCount > 0) {
+        await tx
+          .update(couponsTable)
+          .set({ usedCount: previousCoupon.usedCount - 1 })
+          .where(eq(couponsTable.id, previousCoupon.id));
+      }
+    }
 
-  await db
-    .update(ordersTable)
-    .set({ couponCode: normalized, discountAmount: rounded } as any)
-    .where(eq(ordersTable.id, orderId));
+    await tx
+      .update(ordersTable)
+      .set({ couponCode: normalized, discountAmount } as any)
+      .where(eq(ordersTable.id, orderId));
 
-  await db
-    .update(couponsTable) // Explicit return
-    .set({ usedCount: coupon.usedCount + 1 }) // Explicit return
-    .where(eq(couponsTable.id, coupon.id)); // Explicit return
+    if (previousCouponCode !== normalized) {
+      await tx
+        .update(couponsTable)
+        .set({ usedCount: coupon.usedCount + 1 })
+        .where(eq(couponsTable.id, coupon.id));
+    }
+  });
 
   const full = await loadOrderWithRelations(orderId);
   res.json(full); // Explicit return
-});
+}));
 
 // PATCH /orders/:id — admin update (status/price/payment flags/etc.)
-router.patch("/orders/:id", async (req, res): Promise<void> => {
+router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!(await isAdmin(req))) {
     res.status(403).json({ error: "غير مصرح" });
     return; // Explicit return
@@ -532,104 +596,119 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, updatedOrder.userId));
-  const [pm] =
-    updatedOrder.paymentMethodId != null
-      ? await db.select().from(paymentMethodsTable).where(eq(paymentMethodsTable.id, updatedOrder.paymentMethodId))
-      : [];
+  const pm = await resolveNotificationPaymentMethod(updatedOrder);
 
   // --- Notification logic (non-blocking) ---
   if (user) {
     // 2) Approval + payment details (when totalAmount is set first time)
-    if (originalOrder.totalAmount == null && updatedOrder.totalAmount != null) {
-      try {
-        await sendOrderPaymentApprovedEmail({
-          to: user.email,
-          name: user.fullName,
-          orderId: updatedOrder.id,
-          siteName: updatedOrder.siteName,
-          totalAmount: updatedOrder.totalAmount,
-          depositPercentage: updatedOrder.depositPercentage ?? 50,
-          currency: updatedOrder.currency,
-          paymentMethodName: pm?.name ?? null,
-          paymentMethodDetails: pm?.details ?? null,
-        });
-      } catch (err) {
-        console.error("Failed to send payment approved email:", err);
-      }
+    const approvedTotalAmount = updatedOrder.totalAmount;
+
+    if (originalOrder.totalAmount == null && approvedTotalAmount != null) {
+      await notifySafely(
+        "Failed to send payment approved email",
+        async () => {
+          await sendOrderPaymentApprovedEmail({
+            to: user.email,
+            name: user.fullName,
+            orderId: updatedOrder.id,
+            siteName: updatedOrder.siteName,
+            totalAmount: approvedTotalAmount,
+            depositPercentage: updatedOrder.depositPercentage ?? 50,
+            currency: updatedOrder.currency,
+            paymentMethodName: pm?.name ?? null,
+            paymentMethodDetails: pm?.details ?? null,
+          });
+        },
+        { orderId: updatedOrder.id, userId: user.id },
+      );
     }
 
     // 3) Receipt uploaded (if admin sets it manually)
     if (!originalOrder.receiptUrl && updatedOrder.receiptUrl) {
-      try {
-        await sendOrderReceiptUploadedEmail({
-          to: user.email,
-          name: user.fullName,
-          orderId: updatedOrder.id,
-          siteName: updatedOrder.siteName,
-          receiptUrl: updatedOrder.receiptUrl,
-          kind: "deposit",
-        });
-      } catch (err) {
-        console.error("Failed to send receipt uploaded email:", err);
-      }
+      await notifySafely(
+        "Failed to send receipt uploaded email",
+        async () => {
+          await sendOrderReceiptUploadedEmail({
+            to: user.email,
+            name: user.fullName,
+            orderId: updatedOrder.id,
+            siteName: updatedOrder.siteName,
+            receiptUrl: updatedOrder.receiptUrl,
+            kind: "deposit",
+          });
+        },
+        { orderId: updatedOrder.id, userId: user.id },
+      );
     }
 
     // 4) Receipt accepted (depositPaid)
     if (originalOrder.depositPaid === false && updatedOrder.depositPaid === true) {
-      try {
-        await sendOrderReceiptAcceptedEmail({
-          to: user.email,
-          name: user.fullName,
-          orderId: updatedOrder.id,
-          siteName: updatedOrder.siteName,
-          kind: "deposit",
-        });
-      } catch (err) {
-        console.error("Failed to send receipt accepted email:", err);
-      }
+      await notifySafely(
+        "Failed to send receipt accepted email",
+        async () => {
+          await sendOrderReceiptAcceptedEmail({
+            to: user.email,
+            name: user.fullName,
+            orderId: updatedOrder.id,
+            siteName: updatedOrder.siteName,
+            kind: "deposit",
+          });
+        },
+        { orderId: updatedOrder.id, userId: user.id },
+      );
     }
 
     // Final receipt accepted (finalPaid) — optional but consistent
     if (originalOrder.finalPaid === false && updatedOrder.finalPaid === true) {
-      try {
-        await sendOrderReceiptAcceptedEmail({
-          to: user.email,
-          name: user.fullName,
-          orderId: updatedOrder.id,
-          siteName: updatedOrder.siteName,
-          kind: "final",
-        });
-      } catch (err) {
-        console.error("Failed to send final payment accepted email:", err);
-      }
+      await notifySafely(
+        "Failed to send final payment accepted email",
+        async () => {
+          await sendOrderReceiptAcceptedEmail({
+            to: user.email,
+            name: user.fullName,
+            orderId: updatedOrder.id,
+            siteName: updatedOrder.siteName,
+            kind: "final",
+          });
+        },
+        { orderId: updatedOrder.id, userId: user.id },
+      );
     }
 
     // 5) Execution phases
     if (originalOrder.status !== "started" && updatedOrder.status === "started") {
-      try {
-        await sendOrderPhaseEmail({
-          to: user.email,
-          name: user.fullName,
-          orderId: updatedOrder.id,
-          siteName: updatedOrder.siteName,
-          phase: "started",
-        });
-      } catch (err) {
-        console.error("Failed to send started email:", err);
-      }
+      await notifySafely(
+        "Failed to send started email",
+        async () => {
+          await sendOrderPhaseEmail({
+            to: user.email,
+            name: user.fullName,
+            orderId: updatedOrder.id,
+            siteName: updatedOrder.siteName,
+            phase: "started",
+          });
+        },
+        { orderId: updatedOrder.id, userId: user.id },
+      );
     }
     if (originalOrder.status !== "in_progress" && updatedOrder.status === "in_progress") {
-      try {
-        await sendOrderPhaseEmail({
-          to: user.email,
-          name: user.fullName,
-          orderId: updatedOrder.id,
-          siteName: updatedOrder.siteName,
-          phase: "in_progress",
-        });
-      } catch (err) {
-        console.error("Failed to send in-progress email:", err);
-      }
+      await notifySafely(
+        "Failed to send in-progress payment details email",
+        async () => {
+          await sendOrderInProgressPaymentDetailsEmail({
+            to: user.email,
+            name: user.fullName,
+            orderId: updatedOrder.id,
+            siteName: updatedOrder.siteName,
+            totalAmount: updatedOrder.totalAmount,
+            depositPercentage: updatedOrder.depositPercentage ?? 50,
+            currency: updatedOrder.currency,
+            paymentMethodName: pm?.name ?? null,
+            paymentMethodDetails: pm?.details ?? null,
+          });
+        },
+        { orderId: updatedOrder.id, userId: user.id },
+      );
     }
 
     // 6) Completed + delivered link
@@ -641,29 +720,31 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
         : null;
 
     if ((becameCompleted && deliveredUrl) || (deliveredAdded && updatedOrder.status === "completed" && deliveredUrl)) {
-      try {
-        await sendOrderCompletedEmail({
-          to: user.email,
-          name: user.fullName,
-          orderId: updatedOrder.id,
-          siteName: updatedOrder.siteName,
-          deliveredUrl,
-          requireFinalPaymentNotice: !updatedOrder.finalPaid,
-          paymentMethodName: pm?.name ?? null,
-          paymentMethodDetails: pm?.details ?? null,
-        });
-      } catch (err) {
-        console.error("Failed to send completed email:", err);
-      }
+      await notifySafely(
+        "Failed to send completed email",
+        async () => {
+          await sendOrderCompletedEmail({
+            to: user.email,
+            name: user.fullName,
+            orderId: updatedOrder.id,
+            siteName: updatedOrder.siteName,
+            deliveredUrl,
+            requireFinalPaymentNotice: !updatedOrder.finalPaid,
+            paymentMethodName: pm?.name ?? null,
+            paymentMethodDetails: pm?.details ?? null,
+          });
+        },
+        { orderId: updatedOrder.id, userId: user.id },
+      );
     }
   }
 
   const full = await loadOrderWithRelations(orderId);
   res.json(full ?? updatedOrder); // Explicit return
-});
+}));
 
 // POST /storage/upload-url - Generate a signed URL for Supabase upload
-router.post("/storage/upload-url", async (req, res) => {
+router.post("/storage/upload-url", asyncHandler(async (req, res): Promise<void> => {
   const { userId } = getSession(req);
   if (!userId) {
     res.status(401).json({ error: "غير مصرح" });
@@ -681,7 +762,7 @@ router.post("/storage/upload-url", async (req, res) => {
   const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "receipts";
 
   if (!supabaseUrl || !supabaseKey) {
-    console.error("Supabase URL or Service Key is not configured."); // Explicit return
+    logger.error("Supabase URL or Service Key is not configured");
     res.status(500).json({ error: "إعدادات التخزين غير مكتملة" }); // Explicit return
     return; // Explicit return
   }
@@ -695,7 +776,7 @@ router.post("/storage/upload-url", async (req, res) => {
   const { data, error } = await supabase.storage.from(bucketName).createSignedUploadUrl(filePath);
 
   if (error) {
-    console.error("Supabase signed URL error:", error); // Explicit return
+    logger.error({ err: error, filePath, userId }, "Supabase signed URL error");
     res.status(500).json({ error: "فشل إنشاء رابط الرفع" }); // Explicit return
     return; // Explicit return
   }
@@ -704,6 +785,6 @@ router.post("/storage/upload-url", async (req, res) => {
     uploadUrl: data.signedUrl,
     publicUrl: `${supabaseUrl}/storage/v1/object/public/${bucketName}/${data.path}`,
   }); // Explicit return
-});
+}));
 
 export default router;

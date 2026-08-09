@@ -3,26 +3,20 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { hashPassword } from "../lib/crypto";
 import { sendResetPasswordOtpEmail } from "../lib/mailer";
+import { ApiError, asyncHandler, getErrorMessage } from "../lib/http";
+import { issueOtp, normalizeEmail, validateOtp } from "../lib/otp";
 
 const router: IRouter = Router();
 
-// In-memory OTP store: email -> { otp, expiresAt }
-const otpStore = new Map<string, { otp: string; expiresAt: number }>();
-
-function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
 // POST /auth/send-otp  — send OTP to email
-router.post("/auth/send-otp", async (req, res): Promise<void> => {
+router.post("/auth/send-otp", asyncHandler(async (req, res): Promise<void> => {
   const { email } = req.body as { email?: string };
 
   if (!email || typeof email !== "string") {
-    res.status(400).json({ error: "البريد الإلكتروني مطلوب" });
-    return;
+    throw new ApiError(400, "البريد الإلكتروني مطلوب", { code: "EMAIL_REQUIRED" });
   }
 
-  const trimmed = email.trim().toLowerCase();
+  const trimmed = normalizeEmail(email);
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, trimmed));
 
   if (!user) {
@@ -30,21 +24,22 @@ router.post("/auth/send-otp", async (req, res): Promise<void> => {
     return;
   }
 
-  const otp = generateOtp();
-  const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
-  otpStore.set(trimmed, { otp, expiresAt });
+  const { otp } = issueOtp(trimmed, "password_reset");
 
   try {
     await sendResetPasswordOtpEmail(trimmed, otp, user.fullName);
-    res.json({ message: "تم إرسال رمز التحقق إلى بريدك الإلكتروني" });
-  } catch (err: any) {
-    otpStore.delete(trimmed);
-    res.status(500).json({ error: err?.message || "فشل إرسال البريد الإلكتروني — تحقق من إعدادات OTP" });
+    res.json({ message: "تم إرسال رمز التحقق إلى بريدك الإلكتروني", otpSent: true });
+  } catch (error) {
+    res.status(503).json({
+      error: getErrorMessage(error),
+      otpSent: false,
+      email: trimmed,
+    });
   }
-});
+}));
 
 // POST /auth/verify-otp  — verify OTP and reset password
-router.post("/auth/verify-otp", async (req, res): Promise<void> => {
+router.post("/auth/verify-otp", asyncHandler(async (req, res): Promise<void> => {
   const { email, otp, newPassword } = req.body as { email?: string; otp?: string; newPassword?: string };
 
   if (!email || !otp || !newPassword) {
@@ -52,22 +47,24 @@ router.post("/auth/verify-otp", async (req, res): Promise<void> => {
     return;
   }
 
-  const trimmed = email.trim().toLowerCase();
-  const stored = otpStore.get(trimmed);
+  const trimmed = normalizeEmail(email);
+  const validation = validateOtp(trimmed, "password_reset", otp);
 
-  if (!stored) {
-    res.status(400).json({ error: "لم يتم إرسال رمز أو انتهت صلاحيته — أعد الطلب" });
-    return;
-  }
+  if (!validation.ok) {
+    if (validation.reason === "missing" || validation.reason === "expired") {
+      res.status(400).json({ error: "لم يتم إرسال رمز أو انتهت صلاحيته — أعد الطلب" });
+      return;
+    }
 
-  if (Date.now() > stored.expiresAt) {
-    otpStore.delete(trimmed);
-    res.status(400).json({ error: "انتهت صلاحية الرمز، أعد طلبه" });
-    return;
-  }
+    if (validation.reason === "too_many_attempts") {
+      res.status(429).json({ error: "تم استهلاك عدد المحاولات المسموح بها. اطلب رمزاً جديداً." });
+      return;
+    }
 
-  if (stored.otp !== otp.trim()) {
-    res.status(400).json({ error: "الرمز غير صحيح" });
+    res.status(400).json({
+      error: "الرمز غير صحيح",
+      remainingAttempts: validation.remainingAttempts,
+    });
     return;
   }
 
@@ -86,8 +83,7 @@ router.post("/auth/verify-otp", async (req, res): Promise<void> => {
     .set({ passwordHash: hashPassword(newPassword) })
     .where(eq(usersTable.id, user.id));
 
-  otpStore.delete(trimmed);
   res.json({ message: "تم إعادة تعيين كلمة المرور بنجاح" });
-});
+}));
 
 export default router;

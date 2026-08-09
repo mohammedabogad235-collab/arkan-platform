@@ -5,6 +5,14 @@ import { logger } from "./lib/logger";
 
 const PORT = Number(process.env.PORT || 8080);
 
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection");
+});
+
+process.on("uncaughtException", (error) => {
+  logger.fatal({ err: error }, "Uncaught exception");
+});
+
 async function bootstrap() {
   await runDatabaseMigrations();
   await verifyDatabaseConnection();
