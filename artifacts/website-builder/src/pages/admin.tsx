@@ -150,7 +150,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   onDelete: (id: number) => void;
   onConfirmReceipt: (id: number) => void;
   globalDepositPct?: number;
-  onAmountSave: (id: number, amount: number | null, depositPct: number) => void;
+  onAmountSave: (id: number, amount: number | null, depositPct: number, couponCode?: string) => void;
 }) {
   const pct = order.depositPercentage ?? globalDepositPct ?? 50;
   const [amountInput, setAmountInput] = useState(order.totalAmount?.toString() ?? "");
@@ -257,7 +257,7 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
                         onClick={async () => {
                           setSavingAmount(true);
                           const amt = amountInput === "" ? null : Number(amountInput);
-                          await onAmountSave(order.id, amt, pct);
+                          await onAmountSave(order.id, amt, pct, (order as any).couponCode);
                           setSavingAmount(false);
                         }}
                       >
@@ -658,13 +658,39 @@ export default function Admin() {
     });
   };
 
-  const handleAmountSave = (orderId: number, amount: number | null, depositPct: number): Promise<void> => {
-    return new Promise((resolve) => {
-      updateOrder.mutate({ id: orderId, data: { totalAmount: amount, depositPercentage: depositPct } }, {
+  const handleAmountSave = (orderId: number, amount: number | null, depositPct: number, couponCode?: string): Promise<void> => {
+    return new Promise(async (resolve) => {
+      let discountAmount = 0;
+
+      // لو فيه مبلغ وفي كود خصم، نحسب الخصم الأول
+      if (amount !== null && amount > 0 && couponCode) {
+        try {
+          const res = await fetch("/api/coupons", { credentials: "include" });
+          if (res.ok) {
+            const allCoupons = await res.json();
+            const targetCoupon = allCoupons.find((c: any) => c.code === couponCode && c.isActive);
+            if (targetCoupon) {
+              if (targetCoupon.discountType === "percentage") {
+                discountAmount = (amount * targetCoupon.discountValue) / 100;
+              } else {
+                discountAmount = targetCoupon.discountValue;
+              }
+              if (targetCoupon.minOrderAmount && amount < targetCoupon.minOrderAmount) {
+                discountAmount = 0; // لن يطبق الخصم لأن المبلغ أقل من الحد الأدنى
+              }
+            }
+          }
+        } catch (err) {
+          console.error("فشل في حساب الكوبون:", err);
+        }
+      }
+
+      // حفظ المبلغ والخصم مع بعض
+      updateOrder.mutate({ id: orderId, data: { totalAmount: amount, depositPercentage: depositPct, discountAmount: discountAmount } as any }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
-          toast({ title: "تم حفظ المبلغ" });
+          toast({ title: "تم حفظ المبلغ وتطبيق الخصم بنجاح" });
           resolve();
         },
         onError: () => {

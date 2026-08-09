@@ -130,7 +130,14 @@ function ReceiptStep({
         </Alert>
       )}
 
-      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFile} />
+      {/* التعديل هنا: تحديد صيغ الصور عشان الموبايل يفتح الاستوديو (المعرض) بشكل أساسي وما يجبرش العميل على الكاميرا */}
+      <input 
+        ref={inputRef} 
+        type="file" 
+        accept="image/jpeg, image/png, image/webp, application/pdf" 
+        className="hidden" 
+        onChange={handleFile} 
+      />
       <Button type="button"
         className="w-full h-14 text-base gap-2"
         disabled={isUploading}
@@ -529,7 +536,6 @@ export default function Order() {
 
                 {/* Terms & Conditions */}
                 <div className="rounded-xl bg-red-50 border border-red-200 overflow-hidden">
-                  {/* Header — always visible */}
                   <button
                     type="button"
                     onClick={() => setTermsOpen(o => !o)}
@@ -542,7 +548,6 @@ export default function Order() {
                     {termsOpen ? <ChevronUp className="w-4 h-4 text-red-400" /> : <ChevronDown className="w-4 h-4 text-red-400" />}
                   </button>
 
-                  {/* Collapsible body */}
                   {termsOpen && (
                     <div className="px-4 pb-4 space-y-3">
                       <ul className="list-disc list-inside space-y-1 text-xs text-red-700">
@@ -567,7 +572,6 @@ export default function Order() {
                     </div>
                   )}
 
-                  {/* Checkbox — always visible */}
                   <div className="flex items-center gap-2.5 px-4 py-3 border-t border-red-200/60">
                     <Checkbox
                       id="terms"

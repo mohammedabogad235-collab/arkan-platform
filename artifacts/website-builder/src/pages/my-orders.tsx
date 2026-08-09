@@ -1,6 +1,6 @@
 import { useAuth } from "@/lib/auth";
 import { useListOrders, useListPaymentMethods, getListOrdersQueryKey } from "@workspace/api-client-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CalendarDays, Package as PackageIcon, CreditCard, Upload, CheckCircle2, Image, AlertCircle, XCircle, Hash, Info, ExternalLink, PartyPopper, Lock, Tag } from "lucide-react";
+import { CalendarDays, Package as PackageIcon, CreditCard, Upload, CheckCircle2, Image, AlertCircle, Trash2, Hash, Info, ExternalLink, PartyPopper, Lock, Tag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -79,7 +79,8 @@ function ReceiptUploader({ orderId }: { orderId: number }) {
 
   return (
     <div className="space-y-2">
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      {/* التعديل هنا: تحديد صيغ الصور عشان الموبايل يفتح الاستوديو وما يجبرش العميل على الكاميرا */}
+      <input ref={inputRef} type="file" accept="image/jpeg, image/png, image/webp, application/pdf" className="hidden" onChange={handleFile} />
       <Button
         variant="outline"
         size="sm"
@@ -130,7 +131,8 @@ function FinalReceiptUploader({ orderId }: { orderId: number }) {
 
   return (
     <div className="space-y-2">
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      {/* التعديل هنا: تحديد صيغ الصور عشان الموبايل يفتح الاستوديو وما يجبرش العميل على الكاميرا */}
+      <input ref={inputRef} type="file" accept="image/jpeg, image/png, image/webp, application/pdf" className="hidden" onChange={handleFile} />
       <Button
         variant="outline"
         size="sm"
@@ -146,26 +148,30 @@ function FinalReceiptUploader({ orderId }: { orderId: number }) {
   );
 }
 
-function CancelOrderButton({ order }: { order: any }) {
+// التعديل هنا: إصلاح زرار الحذف والمسار بتاعه عشان يشتغل 100%
+function DeleteOrderButton({ order }: { order: any }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const hasPaid = order.depositPaid || order.finalPaid;
 
-  const handleCancel = async () => {
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault(); // منع النافذة من الإغلاق فوراً
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}/cancel`, {
-        method: "POST",
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
       if (res.ok) {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-        toast({ title: "تم إلغاء الطلب", description: hasPaid ? "تم إلغاء طلبك — لا يتم استرداد المبالغ المدفوعة." : "تم إلغاء طلبك بنجاح." });
+        toast({ title: "تم حذف الطلب بنجاح" });
+        setOpen(false); // إغلاق النافذة بعد النجاح
       } else {
-        const data = await res.json();
-        toast({ variant: "destructive", title: "خطأ", description: data.error || "تعذر إلغاء الطلب" });
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "خطأ", description: data.error || "تعذر حذف الطلب" });
       }
     } finally {
       setLoading(false);
@@ -173,30 +179,30 @@ function CancelOrderButton({ order }: { order: any }) {
   };
 
   return (
-    <AlertDialog>
+    <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
         <Button variant="ghost" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/5 hover:text-destructive border gap-1.5">
-          <XCircle className="w-4 h-4" />
-          إلغاء الطلب
+          <Trash2 className="w-4 h-4" />
+          حذف الطلب
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent dir="rtl">
         <AlertDialogHeader>
-          <AlertDialogTitle>تأكيد إلغاء الطلب</AlertDialogTitle>
+          <AlertDialogTitle>تأكيد حذف الطلب</AlertDialogTitle>
           <AlertDialogDescription className="leading-relaxed">
             {hasPaid
-              ? "⚠️ لقد قمت بالدفع مسبقاً — إلغاء الطلب لا يُتيح استرداد المبالغ المدفوعة. هل أنت متأكد من الإلغاء؟"
-              : "هل أنت متأكد من إلغاء هذا الطلب؟ لن تتمكن من التراجع عن هذا الإجراء."}
+              ? "⚠️ لقد قمت بالدفع مسبقاً — حذف الطلب لا يُتيح استرداد المبالغ المدفوعة. هل أنت متأكد من الحذف؟"
+              : "هل أنت متأكد من حذف هذا الطلب نهائياً؟ لن تتمكن من التراجع عن هذا الإجراء."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="flex-row-reverse gap-2 sm:flex-row-reverse">
-          <AlertDialogCancel>تراجع</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading}>تراجع</AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleCancel}
+            onClick={handleDelete}
             disabled={loading}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {loading ? "جاري الإلغاء..." : "تأكيد الإلغاء"}
+            {loading ? "جاري الحذف..." : "تأكيد الحذف"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -330,13 +336,12 @@ export default function MyOrders() {
             { status: "pending",     label: "قيد الانتظار", dot: "bg-amber-400", badge: "text-amber-700 bg-amber-50 border-amber-200" },
             { status: "in_progress", label: "جاري التنفيذ", dot: "bg-blue-400",  badge: "text-blue-700 bg-blue-50 border-blue-200" },
             { status: "completed",   label: "مكتمل",        dot: "bg-green-400", badge: "text-green-700 bg-green-50 border-green-200" },
-            { status: "cancelled",   label: "ملغي",          dot: "bg-red-400",   badge: "text-red-700 bg-red-50 border-red-200" },
+            { status: "cancelled",   label: "ملغي",         dot: "bg-red-400",   badge: "text-red-700 bg-red-50 border-red-200" },
           ].map(({ status: grpStatus, label: grpLabel, dot, badge }) => {
             const groupOrders = orders.filter(o => o.status === grpStatus);
             if (groupOrders.length === 0) return null;
             return (
               <div key={grpStatus}>
-                {/* Group header */}
                 <div className="flex items-center gap-3 mb-5">
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
                   <h3 className="text-sm font-bold tracking-wide text-muted-foreground">{grpLabel}</h3>
@@ -362,7 +367,6 @@ export default function MyOrders() {
 
             return (
               <Card key={order.id} className="overflow-hidden hover:shadow-lg transition-shadow border border-border/60">
-                {/* Card Header */}
                 <CardHeader className="bg-gradient-to-l from-muted/40 to-muted/10 border-b px-6 py-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="min-w-0">
@@ -387,13 +391,12 @@ export default function MyOrders() {
                     </div>
                     {canCancel && (
                       <div className="shrink-0">
-                        <CancelOrderButton order={order} />
+                        <DeleteOrderButton order={order} />
                       </div>
                     )}
                   </div>
                 </CardHeader>
 
-                {/* Deposit / Receipt Alert */}
                 {order.status === "pending" && (
                   receiptUploaded ? (
                     <div className="px-6 py-3 border-b text-sm flex items-start gap-3 bg-green-50 text-green-800">
@@ -405,7 +408,6 @@ export default function MyOrders() {
                       <div className="flex items-start gap-3 text-amber-800 text-sm">
                         <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                         <div className="space-y-2 flex-1">
-                          {/* Coupon discount breakdown */}
                           {discountAmt > 0 && totalAmount && (
                             <div className="bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 space-y-1 text-xs">
                               <div className="flex justify-between text-muted-foreground">
@@ -427,7 +429,6 @@ export default function MyOrders() {
                               ? `يُطلب منك دفع مقدّم ${depositPct}% — المبلغ: ${depositAmount?.toLocaleString()} ${currencyLabel}`
                               : `يُطلب منك سداد كامل المبلغ: ${effectiveAmount?.toLocaleString()} ${currencyLabel}`}
                           </p>
-                          {/* Show linked payment method OR all active ones from settings */}
                           {order.paymentMethod ? (
                             <div className="space-y-1">
                               <p className="text-amber-800 font-medium">ادفع عبر: <strong>{order.paymentMethod.name}</strong></p>
@@ -462,7 +463,6 @@ export default function MyOrders() {
                         <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                         <span className="font-medium">طلبك قيد المراجعة — يرجى الانتظار حتى تحديد السعر من قِبل الإدارة.</span>
                       </div>
-                      {/* Always show payment account details */}
                       {(order.paymentMethod || activePMs.length > 0) && (
                         <div className="space-y-2 pt-1">
                           <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">حسابات الدفع</p>
@@ -487,7 +487,6 @@ export default function MyOrders() {
                   )
                 )}
 
-                {/* Completed: Delivered URL */}
                 {order.status === "completed" && (order as any).deliveredUrl && (
                   <div className="px-6 py-4 border-b bg-gradient-to-l from-green-50 to-emerald-50 space-y-3">
                     <div className="flex items-center gap-2 text-green-700 font-semibold text-sm">
@@ -507,7 +506,6 @@ export default function MyOrders() {
                   </div>
                 )}
 
-                {/* Completed: Remaining payment notice + receipt upload */}
                 {order.status === "completed" && !order.finalPaid && remainingAmount !== null && (
                   <div className="px-6 py-4 border-b bg-blue-50 border-blue-100 text-sm text-blue-800 space-y-3">
                     <div className="flex items-start gap-3">
@@ -537,7 +535,6 @@ export default function MyOrders() {
                   </div>
                 )}
 
-                {/* Completed: All paid — full access granted */}
                 {order.status === "completed" && order.finalPaid && (
                   <div className="px-6 py-3 border-b bg-emerald-50 text-emerald-700 text-sm flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -548,7 +545,6 @@ export default function MyOrders() {
                 <CardContent className="pt-6 pb-6 px-6">
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                    {/* Details column (takes 2 cols on large screens) */}
                     <div className="lg:col-span-2 space-y-5">
                       <div>
                         <h4 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
@@ -569,10 +565,8 @@ export default function MyOrders() {
                       )}
                     </div>
 
-                    {/* Sidebar */}
                     <div className="space-y-4 bg-muted/10 p-5 rounded-2xl border border-border/50">
 
-                      {/* Package / Budget */}
                       <div>
                         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-2">
                           <PackageIcon className="w-3.5 h-3.5" />
@@ -587,7 +581,6 @@ export default function MyOrders() {
                         )}
                       </div>
 
-                      {/* Payment Method */}
                       <div className="border-t pt-4">
                         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-2">
                           <CreditCard className="w-3.5 h-3.5" />
@@ -607,20 +600,17 @@ export default function MyOrders() {
                         )}
                       </div>
 
-                      {/* Financial Summary */}
                       <div className="border-t pt-4">
                         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">ملخص مالي</h4>
                         <div className="space-y-2 text-sm">
                           {totalAmount ? (
                             <>
-                              {/* Original price row — only show if there's a discount */}
                               {discountAmt > 0 && (
                                 <div className="flex justify-between items-center text-muted-foreground line-through">
                                   <span>السعر الأصلي</span>
                                   <span>{totalAmount?.toLocaleString()} {currencyLabel}</span>
                                 </div>
                               )}
-                              {/* Coupon discount row */}
                               {(order as any).couponCode && discountAmt > 0 && (
                                 <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
                                   <span className="text-purple-700 flex items-center gap-1 text-xs">
@@ -629,7 +619,6 @@ export default function MyOrders() {
                                   <span className="text-purple-600 font-semibold text-xs">− {discountAmt.toLocaleString()} {currencyLabel}</span>
                                 </div>
                               )}
-                              {/* Coupon applied but no amount yet (discount = 0) */}
                               {(order as any).couponCode && discountAmt === 0 && (
                                 <div className="flex justify-between items-center bg-purple-50 rounded-lg px-2 py-1.5">
                                   <span className="text-purple-700 flex items-center gap-1 text-xs">
@@ -705,12 +694,10 @@ export default function MyOrders() {
                         </div>
                       </div>
 
-                      {/* Apply Coupon (only if no coupon applied yet and order not cancelled) */}
                       {!(order as any).couponCode && order.status !== "cancelled" && (
                         <CouponApplier orderId={order.id} onApplied={() => {}} />
                       )}
 
-                      {/* Receipt Upload */}
                       {showReceiptUpload && (
                         <div className="border-t pt-4">
                           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-2">
