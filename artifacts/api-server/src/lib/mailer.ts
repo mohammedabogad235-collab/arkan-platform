@@ -78,8 +78,8 @@ function toMailError(error: unknown): ApiError {
     );
   }
 
-  if (normalized.includes("auth") || normalized.includes("invalid login")) {
-    return new ApiError(503, "فشل المصادقة مع خادم البريد. تأكد من صحة بيانات الدخول في الإعدادات.", {
+  if (normalized.includes("auth") || normalized.includes("invalid login") || normalized.includes("sender denied")) {
+    return new ApiError(503, "فشل المصادقة مع خادم البريد أو أن البريد المُرسل غير موثق.", {
       code: "SMTP_AUTH_FAILED",
       cause: error,
     });
@@ -91,32 +91,37 @@ function toMailError(error: unknown): ApiError {
 async function getMailTransport(): Promise<MailTransportInfo> {
   const [settings] = await db.select().from(siteSettingsTable).limit(1);
   
-  // الأولوية لإعدادات الداتا بيز (لوحة التحكم)، ثم الـ Environment Variables
-  const emailUser = settings?.emailUser?.trim() || process.env.SMTP_USER?.trim() || process.env.EMAIL_USER?.trim();
-  const emailPass = settings?.emailPass?.trim() || process.env.SMTP_PASS?.trim() || process.env.EMAIL_PASS?.trim();
+  // بيانات تسجيل الدخول لسيرفر Brevo
+  const smtpUser = settings?.emailUser?.trim() || process.env.SMTP_USER?.trim() || process.env.EMAIL_USER?.trim();
+  const smtpPass = settings?.emailPass?.trim() || process.env.SMTP_PASS?.trim() || process.env.EMAIL_PASS?.trim();
 
-  if (!emailUser || !emailPass) {
+  if (!smtpUser || !smtpPass) {
     throw new ApiError(503, "إعدادات البريد الإلكتروني غير مكتملة. يرجى إضافة بيانات SMTP.", {
       code: "MAIL_NOT_CONFIGURED",
     });
   }
 
-  // التعرف التلقائي على ما إذا كان المستخدم يود استخدام Brevo بناءً على اسم المستخدم أو الإعدادات
-  const isBrevo = emailUser.includes("smtp-brevo.com") || emailUser.includes("@smtp-brevo.com") || (process.env.SMTP_HOST?.includes("brevo.com") ?? false);
+  // 🔴 الإيميل الفعلي اللي هيظهر للعميل (يجب أن يكون هو نفس الإيميل الموثق في Brevo)
+  const senderEmail = "support.arkan.web@gmail.com";
+
+  // التعرف التلقائي على ما إذا كان المستخدم يود استخدام Brevo
+  const isBrevo = smtpUser.includes("smtp-brevo.com") || smtpUser.includes("@smtp-brevo.com") || (process.env.SMTP_HOST?.includes("brevo.com") ?? false);
 
   const host = process.env.SMTP_HOST?.trim() || (isBrevo ? "smtp-relay.brevo.com" : "smtp.gmail.com");
-  const port = Number(process.env.SMTP_PORT || (isBrevo ? 587 : 465));
-  const secure = port === 465; // بورت 465 آمن بشكل مباشر، بورت 587 يستخدم TLS
+  
+  // 🔴 إجبار السيرفر على استخدام بورت 2525 في حالة Brevo لتخطي حظر Render
+  const port = Number(process.env.SMTP_PORT || (isBrevo ? 2525 : 465));
+  const secure = port === 465; // بورت 465 آمن بشكل مباشر، باقي البورتات بتستخدم TLS
 
   return {
-    fromEmail: emailUser,
+    fromEmail: senderEmail, // ده الإيميل اللي هيظهر للمستلم (support.arkan.web@gmail.com)
     transporter: nodemailer.createTransport({
       host,
       port,
       secure,
       auth: {
-        user: emailUser,
-        pass: emailPass,
+        user: smtpUser, // ده يوزر الدخول بتاع Brevo (b4f52d001@smtp-brevo.com)
+        pass: smtpPass, // الباسورد الطويل
       },
       pool: false,
       family: 4, // إجبار السيرفر على استخدام IPv4 لمنع أخطاء الشبكة على Render
