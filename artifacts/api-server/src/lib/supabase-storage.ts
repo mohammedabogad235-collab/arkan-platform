@@ -1,6 +1,39 @@
 import { createClient } from "@supabase/supabase-js";
 import { logger } from "./logger";
 
+function isConfiguredEnvValue(value: string | undefined): value is string {
+  if (!value) return false;
+  const normalized = value.trim();
+  if (!normalized) return false;
+  if (normalized.includes("YOUR_PROJECT_REF")) return false;
+  if (normalized.includes("YOUR_SUPABASE_SERVICE_ROLE_KEY")) return false;
+  return true;
+}
+
+export function getSupabaseStorageConfig(): {
+  supabaseUrl: string;
+  supabaseKey: string;
+  bucketName: string;
+} {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "receipts";
+
+  if (!isConfiguredEnvValue(supabaseUrl) || !isConfiguredEnvValue(supabaseKey)) {
+    logger.error(
+      {
+        hasSupabaseUrl: isConfiguredEnvValue(supabaseUrl),
+        hasSupabaseServiceKey: isConfiguredEnvValue(supabaseKey),
+        bucketName,
+      },
+      "Supabase storage configuration is incomplete",
+    );
+    throw new Error("إعدادات Supabase Storage غير مكتملة.");
+  }
+
+  return { supabaseUrl, supabaseKey, bucketName };
+}
+
 /**
  * This is a placeholder function to demonstrate the fix for the 'HeadersInit' type error.
  * The fix is to use a Node.js-compatible type like Record<string, string>.
@@ -21,14 +54,7 @@ export async function uploadBufferToSupabase(
   file: Express.Multer.File,
   userId: number
 ): Promise<{ publicUrl: string }> {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "receipts";
-
-  if (!supabaseUrl || !supabaseKey) {
-    logger.error("Supabase client is not configured for storage upload.");
-    throw new Error("إعدادات التخزين السحابي غير مكتملة.");
-  }
+  const { supabaseUrl, supabaseKey, bucketName } = getSupabaseStorageConfig();
 
   const supabase = createClient(supabaseUrl, supabaseKey);
   const extension = file.originalname.split(".").pop()?.toLowerCase() || "bin";

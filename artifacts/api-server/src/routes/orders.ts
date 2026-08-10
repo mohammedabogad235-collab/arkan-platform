@@ -23,6 +23,7 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { asyncHandler } from "../lib/http";
 import { logger } from "../lib/logger";
+import { getSupabaseStorageConfig } from "../lib/supabase-storage";
 
 const router: IRouter = Router();
 
@@ -41,6 +42,52 @@ function calculateCouponDiscountAmount(coupon: typeof couponsTable.$inferSelect,
       : coupon.discountValue;
 
   return Math.min(amount, Math.max(0, Math.round(rawDiscount * 100) / 100));
+}
+
+async function recalculateOrderCoupon(
+  order: typeof ordersTable.$inferSelect,
+  nextAmount: number | null | undefined,
+  nextCouponCode?: string | null,
+): Promise<{ couponCode: string | null; discountAmount: number | null }> {
+  const rawCouponCode =
+    nextCouponCode !== undefined
+      ? nextCouponCode
+      : order.couponCode;
+  const normalizedCouponCode = rawCouponCode ? normalizeCouponCode(rawCouponCode) : null;
+
+  if (!normalizedCouponCode) {
+    return {
+      couponCode: null,
+      discountAmount: nextAmount != null ? order.discountAmount ?? null : null,
+    };
+  }
+
+  if (nextAmount == null || nextAmount <= 0) {
+    return {
+      couponCode: normalizedCouponCode,
+      discountAmount: 0,
+    };
+  }
+
+  const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, normalizedCouponCode));
+  if (!coupon || !coupon.isActive || isCouponExpired(coupon)) {
+    return {
+      couponCode: normalizedCouponCode,
+      discountAmount: 0,
+    };
+  }
+
+  if (coupon.minOrderAmount !== null && nextAmount < coupon.minOrderAmount) {
+    return {
+      couponCode: normalizedCouponCode,
+      discountAmount: 0,
+    };
+  }
+
+  return {
+    couponCode: normalizedCouponCode,
+    discountAmount: calculateCouponDiscountAmount(coupon, nextAmount),
+  };
 }
 
 async function resolveNotificationPaymentMethod(order: typeof ordersTable.$inferSelect) {
@@ -257,6 +304,47 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
   res.json(order);
 });
 
+// DELETE /orders/:id
+router.delete("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
+  const orderId = parseInt(req.params.id as string, 10);
+  if (isNaN(orderId)) { res.status(400).json({ error: "معرف الطلب غير صالح" }); return; }
+
+  const { userId } = getSession(req);
+  if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
+
+  const admin = await isAdmin(req);
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+  if (!order) { res.status(404).json({ error: "الطلب غير موجود" }); return; }
+
+  if (!admin && order.userId !== userId) {
+    res.status(403).json({ error: "غير مصرح لك بحذف هذا الطلب" });
+    return;
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      const normalizedCouponCode = order.couponCode ? normalizeCouponCode(order.couponCode) : null;
+
+      if (normalizedCouponCode) {
+        const [coupon] = await tx.select().from(couponsTable).where(eq(couponsTable.code, normalizedCouponCode));
+        if (coupon && coupon.usedCount > 0) {
+          await tx
+            .update(couponsTable)
+            .set({ usedCount: coupon.usedCount - 1 })
+            .where(eq(couponsTable.id, coupon.id));
+        }
+      }
+
+      await tx.delete(ordersTable).where(eq(ordersTable.id, orderId));
+    });
+
+    res.status(200).json({ success: true, id: orderId });
+  } catch (err) {
+    logger.error({ err, orderId, userId }, "Failed to delete order");
+    res.status(500).json({ error: "حدث خطأ أثناء حذف الطلب" });
+  }
+}));
+
 // POST /orders/:id/receipt
 router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
   const orderId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
@@ -409,6 +497,19 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   if (typeof body.finalReceiptUrl === "string" || body.finalReceiptUrl === null) updateData.finalReceiptUrl = body.finalReceiptUrl;
   if (typeof body.paymentMethodId === "number" || body.paymentMethodId === null) updateData.paymentMethodId = body.paymentMethodId;
   if (typeof body.adminNotes === "string" || body.adminNotes === null) updateData.adminNotes = body.adminNotes;
+  if (typeof body.couponCode === "string" || body.couponCode === null) updateData.couponCode = body.couponCode;
+
+  const nextAmount =
+    typeof updateData.totalAmount === "number"
+      ? updateData.totalAmount
+      : originalOrder.totalAmount ?? null;
+  const nextCouponCode =
+    typeof updateData.couponCode === "string" || updateData.couponCode === null
+      ? (updateData.couponCode as string | null)
+      : undefined;
+  const couponState = await recalculateOrderCoupon(originalOrder, nextAmount, nextCouponCode);
+  updateData.couponCode = couponState.couponCode;
+  updateData.discountAmount = couponState.discountAmount;
 
   const [updatedOrder] = await db.update(ordersTable).set(updateData as any).where(eq(ordersTable.id, orderId)).returning();
   if (!updatedOrder) { res.status(404).json({ error: "فشل تحديث الطلب" }); return; }
@@ -504,12 +605,14 @@ router.post("/storage/upload-url", asyncHandler(async (req, res): Promise<void> 
   const { fileName } = req.body;
   if (!fileName) { res.status(400).json({ error: "اسم الملف مطلوب" }); return; }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "receipts";
+  let supabaseUrl: string;
+  let supabaseKey: string;
+  let bucketName: string;
 
-  if (!supabaseUrl || !supabaseKey) {
-    logger.error("Supabase URL or Service Key is not configured");
+  try {
+    ({ supabaseUrl, supabaseKey, bucketName } = getSupabaseStorageConfig());
+  } catch (error) {
+    logger.error({ err: error }, "Supabase storage config error");
     res.status(500).json({ error: "إعدادات التخزين غير مكتملة" }); return;
   }
 
