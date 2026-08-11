@@ -869,5 +869,59 @@ router.patch("/notifications/:id/read", asyncHandler(async (req, res): Promise<v
 
   res.json({ success: true });
 }));
+// ==========================================
+// 🛠️ تعديل وحذف الرسائل (Edit & Soft Delete)
+// ==========================================
 
+// تعديل رسالة
+router.patch("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
+  const { userId } = getSession(req);
+  if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
+  
+  const msgId = parseInt(req.params.id as string, 10);
+  if (isNaN(msgId)) { res.status(400).json({ error: "معرف الرسالة غير صالح" }); return; }
+
+  const { content } = req.body;
+  if (!content || typeof content !== "string") { res.status(400).json({ error: "المحتوى مطلوب" }); return; }
+
+  const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId));
+  if (!msg) { res.status(404).json({ error: "الرسالة غير موجودة" }); return; }
+  
+  const admin = await isAdmin(req);
+  const isOwner = Number(msg.senderId) === Number(userId);
+
+  // السماح حصرياً لصاحب الرسالة أو لأي مشرف/أدمن
+  if (!isOwner && !admin) { 
+    res.status(403).json({ error: "ليس لديك صلاحية لتعديل هذه الرسالة" }); 
+    return; 
+  }
+  if ((msg as any).isDeleted) { res.status(400).json({ error: "لا يمكن تعديل رسالة محذوفة" }); return; }
+
+  await db.update(messagesTable).set({ content, isEdited: true } as any).where(eq(messagesTable.id, msgId));
+  res.json({ success: true });
+}));
+
+// حذف رسالة (حذف وهمي)
+router.delete("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
+  const { userId } = getSession(req);
+  if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
+  
+  const msgId = parseInt(req.params.id as string, 10);
+  if (isNaN(msgId)) { res.status(400).json({ error: "معرف الرسالة غير صالح" }); return; }
+
+  const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId));
+  if (!msg) { res.status(404).json({ error: "الرسالة غير موجودة" }); return; }
+  
+  const admin = await isAdmin(req);
+  const isOwner = Number(msg.senderId) === Number(userId);
+
+  // السماح حصرياً لصاحب الرسالة أو لأي مشرف/أدمن
+  if (!isOwner && !admin) { 
+    res.status(403).json({ error: "ليس لديك صلاحية لحذف هذه الرسالة" }); 
+    return; 
+  }
+
+  await db.update(messagesTable).set({ isDeleted: true, content: "" } as any).where(eq(messagesTable.id, msgId));
+  res.json({ success: true });
+}));
 export default router;
