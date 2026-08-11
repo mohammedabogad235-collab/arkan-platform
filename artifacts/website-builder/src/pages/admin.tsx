@@ -40,7 +40,7 @@ import {
   CreditCard, Package, BarChart3, Globe, Phone, Mail, MapPin,
   Facebook, Instagram, Twitter, ChevronDown, ChevronUp, Check, X,
   Clock, Banknote, Star, ArrowUpRight, Tag, Calendar, Shield,
-  MessageCircle, Bell, Send
+  MessageCircle, Bell, Send, Ban, Edit2
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -520,6 +520,10 @@ export default function Admin() {
   const [sendingMsg, setSendingMsg] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 🚀 حالات التعديل لرسائل الأدمن/المشرف
+  const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
+  const [editContent, setEditContent] = useState("");
+
   const toggleOrder = (id: number) =>
     setExpandedOrders(prev => {
       const next = new Set(prev);
@@ -609,7 +613,6 @@ export default function Admin() {
     }
   };
 
-  // Live Polling لجلب العملاء والرسائل كل 4 ثوانٍ مع حل الـ TypeScript Error
   useEffect(() => {
     if (activeTab === "messages" && canViewMessages) {
       fetchChatUsers();
@@ -634,7 +637,6 @@ export default function Admin() {
     }
   };
 
-  // Live Polling للرسائل داخل الشات المفتوح كل 4 ثوانٍ مع حل الـ TypeScript Error
   useEffect(() => {
     if (activeTab !== "messages" || !selectedChatUser?.id || !canViewMessages) return undefined;
     fetchMessages(selectedChatUser.id);
@@ -646,7 +648,7 @@ export default function Admin() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages.length]);
 
   const handleSelectChatUser = (u: any) => {
     setSelectedChatUser(u);
@@ -675,6 +677,43 @@ export default function Admin() {
       toast({ variant: "destructive", title: "خطأ في الإرسال", description: err.message });
     } finally {
       setSendingMsg(false);
+    }
+  };
+
+  // 🚀 دوال الحذف والتعديل للأدمن
+  const handleDeleteMessage = async (id: number) => {
+    if (!confirm("هل أنت متأكد من حذف هذه الرسالة؟")) return;
+    try {
+      const res = await apiFetch(`/api/messages/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast({ title: "تم الحذف بنجاح" });
+        fetchMessages(selectedChatUser.id);
+      } else {
+        toast({ variant: "destructive", title: "خطأ", description: "ليس لديك صلاحية لحذف هذه الرسالة" });
+      }
+    } catch (err) {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر الحذف" });
+    }
+  };
+
+  const submitEditMessage = async (id: number) => {
+    if (!editContent.trim()) return;
+    try {
+      const res = await apiFetch(`/api/messages/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editContent.trim() }),
+      });
+      if (res.ok) {
+        setEditingMsgId(null);
+        setEditContent("");
+        fetchMessages(selectedChatUser.id);
+        toast({ title: "تم التعديل بنجاح" });
+      } else {
+        toast({ variant: "destructive", title: "خطأ", description: "ليس لديك صلاحية لتعديل هذه الرسالة" });
+      }
+    } catch (err) {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر التعديل" });
     }
   };
 
@@ -1171,8 +1210,8 @@ export default function Admin() {
       </header>
 
       <div className="flex flex-1">
-        <aside className="hidden md:flex w-52 bg-white border-l sticky top-14 self-start h-[calc(100vh-3.5rem)] flex-col py-4 shadow-sm shrink-0">
-          <nav className="flex flex-col gap-1 px-3 flex-1">
+        <aside className="hidden md:flex w-52 bg-white border-l sticky top-14 self-start h-[calc(100vh-3.5rem)] flex-col shadow-sm shrink-0 overflow-y-auto py-4">
+          <nav className="flex flex-col gap-1 px-3">
             {NAV.map(item => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -1346,16 +1385,60 @@ export default function Admin() {
                         <span className="font-bold">{selectedChatUser.fullName}</span>
                       </div>
                       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {messages.map((m: any) => (
-                          <div key={m.id} className={`flex ${m.senderId === currentUser?.id ? "justify-end" : "justify-start"}`}>
-                            <div className={`p-3 rounded-2xl max-w-[85%] sm:max-w-[70%] text-sm shadow-sm ${m.senderId === currentUser?.id ? "bg-primary text-primary-foreground rounded-tl-none" : "bg-white border rounded-tr-none"}`}>
-                              <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
-                              <p className={`text-[10px] mt-2 opacity-70 ${m.senderId === currentUser?.id ? "text-right" : "text-left"}`}>
-                                {format(new Date(m.createdAt), "HH:mm", { locale: ar })}
-                              </p>
+                        {messages.map((m: any) => {
+                          const isMe = m.senderId === currentUser?.id;
+                          // الأدمن بيشوف علامة التعديل على أي رسالة متعدلة (سواء بتاعته أو بتاعت العميل)
+                          const showEditedTag = m.isEdited;
+
+                          return (
+                            <div key={m.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} group`}>
+                              
+                              {m.isDeleted ? (
+                                <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm flex items-center gap-2 italic shadow-sm ${isMe ? "bg-muted/50 text-muted-foreground rounded-bl-none" : "bg-gray-100 text-gray-500 border rounded-br-none"}`}>
+                                  <Ban className="w-4 h-4 opacity-50" />
+                                  تم حذف هذه الرسالة
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  {/* أزرار التعديل والحذف للأدمن */}
+                                  {isMe && !m.isDeleted && editingMsgId !== m.id && (
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                      <button onClick={() => { setEditingMsgId(m.id); setEditContent(m.content); }} className="p-1.5 text-muted-foreground hover:text-blue-600 bg-white rounded-full shadow-sm border border-transparent hover:border-blue-100 transition-all">
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button onClick={() => handleDeleteMessage(m.id)} className="p-1.5 text-muted-foreground hover:text-red-600 bg-white rounded-full shadow-sm border border-transparent hover:border-red-100 transition-all">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  <div className={`max-w-[100%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isMe ? "bg-primary text-primary-foreground rounded-tl-none" : "bg-white border text-foreground rounded-tr-none"}`}>
+                                    {editingMsgId === m.id ? (
+                                      <div className="flex flex-col gap-2 min-w-[250px]">
+                                        <Input value={editContent} onChange={e => setEditContent(e.target.value)} className="h-8 text-black bg-white" />
+                                        <div className="flex gap-2 justify-end">
+                                          <Button size="sm" variant="ghost" onClick={() => setEditingMsgId(null)} className="h-7 text-xs text-white hover:text-gray-200">إلغاء</Button>
+                                          <Button size="sm" onClick={() => submitEditMessage(m.id)} className="h-7 text-xs bg-green-500 hover:bg-green-600 text-white">حفظ</Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="whitespace-pre-line">{m.content}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex items-center gap-2 mt-1 px-1">
+                                <span className={`text-[10px] text-muted-foreground ${isMe ? "text-right" : "text-left"}`}>
+                                  {m.createdAt ? format(new Date(m.createdAt), "hh:mm a - dd MMM", { locale: ar }) : ""}
+                                </span>
+                                {showEditedTag && !m.isDeleted && (
+                                  <span className="text-[10px] text-muted-foreground/70 italic">(تم التعديل)</span>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                         {messages.length === 0 && <div className="h-full flex items-center justify-center text-muted-foreground text-sm">لا توجد رسائل سابقة. ابدأ المحادثة الآن.</div>}
                         <div ref={messagesEndRef} />
                       </div>

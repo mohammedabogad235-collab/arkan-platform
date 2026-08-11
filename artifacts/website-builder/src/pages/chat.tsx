@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, MessageSquare } from "lucide-react";
+import { Send, MessageSquare, Trash2, Edit2, Ban } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +16,9 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
+  const [editContent, setEditContent] = useState("");
 
   const fetchMessages = async () => {
     try {
@@ -31,13 +34,13 @@ export default function ChatPage() {
 
   useEffect(() => {
     fetchMessages();
-    const interval = setInterval(fetchMessages, 5000);
+    const interval = setInterval(fetchMessages, 4000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages.length]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,8 +68,44 @@ export default function ChatPage() {
     }
   };
 
+  const handleDelete = async (id: number) => {
+    if (!confirm("هل أنت متأكد من حذف هذه الرسالة؟")) return;
+    try {
+      const res = await apiFetch(`/api/messages/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast({ title: "تم الحذف بنجاح" });
+        fetchMessages();
+      } else {
+        toast({ variant: "destructive", title: "خطأ", description: "ليس لديك صلاحية لحذف هذه الرسالة" });
+      }
+    } catch (err) {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر الحذف" });
+    }
+  };
+
+  const submitEdit = async (id: number) => {
+    if (!editContent.trim()) return;
+    try {
+      const res = await apiFetch(`/api/messages/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editContent.trim() }),
+      });
+      if (res.ok) {
+        setEditingMsgId(null);
+        setEditContent("");
+        fetchMessages();
+        toast({ title: "تم التعديل بنجاح" });
+      } else {
+        toast({ variant: "destructive", title: "خطأ", description: "ليس لديك صلاحية لتعديل هذه الرسالة" });
+      }
+    } catch (err) {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر التعديل" });
+    }
+  };
+
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    <div className="container mx-auto px-4 py-12 max-w-4xl" dir="rtl">
       <Card className="h-[75vh] flex flex-col shadow-lg border">
         <CardHeader className="border-b bg-muted/30 py-4 px-6 flex flex-row items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -86,18 +125,57 @@ export default function ChatPage() {
           ) : (
             messages.map((msg) => {
               const isMe = msg.senderId === user?.id;
+              
+              // 🚀 السر هنا: علامة التعديل تظهر للعميل فقط لو هو اللي بعت الرسالة (role = user)
+              // لو الأدمن أو المشرف اللي عدلها، مش هتظهر للعميل إنها متعدلة!
+              const showEditedTag = msg.isEdited && msg.senderRole !== "admin" && msg.senderRole !== "subadmin";
+
               return (
-                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                  <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
-                      isMe ? "bg-primary text-primary-foreground rounded-bl-none" : "bg-white border text-foreground rounded-br-none"
-                    }`}
-                  >
-                    <p className="whitespace-pre-line">{msg.content}</p>
+                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} group`}>
+                  
+                  {msg.isDeleted ? (
+                    <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm flex items-center gap-2 italic shadow-sm ${isMe ? "bg-muted/50 text-muted-foreground rounded-bl-none" : "bg-gray-100 text-gray-500 border rounded-br-none"}`}>
+                      <Ban className="w-4 h-4 opacity-50" />
+                      تم حذف هذه الرسالة
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      
+                      {isMe && !msg.isDeleted && editingMsgId !== msg.id && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                          <button onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); }} className="p-1.5 text-muted-foreground hover:text-blue-600 bg-white rounded-full shadow-sm border border-transparent hover:border-blue-100 transition-all">
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleDelete(msg.id)} className="p-1.5 text-muted-foreground hover:text-red-600 bg-white rounded-full shadow-sm border border-transparent hover:border-red-100 transition-all">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className={`max-w-[100%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isMe ? "bg-primary text-primary-foreground rounded-bl-none" : "bg-white border text-foreground rounded-br-none"}`}>
+                        {editingMsgId === msg.id ? (
+                          <div className="flex flex-col gap-2 min-w-[250px]">
+                            <Input value={editContent} onChange={e => setEditContent(e.target.value)} className="h-8 text-black bg-white" />
+                            <div className="flex gap-2 justify-end">
+                              <Button size="sm" variant="ghost" onClick={() => setEditingMsgId(null)} className="h-7 text-xs text-white hover:text-gray-200">إلغاء</Button>
+                              <Button size="sm" onClick={() => submitEdit(msg.id)} className="h-7 text-xs bg-green-500 hover:bg-green-600 text-white">حفظ</Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-line">{msg.content}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 mt-1 px-1">
+                    <span className="text-[10px] text-muted-foreground">
+                      {msg.createdAt ? format(new Date(msg.createdAt), "hh:mm a - dd MMM", { locale: ar }) : ""}
+                    </span>
+                    {showEditedTag && !msg.isDeleted && (
+                      <span className="text-[10px] text-muted-foreground/70 italic">(تم التعديل)</span>
+                    )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground mt-1 px-1">
-                    {msg.createdAt ? format(new Date(msg.createdAt), "hh:mm a - dd MMM", { locale: ar }) : ""}
-                  </span>
                 </div>
               );
             })
@@ -111,11 +189,11 @@ export default function ChatPage() {
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="اكتب رسالتك هنا..."
-              className="h-12 bg-muted/20"
+              className="h-12 bg-muted/20 rounded-xl"
             />
-            <Button type="submit" disabled={loading || !newMessage.trim()} className="h-12 px-6 gap-2">
-              <Send className="w-4 h-4" />
-              {loading ? "جاري الإرسال..." : "إرسال"}
+            <Button type="submit" disabled={loading || !newMessage.trim()} className="h-12 px-6 gap-2 rounded-xl">
+              <Send className="w-4 h-4 rtl:-scale-x-100" />
+              {loading ? "..." : "إرسال"}
             </Button>
           </form>
         </div>
