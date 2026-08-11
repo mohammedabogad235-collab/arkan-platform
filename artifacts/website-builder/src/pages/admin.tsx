@@ -580,9 +580,23 @@ export default function Admin() {
   const fetchChatUsers = async () => {
     try {
       const res = await apiFetch("/api/admin/chat-users");
-      if (res.ok) setChatUsers(await res.json());
-    } catch (err) { }
+      if (res.ok) {
+        const usersList = await res.json();
+        setChatUsers(usersList);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
+
+  // 🚨 تحديث تلقائي لقائمة العملاء كل 4 ثواني عشان لو عميل جديد بعث رسالة يظهر فوراً
+  useEffect(() => {
+    if (activeTab === "messages") {
+      fetchChatUsers();
+      const interval = setInterval(fetchChatUsers, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
 
   const fetchMessages = async (userId: number) => {
     try {
@@ -590,7 +604,6 @@ export default function Admin() {
       if (res.ok) {
         const data = await res.json();
         setMessages(data);
-        fetchChatUsers();
       }
     } catch (err) {
       console.error(err);
