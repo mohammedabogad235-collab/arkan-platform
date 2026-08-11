@@ -695,7 +695,6 @@ router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => 
   res.json(formattedClients);
 }));
 
-// 🚨 التعديل السحري هنا: استخدام مسارين منفصلين بدلاً من علامة الاستفهام
 router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Promise<void> => {
   const { userId: sessionUserId, role } = getSession(req);
   if (!sessionUserId) { res.status(401).json({ error: "غير مصرح" }); return; }
@@ -744,20 +743,27 @@ router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
   let actualReceiverId = receiverId;
 
   if (!isAdminUser) {
-    const [mainAdmin] = await db.select().from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
-    actualReceiverId = mainAdmin?.id; 
+    const adminUser = await db.select().from(usersTable).where(or(eq(usersTable.role, "admin"), eq(usersTable.role, "subadmin"))).limit(1);
+    
+    if (adminUser && adminUser.length > 0) {
+      actualReceiverId = adminUser[0].id;
+    } else {
+      actualReceiverId = 1;
+    }
   }
 
   const [newMessage] = await db.insert(messagesTable).values({
     senderId,
     receiverId: actualReceiverId,
-    content
+    content,
+    isRead: false,
   } as any).returning();
 
   if (isAdminUser) {
     await db.insert(notificationsTable).values({
       userId: actualReceiverId,
       message: "تم الرد على استفسارك من الإدارة",
+      isRead: false,
     } as any);
 
     const [client] = await db.select().from(usersTable).where(eq(usersTable.id, actualReceiverId));
@@ -770,6 +776,7 @@ router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
     await db.insert(notificationsTable).values({
       userId: actualReceiverId, 
       message: "توجد رسالة جديدة من أحد العملاء",
+      isRead: false,
     } as any);
   }
 
