@@ -11,7 +11,6 @@ import { asyncHandler } from "../lib/http";
 
 const router: IRouter = Router();
 
-// --- Helper Functions للـ Auth ---
 export function getSession(req: any): { userId?: number; role?: string } {
   const sessionRole = req.session?.role || req.user?.role;
   const sessionUserId = req.session?.userId || req.user?.id || req.user?.userId;
@@ -56,11 +55,7 @@ async function checkPermission(req: any, permission: "canViewMessages" | "canRep
   return false;
 }
 
-// ==========================================
-// 💬 نظام الرسائل والشات
-// ==========================================
-
-// جلب قائمة العملاء للأدمن مع عدد الرسائل غير المقروءة
+// جلب قائمة العملاء للإدارة
 router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => {
   const hasAccess = await checkPermission(req, "canViewMessages");
   if (!hasAccess) { res.status(403).json({ error: "غير مصرح لك برؤية الرسائل" }); return; }
@@ -85,7 +80,6 @@ router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => 
   res.json(formattedClients);
 }));
 
-// جلب عدد الرسائل غير المقروءة لفقاعة العميل
 router.get("/messages/unread-count", asyncHandler(async (req, res): Promise<void> => {
   const { userId } = getSession(req);
   if (!userId) { res.json({ unreadCount: 0 }); return; }
@@ -97,7 +91,6 @@ router.get("/messages/unread-count", asyncHandler(async (req, res): Promise<void
   res.json({ unreadCount: count.length });
 }));
 
-// جلب الرسائل بين العميل والإدارة
 router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Promise<void> => {
   const { userId: sessionUserId, role } = getSession(req);
   if (!sessionUserId) { res.status(401).json({ error: "غير مصرح" }); return; }
@@ -112,7 +105,6 @@ router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Pr
     }
   }
 
-  // نجلب الرسائل ونربطها بجدول المستخدمين عشان نعرف دور المُرسِل (Sender Role) للفرونت إند
   const allUserMsgsRaw = await db.select({
     id: messagesTable.id,
     senderId: messagesTable.senderId,
@@ -147,7 +139,6 @@ router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Pr
   res.json(allUserMsgsRaw);
 }));
 
-// إرسال رسالة جديدة
 router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
   const { userId: senderId, role } = getSession(req);
   if (!senderId) { res.status(401).json({ error: "غير مصرح" }); return; }
@@ -189,7 +180,6 @@ router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
 
     const [client] = await db.select().from(usersTable).where(eq(usersTable.id, actualReceiverId));
     if (client) {
-      // إرسال إيميل
       sendChatReplyEmail(client.email, client.fullName, content).catch(err => console.error("Email error", err));
     }
   } else {
@@ -203,13 +193,9 @@ router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
   res.status(201).json(newMessage);
 }));
 
-// ==========================================
-// 🛠️ التعديل والحذف (Edit & Soft Delete)
-// ==========================================
-
-// تعديل رسالة
+// تعديل رسالة (يسمح لصاحب الرسالة أو الأدمن/المشرف بالتعديل)
 router.patch("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
-  const { userId } = getSession(req);
+  const { userId, role } = getSession(req);
   if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
   
   const msgId = parseInt(req.params.id as string, 10);
@@ -219,17 +205,20 @@ router.patch("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId));
   if (!msg) { res.status(404).json({ error: "الرسالة غير موجودة" }); return; }
   
-  // التحقق أن الشخص الذي يعدل هو نفسه من أرسل الرسالة
-  if (msg.senderId !== userId) { res.status(403).json({ error: "لا يمكنك تعديل رسالة لم تقم بإرسالها" }); return; }
+  const isAdmin = role === "admin" || role === "subadmin";
+  if (msg.senderId !== userId && !isAdmin) { 
+    res.status(403).json({ error: "ليس لديك صلاحية لتعديل هذه الرسالة" }); 
+    return; 
+  }
   if ((msg as any).isDeleted) { res.status(400).json({ error: "لا يمكن تعديل رسالة محذوفة" }); return; }
 
   await db.update(messagesTable).set({ content, isEdited: true } as any).where(eq(messagesTable.id, msgId));
   res.json({ success: true });
 }));
 
-// حذف رسالة
+// حذف رسالة (يسمح لصاحب الرسالة أو الأدمن/المشرف بالحذف)
 router.delete("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
-  const { userId } = getSession(req);
+  const { userId, role } = getSession(req);
   if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
   
   const msgId = parseInt(req.params.id as string, 10);
@@ -237,10 +226,12 @@ router.delete("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId));
   if (!msg) { res.status(404).json({ error: "الرسالة غير موجودة" }); return; }
   
-  // التحقق أن الشخص الذي يحذف هو نفسه من أرسل الرسالة
-  if (msg.senderId !== userId) { res.status(403).json({ error: "لا يمكنك حذف رسالة لم تقم بإرسالها" }); return; }
+  const isAdmin = role === "admin" || role === "subadmin";
+  if (msg.senderId !== userId && !isAdmin) { 
+    res.status(403).json({ error: "ليس لديك صلاحية لحذف هذه الرسالة" }); 
+    return; 
+  }
 
-  // نقوم بحذف المحتوى ونضع علامة الحذف
   await db.update(messagesTable).set({ isDeleted: true, content: "" } as any).where(eq(messagesTable.id, msgId));
   res.json({ success: true });
 }));

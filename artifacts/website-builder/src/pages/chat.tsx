@@ -76,7 +76,8 @@ export default function ChatPage() {
         toast({ title: "تم الحذف بنجاح" });
         fetchMessages();
       } else {
-        toast({ variant: "destructive", title: "خطأ", description: "ليس لديك صلاحية لحذف هذه الرسالة" });
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "خطأ", description: data.error || "ليس لديك صلاحية لحذف هذه الرسالة" });
       }
     } catch (err) {
       toast({ variant: "destructive", title: "خطأ", description: "تعذر الحذف" });
@@ -97,7 +98,8 @@ export default function ChatPage() {
         fetchMessages();
         toast({ title: "تم التعديل بنجاح" });
       } else {
-        toast({ variant: "destructive", title: "خطأ", description: "ليس لديك صلاحية لتعديل هذه الرسالة" });
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "خطأ", description: data.error || "ليس لديك صلاحية لتعديل هذه الرسالة" });
       }
     } catch (err) {
       toast({ variant: "destructive", title: "خطأ", description: "تعذر التعديل" });
@@ -125,13 +127,16 @@ export default function ChatPage() {
           ) : (
             messages.map((msg) => {
               const isMe = msg.senderId === user?.id;
+              const isAdminOrSubadmin = user?.role === "admin" || user?.role === "subadmin";
               
-              // 🚀 السر هنا: علامة التعديل تظهر للعميل فقط لو هو اللي بعت الرسالة (role = user)
-              // لو الأدمن أو المشرف اللي عدلها، مش هتظهر للعميل إنها متعدلة!
-              const showEditedTag = msg.isEdited && msg.senderRole !== "admin" && msg.senderRole !== "subadmin";
+              // السماح بالحذف أو التعديل إذا كانت رسالته أو إذا كان المستخدم أدمن/مشرف
+              const canModify = isMe || isAdminOrSubadmin;
+
+              const msgSenderIsAdmin = msg.senderRole === "admin" || msg.senderRole === "subadmin";
+              const showEditedTag = msg.isEdited && !msgSenderIsAdmin;
 
               return (
-                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} group`}>
+                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
                   
                   {msg.isDeleted ? (
                     <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm flex items-center gap-2 italic shadow-sm ${isMe ? "bg-muted/50 text-muted-foreground rounded-bl-none" : "bg-gray-100 text-gray-500 border rounded-br-none"}`}>
@@ -141,12 +146,15 @@ export default function ChatPage() {
                   ) : (
                     <div className="flex items-center gap-2">
                       
-                      {isMe && !msg.isDeleted && editingMsgId !== msg.id && (
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                          <button onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); }} className="p-1.5 text-muted-foreground hover:text-blue-600 bg-white rounded-full shadow-sm border border-transparent hover:border-blue-100 transition-all">
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => handleDelete(msg.id)} className="p-1.5 text-muted-foreground hover:text-red-600 bg-white rounded-full shadow-sm border border-transparent hover:border-red-100 transition-all">
+                      {/* أزرار الحذف والتعديل ظاهرة ومرنة للموبايل والديسكتوب */}
+                      {canModify && !msg.isDeleted && editingMsgId !== msg.id && (
+                        <div className="flex items-center gap-1 bg-white/85 p-1 rounded-full shadow-sm border">
+                          {!msgSenderIsAdmin && (
+                            <button onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); }} className="p-1 text-muted-foreground hover:text-blue-600 transition-colors" title="تعديل">
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button onClick={() => handleDelete(msg.id)} className="p-1 text-muted-foreground hover:text-red-600 transition-colors" title="حذف">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
