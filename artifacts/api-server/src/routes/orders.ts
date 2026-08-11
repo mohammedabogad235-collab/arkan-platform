@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or, desc } from "drizzle-orm";
 import {
   couponsTable,
   db,
@@ -8,6 +8,8 @@ import {
   paymentMethodsTable,
   siteSettingsTable,
   usersTable,
+  messagesTable,       // 👈 أضفنا جدول الرسائل
+  notificationsTable,  // 👈 أضفنا جدول الإشعارات
 } from "@workspace/db";
 import { Api } from "@workspace/api-zod";
 import {
@@ -18,12 +20,11 @@ import {
   sendOrderReceiptAcceptedEmail,
   sendOrderReceiptUploadedEmail,
   sendOrderReceivedEmail,
-  sendOrderStatusUpdateEmail, // أضفنا دالة التحديث الشامل
+  sendOrderStatusUpdateEmail,
+  sendChatReplyEmail, // 👈 دالة إرسال إيميل الرد على المحادثة
 } from "../lib/mailer";
-import { createClient } from "@supabase/supabase-js";
 import { asyncHandler } from "../lib/http";
 import { logger } from "../lib/logger";
-import { getSupabaseStorageConfig } from "../lib/supabase-storage";
 
 const router: IRouter = Router();
 
@@ -103,7 +104,6 @@ async function resolveNotificationPaymentMethod(order: typeof ordersTable.$infer
 }
 
 export function getSession(req: any): { userId?: number; role?: string } {
-  // دعم كل طرق التوثيق (Session & User Object)
   const sessionRole = req.session?.role || req.user?.role;
   const sessionUserId = req.session?.userId || req.user?.id || req.user?.userId;
   
@@ -122,6 +122,18 @@ async function isAdmin(req: any): Promise<boolean> {
     .from(usersTable)
     .where(eq(usersTable.id, userId));
   return user?.role === "admin" || user?.role === "subadmin";
+}
+
+// 🛡️ دالة التحقق من صلاحيات المشرفين الفرعيين
+async function checkPermission(req: any, permission: "canViewMessages" | "canReplyMessages"): Promise<boolean> {
+  const { userId, role } = getSession(req);
+  if (!userId) return false;
+  if (role === "admin") return true; 
+  if (role === "subadmin") {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    return Boolean((user as any)?.[permission]);
+  }
+  return false;
 }
 
 function formatUser(u: typeof usersTable.$inferSelect) {
@@ -162,8 +174,9 @@ function formatOrderRow(row: {
     adminNotes: (o as any).adminNotes ?? null,
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
-    receiptUrl: (o as any).receiptUrl ?? null,
-    finalReceiptUrl: (o as any).finalReceiptUrl ?? null,
+    transferAccount: (o as any).transferAccount ?? null,
+    accountName: (o as any).accountName ?? null,
+    transferAmount: (o as any).transferAmount ?? null,
     deliveredUrl: (o as any).deliveredUrl ?? null,
     couponCode: (o as any).couponCode ?? null,
     discountAmount: (o as any).discountAmount ?? null,
@@ -212,6 +225,16 @@ async function notifySafely(label: string, task: () => Promise<void>, context?: 
   } catch (error) {
     logger.error({ err: error, ...context }, label);
   }
+}
+
+function hasSubmittedTransferDetails(order: {
+  transferAccount?: string | null;
+  accountName?: string | null;
+  transferAmount?: string | null;
+}) {
+  return [order.transferAccount, order.accountName, order.transferAmount].every(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
 }
 
 // GET /orders
@@ -345,7 +368,7 @@ router.delete("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   }
 }));
 
-// POST /orders/:id/receipt
+// POST /orders/:id/receipt (الدفعة المقدمة بالنصوص)
 router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
   const orderId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   if (isNaN(orderId)) { res.status(400).json({ error: "معرف غير صالح" }); return; }
@@ -353,27 +376,61 @@ router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
   const { userId } = getSession(req);
   if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
-  const { receiptUrl } = req.body as { receiptUrl?: string };
-  if (!receiptUrl || typeof receiptUrl !== "string") { res.status(400).json({ error: "رابط الإيصال مطلوب" }); return; }
+  const {
+    transferAccount,
+    accountName,
+    transferAmount,
+  } = req.body as {
+    transferAccount?: string;
+    accountName?: string;
+    transferAmount?: string | number;
+  };
+
+  const normalizedTransferAccount = typeof transferAccount === "string" ? transferAccount.trim() : "";
+  const normalizedAccountName = typeof accountName === "string" ? accountName.trim() : "";
+  const normalizedTransferAmount =
+    typeof transferAmount === "number"
+      ? String(transferAmount)
+      : typeof transferAmount === "string"
+        ? transferAmount.trim()
+        : "";
+
+  if (!normalizedTransferAccount || !normalizedAccountName || !normalizedTransferAmount) {
+    res.status(400).json({ error: "بيانات التحويل مطلوبة بالكامل" }); return;
+  }
 
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
   if (!order) { res.status(404).json({ error: "الطلب غير موجود" }); return; }
   if (order.userId !== userId) { res.status(403).json({ error: "غير مصرح" }); return; }
 
-  const [updated] = await db.update(ordersTable).set({ receiptUrl } as any).where(eq(ordersTable.id, orderId)).returning();
+  const [updated] = await db
+    .update(ordersTable)
+    .set({
+      transferAccount: normalizedTransferAccount,
+      accountName: normalizedAccountName,
+      transferAmount: normalizedTransferAmount,
+    } as any)
+    .where(eq(ordersTable.id, orderId))
+    .returning();
+    
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, order.userId));
 
   if (user) {
+    await db.insert(notificationsTable).values({
+      userId: 1, 
+      message: `تم إرفاق بيانات دفع جديدة للطلب #${order.id}`,
+    } as any);
+
     await notifySafely("Failed to send receipt uploaded email", async () => {
       await sendOrderReceiptUploadedEmail({
-        to: user.email, name: user.fullName, orderId, siteName: order.siteName, receiptUrl, kind: "deposit",
+        to: user.email, name: user.fullName, orderId, siteName: order.siteName, kind: "deposit",
       });
     });
   }
   res.json(updated);
 });
 
-// POST /orders/:id/final-receipt
+// POST /orders/:id/final-receipt (الدفعة النهائية بالنصوص)
 router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
   const orderId = parseInt(req.params.id as string, 10);
   if (isNaN(orderId)) { res.status(400).json({ error: "معرف غير صالح" }); return; }
@@ -381,20 +438,45 @@ router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
   const { userId } = getSession(req);
   if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
-  const { receiptUrl } = req.body as { receiptUrl?: string };
-  if (!receiptUrl || typeof receiptUrl !== "string") { res.status(400).json({ error: "رابط الإيصال مطلوب" }); return; }
+  const {
+    transferAccount,
+    accountName,
+    transferAmount,
+  } = req.body as {
+    transferAccount?: string;
+    accountName?: string;
+    transferAmount?: string | number;
+  };
+
+  const normalizedTransferAccount = typeof transferAccount === "string" ? transferAccount.trim() : "";
+  const normalizedAccountName = typeof accountName === "string" ? accountName.trim() : "";
+  const normalizedTransferAmount = typeof transferAmount === "number" ? String(transferAmount) : typeof transferAmount === "string" ? transferAmount.trim() : "";
+
+  if (!normalizedTransferAccount || !normalizedAccountName || !normalizedTransferAmount) { 
+    res.status(400).json({ error: "بيانات التحويل مطلوبة بالكامل" }); return; 
+  }
 
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
   if (!order) { res.status(404).json({ error: "الطلب غير موجود" }); return; }
   if (order.userId !== userId) { res.status(403).json({ error: "غير مصرح" }); return; }
 
-  const [updated] = await db.update(ordersTable).set({ finalReceiptUrl: receiptUrl } as any).where(eq(ordersTable.id, orderId)).returning();
+  const [updated] = await db.update(ordersTable).set({ 
+    transferAccount: normalizedTransferAccount,
+    accountName: normalizedAccountName,
+    transferAmount: normalizedTransferAmount,
+  } as any).where(eq(ordersTable.id, orderId)).returning();
+  
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, order.userId));
 
   if (user) {
+    await db.insert(notificationsTable).values({
+      userId: 1, 
+      message: `تأكيد دفعة نهائية للطلب #${order.id}`,
+    } as any);
+
     await notifySafely("Failed to send final receipt uploaded email", async () => {
       await sendOrderReceiptUploadedEmail({
-        to: user.email, name: user.fullName, orderId, siteName: order.siteName, receiptUrl, kind: "final",
+        to: user.email, name: user.fullName, orderId, siteName: order.siteName, kind: "final",
       });
     });
   }
@@ -493,8 +575,11 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   const updateData: Record<string, unknown> = { ...parsed.data };
 
   if (typeof body.deliveredUrl === "string" || body.deliveredUrl === null) updateData.deliveredUrl = body.deliveredUrl;
-  if (typeof body.receiptUrl === "string" || body.receiptUrl === null) updateData.receiptUrl = body.receiptUrl;
-  if (typeof body.finalReceiptUrl === "string" || body.finalReceiptUrl === null) updateData.finalReceiptUrl = body.finalReceiptUrl;
+  if (typeof body.transferAccount === "string" || body.transferAccount === null) updateData.transferAccount = body.transferAccount;
+  if (typeof body.accountName === "string" || body.accountName === null) updateData.accountName = body.accountName;
+  if (typeof body.transferAmount === "string" || body.transferAmount === null || typeof body.transferAmount === "number") {
+    updateData.transferAmount = body.transferAmount === null ? null : String(body.transferAmount);
+  }
   if (typeof body.paymentMethodId === "number" || body.paymentMethodId === null) updateData.paymentMethodId = body.paymentMethodId;
   if (typeof body.adminNotes === "string" || body.adminNotes === null) updateData.adminNotes = body.adminNotes;
   if (typeof body.couponCode === "string" || body.couponCode === null) updateData.couponCode = body.couponCode;
@@ -518,7 +603,6 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   const pm = await resolveNotificationPaymentMethod(updatedOrder);
 
   if (user) {
-    // 1) إرسال بريد الموافقة وتحديد السعر
     const approvedTotalAmount = updatedOrder.totalAmount;
     if (originalOrder.totalAmount == null && approvedTotalAmount != null) {
       await notifySafely("Failed to send payment approved email", async () => {
@@ -530,30 +614,26 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
       }, { orderId: updatedOrder.id });
     }
 
-    // 2) رفع المشرف للإيصال يدوياً
-    if (!originalOrder.receiptUrl && updatedOrder.receiptUrl) {
+    if (!hasSubmittedTransferDetails(originalOrder) && hasSubmittedTransferDetails(updatedOrder)) {
       await notifySafely("Failed to send receipt uploaded email", async () => {
         await sendOrderReceiptUploadedEmail({
-          to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName, receiptUrl: updatedOrder.receiptUrl, kind: "deposit",
+          to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName, kind: "deposit",
         });
       });
     }
 
-    // 3) قبول دفعة مقدمة
     if (originalOrder.depositPaid === false && updatedOrder.depositPaid === true) {
       await notifySafely("Failed to send receipt accepted email", async () => {
         await sendOrderReceiptAcceptedEmail({ to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName, kind: "deposit" });
       });
     }
 
-    // 4) قبول دفعة نهائية
     if (originalOrder.finalPaid === false && updatedOrder.finalPaid === true) {
       await notifySafely("Failed to send final payment accepted email", async () => {
         await sendOrderReceiptAcceptedEmail({ to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName, kind: "final" });
       });
     }
 
-    // 5) تغيير حالة الطلب
     const statusChanged = originalOrder.status !== updatedOrder.status;
     if (statusChanged) {
       if (updatedOrder.status === "started") {
@@ -569,7 +649,6 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
           });
         });
       } else if (updatedOrder.status !== "completed") {
-        // أي تحديث حالة آخر (زي ملغي، معلق، إلخ) يتم إرسال رسالة التحديث الشامل
         const statusMap: Record<string, string> = { "pending": "قيد الانتظار", "cancelled": "ملغي", "refunded": "مسترجع" };
         const statusAr = statusMap[updatedOrder.status as string] || updatedOrder.status;
         await notifySafely("Failed to send status update email", async () => {
@@ -578,7 +657,6 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
       }
     }
 
-    // 6) اكتمال الطلب والتسليم
     const becameCompleted = statusChanged && updatedOrder.status === "completed";
     const deliveredAdded = !originalOrder.deliveredUrl && Boolean(updatedOrder.deliveredUrl);
     const deliveredUrl = typeof updatedOrder.deliveredUrl === "string" && updatedOrder.deliveredUrl.trim().length > 0 ? updatedOrder.deliveredUrl : null;
@@ -597,40 +675,135 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   res.json(full ?? updatedOrder);
 }));
 
-// POST /storage/upload-url
-router.post("/storage/upload-url", asyncHandler(async (req, res): Promise<void> => {
+// ==========================================
+// 💬 نظام الرسائل والشات (Chat System)
+// ==========================================
+
+// جلب قائمة العملاء للأدمن (مع استبعاد المديرين)
+router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => {
+  const hasAccess = await checkPermission(req, "canViewMessages");
+  if (!hasAccess) { res.status(403).json({ error: "غير مصرح لك برؤية الرسائل" }); return; }
+
+  // جلب المستخدمين العاديين فقط
+  const clients = await db.select().from(usersTable).where(eq(usersTable.role, "user"));
+  
+  const formattedClients = clients.map(c => ({
+    id: c.id,
+    fullName: c.fullName,
+    email: c.email,
+    unreadCount: 0 
+  }));
+
+  res.json(formattedClients);
+}));
+
+// جلب رسائل المحادثة بين العميل والإدارة
+router.get("/messages/:userId?", asyncHandler(async (req, res): Promise<void> => {
+  const { userId: sessionUserId, role } = getSession(req);
+  if (!sessionUserId) { res.status(401).json({ error: "غير مصرح" }); return; }
+
+  let targetUserId = sessionUserId; 
+
+  if (role === "admin" || role === "subadmin") {
+    const hasAccess = await checkPermission(req, "canViewMessages");
+    if (!hasAccess) { res.status(403).json({ error: "غير مصرح لك برؤية الرسائل" }); return; }
+    if (req.params.userId) {
+      targetUserId = parseInt(req.params.userId as string, 10); // 👈 تم التعديل هنا
+    }
+  }
+
+  const allUserMsgs = await db.select().from(messagesTable)
+    .where(
+      or(
+        eq(messagesTable.senderId, targetUserId),
+        eq(messagesTable.receiverId, targetUserId)
+      )
+    )
+    .orderBy(messagesTable.createdAt);
+
+  await db.update(messagesTable)
+    .set({ isRead: true })
+    .where(and(eq(messagesTable.receiverId, sessionUserId), eq(messagesTable.isRead, false)));
+
+  res.json(allUserMsgs);
+}));
+
+// إرسال رسالة
+router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
+  const { userId: senderId, role } = getSession(req);
+  if (!senderId) { res.status(401).json({ error: "غير مصرح" }); return; }
+
+  const { receiverId, content } = req.body;
+  if (!content) { res.status(400).json({ error: "محتوى الرسالة مطلوب" }); return; }
+
+  const isAdminUser = role === "admin" || role === "subadmin";
+  
+  if (isAdminUser) {
+    const hasAccess = await checkPermission(req, "canReplyMessages");
+    if (!hasAccess) { res.status(403).json({ error: "ليس لديك صلاحية للرد على الرسائل" }); return; }
+  }
+
+  let actualReceiverId = receiverId;
+
+  if (!isAdminUser) {
+    const [mainAdmin] = await db.select().from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
+    actualReceiverId = mainAdmin?.id; 
+  }
+
+  const [newMessage] = await db.insert(messagesTable).values({
+    senderId,
+    receiverId: actualReceiverId,
+    content
+  } as any).returning();
+
+  if (isAdminUser) {
+    await db.insert(notificationsTable).values({
+      userId: actualReceiverId,
+      message: "تم الرد على استفسارك من الإدارة",
+    } as any);
+
+    const [client] = await db.select().from(usersTable).where(eq(usersTable.id, actualReceiverId));
+    if (client) {
+      await notifySafely("Failed to send chat reply email", async () => {
+        await sendChatReplyEmail(client.email, client.fullName, content);
+      });
+    }
+  } else {
+    await db.insert(notificationsTable).values({
+      userId: actualReceiverId, 
+      message: "توجد رسالة جديدة من أحد العملاء",
+    } as any);
+  }
+
+  res.status(201).json(newMessage);
+}));
+
+// ==========================================
+// 🔔 نظام الإشعارات (Notifications System)
+// ==========================================
+
+router.get("/notifications", asyncHandler(async (req, res): Promise<void> => {
   const { userId } = getSession(req);
   if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
-  const { fileName } = req.body;
-  if (!fileName) { res.status(400).json({ error: "اسم الملف مطلوب" }); return; }
+  const notifs = await db.select().from(notificationsTable)
+    .where(eq(notificationsTable.userId, userId))
+    .orderBy(desc(notificationsTable.createdAt));
 
-  let supabaseUrl: string;
-  let supabaseKey: string;
-  let bucketName: string;
+  res.json(notifs);
+}));
 
-  try {
-    ({ supabaseUrl, supabaseKey, bucketName } = getSupabaseStorageConfig());
-  } catch (error) {
-    logger.error({ err: error }, "Supabase storage config error");
-    res.status(500).json({ error: "إعدادات التخزين غير مكتملة" }); return;
-  }
+router.patch("/notifications/:id/read", asyncHandler(async (req, res): Promise<void> => {
+  const { userId } = getSession(req);
+  const notifId = parseInt(req.params.id as string, 10); // 👈 تم التعديل هنا
+  
+  if (!userId || isNaN(notifId)) { res.status(400).json({ error: "بيانات غير صالحة" }); return; }
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const extension = fileName.split(".").pop()?.toLowerCase() || "jpg";
-  const uniqueFileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${extension}`;
-  const filePath = `public/user_${userId}/${uniqueFileName}`;
+  await db.update(notificationsTable)
+    .set({ isRead: true })
+    .where(and(eq(notificationsTable.id, notifId), eq(notificationsTable.userId, userId)));
 
-  const { data, error } = await supabase.storage.from(bucketName).createSignedUploadUrl(filePath);
-  if (error) {
-    logger.error({ err: error, filePath, userId }, "Supabase signed URL error");
-    res.status(500).json({ error: "فشل إنشاء رابط الرفع" }); return;
-  }
-
-  res.json({
-    uploadUrl: data.signedUrl,
-    publicUrl: `${supabaseUrl}/storage/v1/object/public/${bucketName}/${data.path}`,
-  });
+  res.json({ success: true });
 }));
 
 export default router;

@@ -13,6 +13,11 @@ export const usersTable = pgTable("users", {
   permissions: text("permissions"),
   isActive: boolean("is_active").notNull().default(true),
   isVerified: boolean("is_verified").notNull().default(true),
+  
+  // 👇 الصلاحيات الجديدة الخاصة بنظام المحادثة للمشرفين
+  canViewMessages: boolean("can_view_messages").default(false),
+  canReplyMessages: boolean("can_reply_messages").default(false),
+  
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

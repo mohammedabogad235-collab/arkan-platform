@@ -14,19 +14,24 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CalendarDays, Package as PackageIcon, CreditCard, Upload, CheckCircle2, Image, AlertCircle, Trash2, Hash, Info, ExternalLink, PartyPopper, Lock, Tag } from "lucide-react";
+import { CalendarDays, Package as PackageIcon, CreditCard, CheckCircle2, AlertCircle, Trash2, Hash, Info, ExternalLink, PartyPopper, Lock, Tag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { useReceiptUpload } from "@/lib/use-receipt-upload";
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/lib/use-settings";
 import { apiFetch } from "@/lib/api-fetch";
 
+function hasTransferDetails(order: any): boolean {
+  return [order?.transferAccount, order?.accountName, order?.transferAmount].every(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
+}
+
 function getDisplayStatus(order: any): { label: string; color: string } {
-  const { status, totalAmount, receiptUrl, depositPaid, finalPaid } = order;
+  const { status, totalAmount, depositPaid, finalPaid } = order;
   if (status === 'cancelled') {
     return { label: "ملغي", color: "text-red-700 border-red-300 bg-red-50" };
   }
@@ -38,118 +43,185 @@ function getDisplayStatus(order: any): { label: string; color: string } {
     return { label: "جاري التنفيذ", color: "text-blue-700 border-blue-300 bg-blue-50" };
   }
   if (status === 'pending') {
-    if (receiptUrl && !depositPaid) return { label: "بانتظار تأكيد الإيصال", color: "text-orange-600 border-orange-300 bg-orange-50" };
+    if (hasTransferDetails(order) && !depositPaid) return { label: "بانتظار مراجعة التحويل", color: "text-orange-600 border-orange-300 bg-orange-50" };
     if (totalAmount) return { label: "بانتظار الدفعة المقدمة", color: "text-amber-600 border-amber-300 bg-amber-50" };
     return { label: "قيد المراجعة", color: "text-gray-600 border-gray-300 bg-gray-50" };
   }
   return { label: status, color: "text-gray-600 border-gray-300 bg-gray-50" };
 }
 
-function ReceiptUploader({ orderId }: { orderId: number }) {
-  const { uploadFile, isUploading, error } = useReceiptUpload();
-  const inputRef = useRef<HTMLInputElement>(null);
+function TransferDetailsForm({ orderId }: { orderId: number }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [formData, setFormData] = useState({
+    transferAccount: "",
+    accountName: "",
+    transferAmount: "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ variant: "destructive", title: "الملف كبير جداً", description: "الحد الأقصى 10 ميجابايت" });
+  const handleSubmit = async () => {
+    const payload = {
+      transferAccount: formData.transferAccount.trim(),
+      accountName: formData.accountName.trim(),
+      transferAmount: formData.transferAmount.trim(),
+    };
+
+    if (!payload.transferAccount || !payload.accountName || !payload.transferAmount) {
+      toast({ variant: "destructive", title: "البيانات غير مكتملة", description: "يرجى تعبئة كل حقول التحويل قبل الإرسال" });
       return;
     }
 
-    const result = await uploadFile(file);
-    if (!result) return;
+    setIsSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/orders/${orderId}/receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    const res = await apiFetch(`/api/orders/${orderId}/receipt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ receiptUrl: result.url }),
-    });
-
-    if (res.ok) {
-      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-      toast({ title: "تم رفع الإيصال", description: "سيتم مراجعته من قِبل الإدارة وتحديث حالة طلبك" });
-    } else {
-      toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ الإيصال، حاول مرة أخرى" });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        toast({ title: "تم إرسال بيانات التحويل", description: "سيتم مراجعتها من قِبل الإدارة وتحديث حالة طلبك" });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "خطأ", description: data.error || "تعذر حفظ بيانات التحويل" });
+      }
+    } catch {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ بيانات التحويل، حاول مرة أخرى" });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (inputRef.current) inputRef.current.value = "";
   };
 
   return (
-    <div className="space-y-2">
-      {/* التعديل هنا: تحديد صيغ الصور عشان الموبايل يفتح الاستوديو وما يجبرش العميل على الكاميرا */}
-      <input ref={inputRef} type="file" accept="image/jpeg, image/png, image/webp, application/pdf" className="hidden" onChange={handleFile} />
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Input
+          value={formData.transferAccount}
+          onChange={(e) => setFormData((current) => ({ ...current, transferAccount: e.target.value }))}
+          placeholder="رقم الجوال أو الحساب"
+          className="bg-white"
+        />
+        <Input
+          value={formData.accountName}
+          onChange={(e) => setFormData((current) => ({ ...current, accountName: e.target.value }))}
+          placeholder="اسم صاحب الحساب"
+          className="bg-white"
+        />
+        <Input
+          value={formData.transferAmount}
+          onChange={(e) => setFormData((current) => ({ ...current, transferAmount: e.target.value }))}
+          placeholder="المبلغ المحول"
+          className="bg-white"
+        />
+      </div>
       <Button
         variant="outline"
         size="sm"
         className="w-full border-dashed border-primary text-primary hover:bg-primary/5"
-        disabled={isUploading}
-        onClick={() => inputRef.current?.click()}
+        disabled={isSubmitting}
+        onClick={handleSubmit}
       >
-        <Upload className="w-4 h-4 me-2" />
-        {isUploading ? "جاري الرفع..." : "رفع إيصال الدفع"}
+        <CreditCard className="w-4 h-4 me-2" />
+        {isSubmitting ? "جاري الإرسال..." : "إرسال بيانات التحويل"}
       </Button>
-      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
 
-function FinalReceiptUploader({ orderId }: { orderId: number }) {
-  const { uploadFile, isUploading, error } = useReceiptUpload();
-  const inputRef = useRef<HTMLInputElement>(null);
+// التعديل هنا: دالة جديدة للدفعة النهائية تعتمد على النصوص فقط
+function FinalTransferDetailsForm({ order }: { order: any }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [formData, setFormData] = useState({
+    transferAccount: order.transferAccount || "",
+    accountName: order.accountName || "",
+    transferAmount: "", // نترك المبلغ فارغ ليدخله بنفسه للدفعة النهائية
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false); // حالة محلية لتأكيد الإرسال
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ variant: "destructive", title: "الملف كبير جداً", description: "الحد الأقصى 10 ميجابايت" });
+  const handleSubmit = async () => {
+    const payload = {
+      transferAccount: formData.transferAccount.trim(),
+      accountName: formData.accountName.trim(),
+      transferAmount: formData.transferAmount.trim(),
+    };
+
+    if (!payload.transferAccount || !payload.accountName || !payload.transferAmount) {
+      toast({ variant: "destructive", title: "البيانات غير مكتملة", description: "يرجى إدخال بيانات تحويل الدفعة النهائية" });
       return;
     }
 
-    const result = await uploadFile(file);
-    if (!result) return;
+    setIsSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/orders/${order.id}/final-receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    const res = await apiFetch(`/api/orders/${orderId}/final-receipt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ receiptUrl: result.url }),
-    });
-
-    if (res.ok) {
-      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-      toast({ title: "تم رفع إيصال الدفع النهائي", description: "سيتم مراجعته من قِبل الإدارة وتسليم الصلاحيات" });
-    } else {
-      toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ الإيصال، حاول مرة أخرى" });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        toast({ title: "تم إرسال بيانات الدفع النهائي", description: "سيتم المراجعة وتسليم كافة الصلاحيات قريباً" });
+        setSubmitted(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "خطأ", description: data.error || "تعذر إرسال البيانات" });
+      }
+    } catch {
+      toast({ variant: "destructive", title: "خطأ", description: "حدث خطأ في الاتصال، حاول مرة أخرى" });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (inputRef.current) inputRef.current.value = "";
   };
 
+  if (submitted) {
+    return (
+      <div className="flex items-center gap-2 bg-blue-100 rounded-lg px-3 py-3 text-blue-700 mt-2">
+        <CheckCircle2 className="w-5 h-5 shrink-0" />
+        <span className="text-sm font-medium">تم إرسال بيانات التحويل النهائي بنجاح — بانتظار تأكيد الإدارة.</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-2">
-      {/* التعديل هنا: تحديد صيغ الصور عشان الموبايل يفتح الاستوديو وما يجبرش العميل على الكاميرا */}
-      <input ref={inputRef} type="file" accept="image/jpeg, image/png, image/webp, application/pdf" className="hidden" onChange={handleFile} />
+    <div className="space-y-3 mt-2">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Input
+          value={formData.transferAccount}
+          onChange={(e) => setFormData((current) => ({ ...current, transferAccount: e.target.value }))}
+          placeholder="رقم الجوال أو الحساب"
+          className="bg-white border-blue-200"
+        />
+        <Input
+          value={formData.accountName}
+          onChange={(e) => setFormData((current) => ({ ...current, accountName: e.target.value }))}
+          placeholder="اسم صاحب الحساب"
+          className="bg-white border-blue-200"
+        />
+        <Input
+          value={formData.transferAmount}
+          onChange={(e) => setFormData((current) => ({ ...current, transferAmount: e.target.value }))}
+          placeholder="المبلغ المحول"
+          className="bg-white border-blue-200"
+        />
+      </div>
       <Button
         variant="outline"
         size="sm"
         className="w-full border-dashed border-blue-500 text-blue-600 hover:bg-blue-50"
-        disabled={isUploading}
-        onClick={() => inputRef.current?.click()}
+        disabled={isSubmitting}
+        onClick={handleSubmit}
       >
-        <Upload className="w-4 h-4 me-2" />
-        {isUploading ? "جاري الرفع..." : "رفع إيصال سداد المبلغ المتبقي"}
+        <CreditCard className="w-4 h-4 me-2" />
+        {isSubmitting ? "جاري الإرسال..." : "إرسال بيانات الدفع النهائي"}
       </Button>
-      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
 
-// التعديل هنا: إصلاح زرار الحذف والمسار بتاعه عشان يشتغل 100%
 function DeleteOrderButton({ order }: { order: any }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -159,7 +231,7 @@ function DeleteOrderButton({ order }: { order: any }) {
   const hasPaid = order.depositPaid || order.finalPaid;
 
   const handleDelete = async (e: React.MouseEvent) => {
-    e.preventDefault(); // منع النافذة من الإغلاق فوراً
+    e.preventDefault(); 
     setLoading(true);
     try {
       const res = await apiFetch(`/api/orders/${order.id}`, {
@@ -169,7 +241,7 @@ function DeleteOrderButton({ order }: { order: any }) {
       if (res.ok) {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         toast({ title: "تم حذف الطلب بنجاح" });
-        setOpen(false); // إغلاق النافذة بعد النجاح
+        setOpen(false); 
       } else {
         const data = await res.json().catch(() => ({}));
         toast({ variant: "destructive", title: "خطأ", description: data.error || "تعذر حذف الطلب" });
@@ -230,7 +302,7 @@ function CouponApplier({ orderId, onApplied }: { orderId: number; onApplied: () 
         body: JSON.stringify({ code: code.trim().toUpperCase() }),
       });
       let data: any = {};
-      try { data = await res.json(); } catch { /* ignore parse error */ }
+      try { data = await res.json(); } catch { }
       if (!res.ok) {
         setStatus("error");
         setErrorMsg(data.error || "الكود غير صحيح أو غير نشط");
@@ -360,8 +432,8 @@ export default function MyOrders() {
             const currencyLabel = order.currency === "EGP" ? "جنيه" : "ريال";
 
             const priceSet = totalAmount !== null && totalAmount > 0;
-            const showReceiptUpload = order.status === "pending" && priceSet && !(order as any).receiptUrl;
-            const receiptUploaded = !!(order as any).receiptUrl;
+            const showReceiptUpload = order.status === "pending" && priceSet && !hasTransferDetails(order);
+            const receiptUploaded = hasTransferDetails(order);
             const canCancel = order.status === "pending" || order.status === "in_progress";
             const displayStatus = getDisplayStatus(order);
 
@@ -401,7 +473,7 @@ export default function MyOrders() {
                   receiptUploaded ? (
                     <div className="px-6 py-3 border-b text-sm flex items-start gap-3 bg-green-50 text-green-800">
                       <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>تم رفع إيصال الدفع — بانتظار تأكيد الإدارة لبدء التنفيذ.</span>
+                      <span>تم إرسال بيانات التحويل — بانتظار مراجعة الإدارة لبدء التنفيذ.</span>
                     </div>
                   ) : priceSet ? (
                     <div className="px-6 py-4 border-b bg-amber-50 space-y-4">
@@ -454,7 +526,7 @@ export default function MyOrders() {
                         </div>
                       </div>
                       <div className="pt-1">
-                        <ReceiptUploader orderId={order.id} />
+                        <TransferDetailsForm orderId={order.id} />
                       </div>
                     </div>
                   ) : (
@@ -521,17 +593,14 @@ export default function MyOrders() {
                         )}
                       </div>
                     </div>
-                    {(order as any).finalReceiptUrl ? (
-                      <div className="flex items-center gap-2 bg-blue-100 rounded-lg px-3 py-2 text-blue-700">
-                        <CheckCircle2 className="w-4 h-4 shrink-0" />
-                        <span>تم رفع إيصال السداد — بانتظار تأكيد الإدارة وتسليم الصلاحيات.</span>
-                        <a href={(order as any).finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="ms-auto text-xs underline underline-offset-2 hover:text-blue-900 shrink-0">
-                          <Image className="w-3.5 h-3.5 inline me-0.5" />عرض الإيصال
-                        </a>
-                      </div>
-                    ) : (
-                      <FinalReceiptUploader orderId={order.id} />
-                    )}
+                    {/* التعديل هنا: دمج النموذج الجديد مكان زرار الرفع */}
+                    <div className="mt-4 border-t border-blue-200 pt-4">
+                      <h4 className="text-xs font-semibold text-blue-800 uppercase tracking-wide flex items-center gap-1.5 mb-2">
+                        <CreditCard className="w-3.5 h-3.5" />
+                        بيانات تحويل الدفعة النهائية
+                      </h4>
+                      <FinalTransferDetailsForm order={order} />
+                    </div>
                   </div>
                 )}
 
@@ -701,18 +770,29 @@ export default function MyOrders() {
                       {showReceiptUpload && (
                         <div className="border-t pt-4">
                           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-2">
-                            <Image className="w-3.5 h-3.5" />
-                            إيصال الدفع
+                            <CreditCard className="w-3.5 h-3.5" />
+                            بيانات التحويل
                           </h4>
-                          <ReceiptUploader orderId={order.id} />
+                          <TransferDetailsForm orderId={order.id} />
                         </div>
                       )}
                       {receiptUploaded && order.status === "pending" && (
-                        <div className="border-t pt-4">
-                          <a href={(order as any).receiptUrl!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
-                            <Image className="w-4 h-4" />
-                            عرض الإيصال المرفوع
-                          </a>
+                        <div className="border-t pt-4 space-y-3">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">بيانات التحويل المرسلة</h4>
+                          <div className="grid gap-2 text-sm">
+                            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                              <span className="text-muted-foreground">رقم الجوال أو الحساب</span>
+                              <span className="font-medium" dir="ltr">{(order as any).transferAccount}</span>
+                            </div>
+                            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                              <span className="text-muted-foreground">اسم صاحب الحساب</span>
+                              <span className="font-medium">{(order as any).accountName}</span>
+                            </div>
+                            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                              <span className="text-muted-foreground">المبلغ المحول</span>
+                              <span className="font-medium">{(order as any).transferAmount}</span>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>

@@ -139,7 +139,7 @@ async function sendEmail(options: { to: string; subject: string; html: string; }
   try {
     await withTimeout(
       transporter.sendMail({
-        from: `"أركان لتقنية المعلومات" <${fromEmail}>`,
+        from: `"أركان-ويب " <${fromEmail}>`,
         to: options.to,
         subject: options.subject,
         html: options.html,
@@ -211,7 +211,7 @@ function createBaseEmail({
             ${content}
           </div>
           <div class="footer">
-            &copy; ${new Date().getFullYear()} أركان لتقنية المعلومات — جميع الحقوق محفوظة.
+            &copy; ${new Date().getFullYear()} أركان — جميع الحقوق محفوظة.
           </div>
         </div>
       </div>
@@ -240,13 +240,13 @@ export async function sendSignupOtpEmail(to: string, otp: string, name?: string)
   const title = `مرحباً بك في أركان، خطوة واحدة متبقية`;
   const content = createOtpContent({
     greeting: `أهلاً بك يا ${userName}،`,
-    intro: "سعداء بانضمامك إلى منصة أركان. يرجى استخدام رمز التحقق أدناه لتفعيل حسابك والبدء في استخدام خدماتنا.",
+    intro: "سعداء بانضمامك إلى منصة أركان-ويب. يرجى استخدام رمز التحقق أدناه لتفعيل حسابك والبدء في استخدام خدماتنا.",
     otp,
     helperText: "الرمز صالح لمدة 5 دقائق فقط. نرجو عدم مشاركة هذا الرمز مع أي شخص لضمان أمان حسابك.",
     footerNote: "إذا لم تقم بإنشاء هذا الحساب، يمكنك تجاهل هذه الرسالة بأمان.",
   });
 
-  const html = createBaseEmail({ title, preheader: `رمز تفعيل الحساب: ${otp}`, brandLine: "أركان | حماية الحساب", content, accent: "#3b82f6", background: "#f8fafc" });
+  const html = createBaseEmail({ title, preheader: `رمز تفعيل الحساب: ${otp}`, brandLine: "أركان-ويب | حماية الحساب", content, accent: "#3b82f6", background: "#f8fafc" });
   await sendEmail({ to, subject: "تفعيل حسابك في أركان", html });
 }
 
@@ -273,7 +273,7 @@ export async function sendOrderReceivedEmail(to: string, name: string, orderId: 
   const title = `تم استلام طلبك بنجاح`;
   const content = `
     <p>أهلاً بك يا ${safeName(name)}،</p>
-    <p>نشكرك على ثقتك في أركان. لقد قمنا باستلام طلبك الخاص بمشروعك، وجاري مراجعته من قبل فريق التقييم لتحديد خطة العمل.</p>
+    <p>نشكرك على ثقتك في أركان-ويب. لقد قمنا باستلام طلبك الخاص بمشروعك، وجاري مراجعته من قبل فريق التقييم لتحديد خطة العمل.</p>
     <div class="panel">
       <p style="margin:0 0 8px;"><strong>رقم الطلب المرجعي:</strong> #${orderId}</p>
       <p style="margin:0;"><strong>اسم المشروع:</strong> ${safeSiteName}</p>
@@ -303,9 +303,9 @@ export async function sendOrderPaymentApprovedEmail(opts: { to: string; name: st
       <p style="margin:0 0 12px; font-weight:800; font-size:18px;">💳 بيانات حساب الدفع ${safePaymentMethodName ? `(${safePaymentMethodName})` : ""}</p>
       <p style="margin:0; font-family: ui-monospace, monospace; font-size: 15px; font-weight: 600; white-space: pre-line; line-height: 1.6;">${paymentDetailsHtml || "الرجاء مراجعة لوحة التحكم لعرض بيانات الدفع المتاحة."}</p>
     </div>
-    <p class="muted">بعد إتمام التحويل، نرجو منك رفع صورة الإيصال عبر لوحة تحكم طلباتك ليتم البدء فوراً.</p>
+    <p class="muted">بعد إتمام التحويل، نرجو منك إدخال بيانات التحويل عبر صفحة طلباتك ليتم البدء فوراً.</p>
   `;
-  const html = createBaseEmail({ title, preheader: `تم اعتماد الطلب #${opts.orderId} — تفاصيل الدفع بالداخل`, brandLine: "أركان | الإدارة المالية", content, accent: "#8b5cf6", background: "#f8fafc" });
+  const html = createBaseEmail({ title, preheader: `تم اعتماد الطلب #${opts.orderId} — تفاصيل الدفع بالداخل`, brandLine: "أركان-ويب | الإدارة المالية", content, accent: "#8b5cf6", background: "#f8fafc" });
   await sendEmail({ to: opts.to, subject: `تم اعتماد الطلب #${opts.orderId} — تفاصيل الدفع`, html });
 }
 
@@ -330,44 +330,44 @@ export async function sendOrderInProgressPaymentDetailsEmail(opts: { to: string;
       <p style="margin:0; font-family: ui-monospace, monospace; font-size: 15px; font-weight: 600; white-space: pre-line; line-height: 1.6;">${paymentDetailsHtml || "بيانات الحساب غير مدرجة، يرجى التواصل مع الإدارة."}</p>
     </div>
     <div style="margin-top: 32px;">
-      <a class="button" href="${escapeHtml(`${DEFAULT_FRONTEND_URL}/my-orders`)}" target="_blank">
-        رفع إيصال الدفع
+      <a class="button" href="${escapeHtml(`${DEFAULT_FRONTEND_URL}`)}" target="_blank">
+        الذهاب إلى الموقع
       </a>
     </div>
   `;
-  const html = createBaseEmail({ title, preheader: `طلبك #${opts.orderId} قيد التنفيذ - يرجى إتمام الدفع`, brandLine: "أركان | قيد التنفيذ", content, accent: "#10b981", background: "#f8fafc" });
+  const html = createBaseEmail({ title, preheader: `طلبك #${opts.orderId} قيد التنفيذ - يرجى إتمام الدفع`, brandLine: "أركان-ويب | قيد التنفيذ", content, accent: "#10b981", background: "#f8fafc" });
   await sendEmail({ to: opts.to, subject: `مشروعك #${opts.orderId} قيد التنفيذ — بيانات التحويل`, html });
 }
 
 export async function sendOrderReceiptUploadedEmail(opts: { to: string; name: string; orderId: number; siteName: string; receiptUrl?: string | null; kind: "deposit" | "final"; }) {
   const kindLabel = opts.kind === "final" ? "النهائي" : "المقدم";
   const safeSiteName = escapeHtml(opts.siteName);
-  const title = `تم استلام إيصال الدفع`;
+  const title = `تم استلام بيانات التحويل`;
   const content = `
     <p>أهلاً بك يا ${safeName(opts.name)}،</p>
-    <p>لقد استلمنا بنجاح إيصال الدفع (<strong>${kindLabel}</strong>) الخاص بك، وهو الآن قيد المراجعة والمطابقة من قِبل قسم الحسابات.</p>
+    <p>لقد استلمنا بنجاح بيانات التحويل (<strong>الدفعة ${kindLabel === "النهائي" ? "النهائية" : "المقدمة"}</strong>) الخاصة بك، وهي الآن قيد المراجعة والمطابقة من قِبل قسم الحسابات.</p>
     <div class="panel">
       <p style="margin:0 0 8px;"><strong>رقم الطلب:</strong> #${opts.orderId}</p>
       <p style="margin:0;"><strong>اسم المشروع:</strong> ${safeSiteName}</p>
     </div>
-    <p class="muted">سنقوم بتحديث حالة طلبك فور الانتهاء من مراجعة الإيصال.</p>
+    <p class="muted">سنقوم بتحديث حالة طلبك فور الانتهاء من التأكد من الحوالة.</p>
   `;
-  const html = createBaseEmail({ title, preheader: `استلام إيصال دفع الطلب #${opts.orderId}`, brandLine: "أركان | قسم الحسابات", content, accent: "#0ea5e9", background: "#f8fafc" });
-  await sendEmail({ to: opts.to, subject: `استلام إيصال الدفع — الطلب #${opts.orderId}`, html });
+  const html = createBaseEmail({ title, preheader: `استلام بيانات تحويل الطلب #${opts.orderId}`, brandLine: "أركان-ويب | قسم الحسابات", content, accent: "#0ea5e9", background: "#f8fafc" });
+  await sendEmail({ to: opts.to, subject: `استلام بيانات الدفع — الطلب #${opts.orderId}`, html });
 }
 
 export async function sendOrderReceiptAcceptedEmail(opts: { to: string; name: string; orderId: number; siteName: string; kind: "deposit" | "final"; }) {
-  const title = `تم قبول الدفعة بنجاح`;
+  const title = `تم تأكيد التحويل بنجاح`;
   const content = `
     <p>أهلاً بك يا ${safeName(opts.name)}،</p>
-    <p>نود إعلامك بأنه تم التأكد من التحويل وقبول إيصال الدفع الخاص بك بنجاح.</p>
+    <p>نود إعلامك بأنه تم التأكد من التحويل وقبول الدفعة الخاصة بك بنجاح.</p>
     <div class="panel" style="background: #f0fdf4; border-color: #bbf7d0;">
       <p style="margin:0 0 8px; color:#15803d;"><strong>رقم الطلب:</strong> #${opts.orderId}</p>
       <p style="margin:0; color:#15803d;"><strong>المشروع:</strong> ${escapeHtml(opts.siteName)}</p>
     </div>
     <p class="muted">شكراً لتعاونك، سنوافيك بآخر تطورات المشروع قريباً.</p>
   `;
-  const html = createBaseEmail({ title, preheader: `تأكيد استلام وقبول الدفعة للطلب #${opts.orderId}`, brandLine: "أركان | تأكيد الدفع", content, accent: "#22c55e", background: "#f8fafc" });
+  const html = createBaseEmail({ title, preheader: `تأكيد استلام وقبول الدفعة للطلب #${opts.orderId}`, brandLine: "أركان-ويب | تأكيد الدفع", content, accent: "#22c55e", background: "#f8fafc" });
   await sendEmail({ to: opts.to, subject: `تأكيد الدفع — الطلب #${opts.orderId}`, html });
 }
 
@@ -382,7 +382,7 @@ export async function sendOrderPhaseEmail(opts: { to: string; name: string; orde
       <p style="margin:0;"><strong>اسم المشروع:</strong> ${escapeHtml(opts.siteName)}</p>
     </div>
   `;
-  const html = createBaseEmail({ title, preheader: `حالة الطلب #${opts.orderId}: ${phaseTitle}`, brandLine: "أركان | تحديثات المشروع", content, accent: "#3b82f6", background: "#f8fafc" });
+  const html = createBaseEmail({ title, preheader: `حالة الطلب #${opts.orderId}: ${phaseTitle}`, brandLine: "أركان-ويب | تحديثات المشروع", content, accent: "#3b82f6", background: "#f8fafc" });
   await sendEmail({ to: opts.to, subject: `تحديث الطلب #${opts.orderId} - ${phaseTitle}`, html });
 }
 
@@ -414,7 +414,7 @@ export async function sendOrderCompletedEmail(opts: { to: string; name: string; 
 }
 
 export async function sendOrderStatusUpdateEmail(to: string, name: string, orderId: number, orderName: string, status: string, message: string) {
-  const ordersUrl = escapeHtml(`${DEFAULT_FRONTEND_URL}/my-orders`);
+  const ordersUrl = escapeHtml(`${DEFAULT_FRONTEND_URL}`);
   const title = `تحديث بخصوص طلبك #${orderId}`;
   const content = `
     <p>أهلاً بك يا ${escapeHtml(name)}،</p>
@@ -425,10 +425,45 @@ export async function sendOrderStatusUpdateEmail(to: string, name: string, order
     <p style="font-weight:600; color:#334155; line-height: 1.8;">${formatMultilineText(message)}</p>
     <div style="margin-top: 32px;">
       <a class="button" href="${ordersUrl}" target="_blank">
-        متابعة حالة الطلب
+        الذهاب إلى الموقع
       </a>
     </div>
   `;
-  const html = createBaseEmail({ title, preheader: `تحديث جديد بخصوص طلبك #${orderId}`, brandLine: "أركان | تنبيهات النظام", content, accent: "#3b82f6", background: "#f8fafc" });
+  const html = createBaseEmail({ title, preheader: `تحديث جديد بخصوص طلبك #${orderId}`, brandLine: "أركان-ويب | تنبيهات النظام", content, accent: "#3b82f6", background: "#f8fafc" });
   await sendEmail({ to, subject: `تحديث الطلب #${orderId}`, html });
+}
+
+// 💬 👈 الدالة الجديدة المسؤولة عن إرسال إيميل عند رد الإدارة على رسائل الشات
+export async function sendChatReplyEmail(to: string, name: string, messageContent: string) {
+  const chatUrl = escapeHtml(`${DEFAULT_FRONTEND_URL}`);
+  const title = `رد جديد من الدعم الفني`;
+  
+  // رسالة مصغرة تظهر في سطر الإيميل قبل فتحه
+  const snippet = escapeHtml(messageContent).length > 40 
+    ? escapeHtml(messageContent).substring(0, 40) + "..." 
+    : escapeHtml(messageContent);
+
+  const content = `
+    <p>أهلاً بك يا ${safeName(name)}،</p>
+    <p>لقد قام فريق الدعم الفني في أركان بالرد على استفسارك الأخير:</p>
+    <div class="panel" style="background: #eff6ff; border-right: 4px solid #3b82f6;">
+      <p style="margin:0; font-size: 16px; line-height: 1.6; white-space: pre-line; color: #1e3a8a;">"${escapeHtml(messageContent)}"</p>
+    </div>
+    <div style="margin-top: 32px;">
+      <a class="button" href="${chatUrl}" target="_blank">
+        الذهاب للموقع لمتابعة المحادثة
+      </a>
+    </div>
+    <p class="muted" style="margin-top: 20px;">نحن هنا دائماً لخدمتك والرد على كافة تساؤلاتك.</p>
+  `;
+  const html = createBaseEmail({ 
+    title, 
+    preheader: `لديك رسالة جديدة: ${snippet}`, 
+    brandLine: "أركان-ويب | الدعم الفني", 
+    content, 
+    accent: "#3b82f6", 
+    background: "#f8fafc" 
+  });
+  
+  await sendEmail({ to, subject: `رد جديد من الدعم الفني - أركان`, html });
 }

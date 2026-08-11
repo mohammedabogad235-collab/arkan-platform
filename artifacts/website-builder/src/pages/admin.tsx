@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { useSettings, useUpdateSettings, SETTINGS_KEY } from "@/lib/use-settings";
 import {
@@ -40,6 +40,7 @@ import {
   CreditCard, Package, BarChart3, Globe, Phone, Mail, MapPin,
   Facebook, Instagram, Twitter, ChevronDown, ChevronUp, Check, X,
   Clock, Banknote, Star, ArrowUpRight, Tag, ToggleLeft, ToggleRight, Calendar, Shield, Lock, Unlock,
+  MessageCircle, Bell, Send // أيقونات المحادثة والإشعارات
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -47,19 +48,26 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch, apiFetchJson } from "@/lib/api-fetch";
 
+// التحقق من وجود بيانات التحويل النصية (3 حقول)
+function hasTransferDetails(order: any): boolean {
+  return [order?.transferAccount, order?.accountName, order?.transferAmount].every(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
+}
+
+// تحديث حالة الطلب وإزالة الاعتماد على الصور
 function getAdminOrderStatus(order: any): { label: string; color: string; bg: string; dot: string } {
-  const { status, totalAmount, receiptUrl, depositPaid, finalPaid, finalReceiptUrl } = order;
+  const { status, totalAmount, depositPaid, finalPaid } = order;
 
   if (status === 'cancelled') return { label: "ملغي", color: "text-red-700", bg: "bg-red-50 border-red-200", dot: "bg-red-400" };
   if (status === 'completed') {
     if (finalPaid) return { label: "مكتمل ومدفوع", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", dot: "bg-emerald-500" };
-    if (finalReceiptUrl) return { label: "بانتظار تأكيد النهائي", color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200", dot: "bg-indigo-500" };
     return { label: "مكتمل بانتظار الدفع", color: "text-green-700", bg: "bg-green-50 border-green-200", dot: "bg-green-500" };
   }
   if (status === 'in_progress') return { label: "قيد التنفيذ", color: "text-blue-700", bg: "bg-blue-50 border-blue-200", dot: "bg-blue-500" };
   if (status === 'started') return { label: "بدأ التنفيذ", color: "text-sky-700", bg: "bg-sky-50 border-sky-200", dot: "bg-sky-500" };
   if (status === 'pending') {
-    if (receiptUrl && !depositPaid) return { label: "تأكيد الإيصال مطلوب", color: "text-orange-700", bg: "bg-orange-50 border-orange-200", dot: "bg-orange-500" };
+    if (hasTransferDetails(order) && !depositPaid) return { label: "مراجعة التحويل مطلوبة", color: "text-orange-700", bg: "bg-orange-50 border-orange-200", dot: "bg-orange-500" };
     if (totalAmount) return { label: "بانتظار دفع العميل", color: "text-amber-700", bg: "bg-amber-50 border-amber-200", dot: "bg-amber-500" };
     return { label: "قيد المراجعة (تحديد السعر)", color: "text-gray-700", bg: "bg-gray-100 border-gray-200", dot: "bg-gray-500" };
   }
@@ -67,18 +75,35 @@ function getAdminOrderStatus(order: any): { label: string; color: string; bg: st
   return { label: status, color: "text-gray-700", bg: "bg-gray-100 border-gray-200", dot: "bg-gray-500" };
 }
 
+// إضافة المحادثات للقائمة
 const ALL_NAV = [
   { id: "overview",    label: "الإحصائيات",      icon: BarChart3,     adminOnly: false },
-  { id: "orders",      label: "الطلبات",          icon: ShoppingCart,  adminOnly: false },
-  { id: "finances",    label: "المالية",          icon: TrendingUp,    adminOnly: false },
+  { id: "orders",      label: "الطلبات",         icon: ShoppingCart,  adminOnly: false },
+  { id: "messages",    label: "الرسائل",         icon: MessageCircle, adminOnly: false }, // تمت الإضافة
+  { id: "finances",    label: "المالية",         icon: TrendingUp,    adminOnly: false },
   { id: "users",       label: "المستخدمين",      icon: Users,         adminOnly: false },
-  { id: "packages",    label: "الباقات",          icon: Package,       adminOnly: false },
-  { id: "payments",    label: "طرق الدفع",        icon: CreditCard,    adminOnly: false },
-  { id: "reviews",     label: "الآراء",            icon: MessageSquare, adminOnly: false },
-  { id: "coupons",     label: "الكوبونات",        icon: Tag,           adminOnly: false },
-  { id: "settings",    label: "الإعدادات",        icon: Settings,      adminOnly: false },
-  { id: "otp-settings", label: "إعدادات البريد",   icon: Mail,          adminOnly: true  },
-  { id: "subadmins",   label: "مشرفون فرعيون",    icon: Shield,        adminOnly: true  },
+  { id: "packages",    label: "الباقات",         icon: Package,       adminOnly: false },
+  { id: "payments",    label: "طرق الدفع",       icon: CreditCard,    adminOnly: false },
+  { id: "reviews",     label: "الآراء",          icon: MessageSquare, adminOnly: false },
+  { id: "coupons",     label: "الكوبونات",       icon: Tag,           adminOnly: false },
+  { id: "settings",    label: "الإعدادات",       icon: Settings,      adminOnly: false },
+  { id: "otp-settings", label: "إعدادات البريد",  icon: Mail,          adminOnly: true  },
+  { id: "subadmins",   label: "مشرفون فرعيون",   icon: Shield,        adminOnly: true  },
+];
+
+// تحديث الصلاحيات
+const PERMISSIONS_LIST = [
+  { id: "overview",  label: "الإحصائيات" },
+  { id: "orders",    label: "الطلبات" },
+  { id: "finances",  label: "المالية" },
+  { id: "users",     label: "المستخدمين" },
+  { id: "packages",  label: "الباقات" },
+  { id: "payments",  label: "طرق الدفع" },
+  { id: "reviews",   label: "الآراء" },
+  { id: "coupons",   label: "الكوبونات" },
+  { id: "settings",  label: "الإعدادات" },
+  { id: "messages",  label: "رؤية الرسائل" }, // صلاحية الرؤية
+  { id: "reply_messages", label: "الرد على الرسائل" }, // صلاحية الرد
 ];
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
@@ -375,39 +400,38 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
 
               <DeliveredUrlInput order={order} />
 
-              {(order as any).receiptUrl && (
-                <div className="bg-white rounded-xl border p-3 flex items-center justify-between">
-                  <a href={(order as any).receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
-                    <FileImage className="w-4 h-4" />
-                    إيصال الدفع المقدّم
-                  </a>
-                  {!order.depositPaid && (
-                    <Button size="sm" className="bg-green-600 hover:bg-green-700 h-7 text-xs gap-1" onClick={() => onConfirmReceipt(order.id)}>
-                      <BadgeCheck className="w-3.5 h-3.5" />
-                      تأكيد الإيصال
-                    </Button>
-                  )}
-                  {order.depositPaid && (
-                    <Badge className="bg-green-50 text-green-700 border-green-200 text-xs">✓ مؤكد</Badge>
-                  )}
-                </div>
-              )}
-
-              {(order as any).finalReceiptUrl && (
-                <div className="bg-white rounded-xl border border-blue-200 p-3 flex items-center justify-between">
-                  <a href={(order as any).finalReceiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
-                    <FileImage className="w-4 h-4" />
-                    إيصال سداد المبلغ المتبقي
-                  </a>
-                  {!order.finalPaid && (
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 h-7 text-xs gap-1" onClick={() => onPaymentChange(order.id, "finalPaid", true)}>
-                      <BadgeCheck className="w-3.5 h-3.5" />
-                      تأكيد الدفع الكامل
-                    </Button>
-                  )}
-                  {order.finalPaid && (
-                    <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">✓ مؤكد</Badge>
-                  )}
+              {/* بيانات التحويل (تم تعديلها للنصوص فقط وإزالة أي صور) */}
+              {hasTransferDetails(order) && (
+                <div className="bg-white rounded-xl border p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">بيانات تحويل الدفعة</p>
+                      <p className="text-xs text-muted-foreground mt-1">راجع بيانات التحويل المدخلة من العميل.</p>
+                    </div>
+                    {!order.depositPaid && (
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 h-7 text-xs gap-1" onClick={() => onConfirmReceipt(order.id)}>
+                        <BadgeCheck className="w-3.5 h-3.5" />
+                        تأكيد التحويل
+                      </Button>
+                    )}
+                    {order.depositPaid && (
+                      <Badge className="bg-green-50 text-green-700 border-green-200 text-xs">✓ مؤكد</Badge>
+                    )}
+                  </div>
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
+                      <span className="text-muted-foreground">رقم الحساب/الجوال</span>
+                      <span className="font-medium" dir="ltr">{(order as any).transferAccount}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
+                      <span className="text-muted-foreground">اسم صاحب الحساب</span>
+                      <span className="font-medium">{(order as any).accountName}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
+                      <span className="text-muted-foreground">المبلغ المحول</span>
+                      <span className="font-medium">{(order as any).transferAmount}</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -445,65 +469,8 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   );
 }
 
-const DEFAULT_TERMS_TEXT = `1. قبول الشروط
-باستخدامك للمنصة وخدماتها، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق على أي من هذه الشروط، فيرجى عدم استخدام خدماتنا. نحتفظ بالحق في تعديل هذه الشروط في أي وقت، وسيتم إخطارك بأي تغييرات جوهرية.
-
-2. الخدمات المقدمة
-تقدم المنصة خدمات تصميم وتطوير المواقع الإلكترونية وتشمل: تصميم المواقع المخصصة، المتاجر الإلكترونية، المواقع التعريفية، المنصات التعليمية والمدونات، والاستشارات التقنية.
-
-3. سياسة الدفع
-يتم الدفع على مرحلتين: دفعة مقدمة (50%) قبل البدء في العمل لضمان الجدية، ودفعة التسليم (50%) عند تسليم الموقع النهائي وقبوله. لا تُسترد الدفعة المقدمة في حالة إلغاء العميل للمشروع بعد البدء.
-
-4. مدة التنفيذ
-تختلف مدة تنفيذ المشاريع حسب حجم وتعقيد الطلب. يتم تحديد المدة الزمنية بوضوح في اتفاقية العمل. قد تتأثر المدة بمدى التزام العميل بتقديم المحتوى والبيانات في الوقت المحدد.
-
-5. حقوق الملكية الفكرية
-بعد إتمام الدفع الكامل، تنتقل ملكية الموقع بالكامل إلى العميل. يحتفظ الفريق بحق عرض المشروع في معرض الأعمال ما لم يطلب العميل خلاف ذلك.
-
-6. حسابات المستخدمين
-أنت مسؤول عن الحفاظ على سرية بيانات تسجيل دخولك. يُحظر مشاركة بيانات الدخول مع أشخاص آخرين. في حالة الاشتباه بأي وصول غير مصرح، يجب إخطارنا فوراً.
-
-7. التواصل والدعم
-نلتزم بالرد على جميع الاستفسارات خلال 24 ساعة في أيام العمل. يُقدم الدعم الفني للمواقع المُسلَّمة لمدة شهر من تاريخ التسليم بشكل مجاني.
-
-8. تعديل الشروط
-نحتفظ بالحق في تعديل هذه الشروط في أي وقت. سيتم إشعار المستخدمين بأي تغييرات جوهرية. استمرار استخدام الخدمة بعد نشر التعديلات يعني قبولك لها.`;
-
-const DEFAULT_PRIVACY_TEXT = `1. التزامنا بحماية خصوصيتك
-نأخذ خصوصية مستخدمينا على محمل الجد. توضح هذه السياسة كيفية جمع بياناتك الشخصية واستخدامها وحمايتها. باستخدامك لخدماتنا، فإنك توافق على ممارسات جمع البيانات المبينة هنا.
-
-2. البيانات التي نجمعها
-نجمع بيانات الحساب (الاسم، البريد الإلكتروني، رقم الهاتف، اسم المستخدم وكلمة المرور المشفرة)، وبيانات الطلبات (تفاصيل المشاريع، الباقة المختارة، تفضيلات الدفع)، والبيانات التقنية الضرورية.
-
-3. كيف نستخدم بياناتك
-نستخدم البيانات لإنشاء وإدارة حسابك، ومعالجة طلباتك والتواصل بشأنها، وتقديم الدعم الفني، وإرسال إشعارات عن حالة مشاريعك، وتحسين خدماتنا.
-
-4. حماية بياناتك
-نتخذ تدابير أمنية صارمة تشمل: تشفير كلمات المرور، استخدام جلسات آمنة (HTTPS)، والتحكم في وصول المدراء المعتمدين فقط إلى بيانات المستخدمين.
-
-5. مشاركة البيانات مع الأطراف الثالثة
-لا نبيع أو نشارك بياناتك الشخصية مع أطراف ثالثة لأغراض تجارية. قد نشارك بياناتك فقط بموافقتك الصريحة، أو للامتثال للقانون، أو لحماية حقوقنا القانونية.
-
-6. حقوقك كمستخدم
-يحق لك الاطلاع على بياناتك المحفوظة، وطلب تصحيح أي بيانات غير دقيقة، وطلب حذف حسابك وبياناتك، والاعتراض على استخدام بياناتك لأغراض معينة.
-
-7. ملفات تعريف الارتباط
-نستخدم ملفات تعريف الارتباط الضرورية فقط للحفاظ على جلسة تسجيل دخولك. لا نستخدمها للتتبع الإعلاني أو مشاركتها مع أطراف ثالثة.
-
-8. التواصل معنا
-إذا كان لديك أسئلة أو مخاوف بشأن سياسة الخصوصية، تواصل معنا مباشرة من خلال المنصة وسنرد عليك في أقرب وقت.`;
-
-const PERMISSIONS_LIST = [
-  { id: "overview",  label: "الإحصائيات" },
-  { id: "orders",    label: "الطلبات" },
-  { id: "finances",  label: "المالية" },
-  { id: "users",     label: "المستخدمين" },
-  { id: "packages",  label: "الباقات" },
-  { id: "payments",  label: "طرق الدفع" },
-  { id: "reviews",   label: "الآراء" },
-  { id: "coupons",   label: "الكوبونات" },
-  { id: "settings",  label: "الإعدادات" },
-];
+const DEFAULT_TERMS_TEXT = `1. قبول الشروط... (النص الافتراضي)`;
+const DEFAULT_PRIVACY_TEXT = `1. التزامنا بحماية خصوصيتك... (النص الافتراضي)`;
 
 export default function Admin() {
   const { user: currentUser } = useAuth();
@@ -537,6 +504,15 @@ export default function Admin() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({ phone: "", email: "", password: "", confirm: "" });
   const [profileSaving, setProfileSaving] = useState(false);
+
+  // إعدادات الشات والإشعارات
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [chatUsers, setChatUsers] = useState<any[]>([]);
+  const [selectedChatUser, setSelectedChatUser] = useState<any>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [msgInput, setMsgInput] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
 
   const toggleOrder = (id: number) =>
     setExpandedOrders(prev => {
@@ -586,12 +562,76 @@ export default function Admin() {
   useEffect(() => {
     if (activeTab === "coupons") fetchCoupons();
     if (activeTab === "subadmins") fetchSubadmins();
+    if (activeTab === "messages") fetchChatUsers();
   }, [activeTab]);
+
+  // جلب الإشعارات الخاصة بالأدمن بشكل دوري
+  const fetchNotifications = async () => {
+    try {
+      const res = await apiFetch("/api/notifications");
+      if (res.ok) setNotifications(await res.json());
+    } catch (err) { }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000); // تحديث كل 15 ثانية
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleMarkNotifRead = async (id: number) => {
+    try {
+      await apiFetchJson(`/api/notifications/${id}/read`, { method: "PATCH" });
+      fetchNotifications();
+    } catch (err) {}
+  };
+
+  const fetchChatUsers = async () => {
+    try {
+      const res = await apiFetch("/api/admin/chat-users");
+      if (res.ok) setChatUsers(await res.json());
+    } catch (err) { }
+  };
+
+  const fetchMessages = async (userId: number) => {
+    try {
+      const res = await apiFetch(`/api/messages/${userId}`);
+      if (res.ok) {
+        setMessages(await res.json());
+        // تحديث قائمة اليوزرز عشان نشيل الشارة لو فيه رسايل غير مقروءة
+        fetchChatUsers();
+      }
+    } catch (err) { }
+  };
+
+  const handleSelectChatUser = (u: any) => {
+    setSelectedChatUser(u);
+    fetchMessages(u.id);
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!msgInput.trim() || !selectedChatUser) return;
+    setSendingMsg(true);
+    try {
+      await apiFetchJson("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ receiverId: selectedChatUser.id, content: msgInput.trim() })
+      });
+      setMsgInput("");
+      fetchMessages(selectedChatUser.id);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "خطأ في الإرسال", description: err.message });
+    } finally {
+      setSendingMsg(false);
+    }
+  };
 
   useEffect(() => {
     if (currentUser?.role === "subadmin") {
       const perms: string[] = (currentUser as any).permissions || [];
-      const firstAllowed = ALL_NAV.find(n => !n.adminOnly && perms.includes(n.id));
+      const firstAllowed = ALL_NAV.find(n => !n.adminOnly && (n.id === "messages" ? perms.includes("view_messages") : perms.includes(n.id)));
       if (firstAllowed) setActiveTab(firstAllowed.id);
       setProfileForm(f => ({
         ...f,
@@ -656,7 +696,6 @@ export default function Admin() {
     return new Promise(async (resolve) => {
       let discountAmount = 0;
 
-      // لو فيه مبلغ وفي كود خصم، نحسب الخصم الأول
       if (amount !== null && amount > 0 && couponCode) {
         try {
           const res = await apiFetch("/api/coupons");
@@ -670,7 +709,7 @@ export default function Admin() {
                 discountAmount = targetCoupon.discountValue;
               }
               if (targetCoupon.minOrderAmount && amount < targetCoupon.minOrderAmount) {
-                discountAmount = 0; // لن يطبق الخصم لأن المبلغ أقل من الحد الأدنى
+                discountAmount = 0; 
               }
             }
           }
@@ -679,7 +718,6 @@ export default function Admin() {
         }
       }
 
-      // حفظ المبلغ والخصم مع بعض
       updateOrder.mutate({ id: orderId, data: { totalAmount: amount, depositPercentage: depositPct, discountAmount: discountAmount } as any }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
@@ -712,9 +750,9 @@ export default function Admin() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
-        toast({ title: "تم التأكيد", description: "تم قبول الإيصال وتغيير الحالة إلى 'بدأ التنفيذ'" });
+        toast({ title: "تم التأكيد", description: "تم التأكيد وتغيير الحالة إلى 'بدأ التنفيذ'" });
       },
-      onError: (err: any) => toast({ variant: "destructive", title: "خطأ", description: (err as any)?.response?.data?.error || "تعذر تأكيد الإيصال" }),
+      onError: (err: any) => toast({ variant: "destructive", title: "خطأ", description: (err as any)?.response?.data?.error || "تعذر التأكيد" }),
     });
   };
 
@@ -1012,11 +1050,11 @@ export default function Admin() {
   const totalDiscounts = allOrders.reduce((s, o) => s + ((o as any).discountAmount || 0), 0);
   const depositCollected = allOrders.filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * p / 100); }, 0);
   const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * (100 - p) / 100); }, 0);
-  const pendingReceipts = allOrders.filter(o => (o as any).receiptUrl && !o.depositPaid).length;
+  const pendingReceipts = allOrders.filter(o => hasTransferDetails(o) && !o.depositPaid).length;
 
   const NAV = isMainAdmin
     ? ALL_NAV
-    : ALL_NAV.filter(n => !n.adminOnly && userPermissions.includes(n.id));
+    : ALL_NAV.filter(n => !n.adminOnly && userPermissions.includes(n.id === "messages" ? "view_messages" : n.id));
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" dir="rtl">
@@ -1034,10 +1072,40 @@ export default function Admin() {
           {pendingReceipts > 0 && (
             <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs px-2.5 py-1.5 rounded-full cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => setActiveTab("orders")}>
               <FileImage className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">{pendingReceipts} إيصال بانتظار التأكيد</span>
-              <span className="sm:hidden">{pendingReceipts} إيصال</span>
+              <span className="hidden sm:inline">{pendingReceipts} تحويل بانتظار المراجعة</span>
+              <span className="sm:hidden">{pendingReceipts} تحويل</span>
             </div>
           )}
+
+          {/* الإشعارات */}
+          <div className="relative">
+            <Button variant="ghost" size="icon" className="relative" onClick={() => setNotifOpen(true)}>
+              <Bell className="w-5 h-5 text-muted-foreground" />
+              {notifications.filter(n => !n.isRead).length > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+              )}
+            </Button>
+            <Dialog open={notifOpen} onOpenChange={setNotifOpen}>
+              <DialogContent className="max-w-sm max-h-[80vh] overflow-hidden flex flex-col" dir="rtl">
+                <DialogHeader className="border-b pb-3">
+                  <DialogTitle>الإشعارات</DialogTitle>
+                </DialogHeader>
+                <div className="overflow-y-auto flex-1 p-2 space-y-2">
+                  {notifications.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8 text-sm">لا توجد إشعارات</p>
+                  ) : (
+                    notifications.map(n => (
+                      <div key={n.id} className={`p-3 rounded-lg border ${!n.isRead ? "bg-primary/5 border-primary/20" : "bg-white"} cursor-pointer hover:bg-muted transition-colors`} onClick={() => { handleMarkNotifRead(n.id); setActiveTab("messages"); setNotifOpen(false); }}>
+                        <p className={`text-sm ${!n.isRead ? "font-bold text-primary" : "text-muted-foreground"}`}>{n.message}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{format(new Date(n.createdAt), "dd MMM HH:mm", { locale: ar })}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
           {!isMainAdmin && (
             <button
               onClick={() => setProfileOpen(true)}
@@ -1110,6 +1178,80 @@ export default function Admin() {
                     </div>
                   ))}
                   {allOrders.length === 0 && <p className="text-muted-foreground text-sm text-center py-8">لا توجد طلبات حتى الآن</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "messages" && (
+            <div className="space-y-4 h-[calc(100vh-10rem)] flex flex-col">
+              <div>
+                <h1 className="text-2xl font-bold">الرسائل والدعم الفني</h1>
+                <p className="text-muted-foreground text-sm mt-1">تواصل مع العملاء وقم بالرد على استفساراتهم</p>
+              </div>
+              <div className="flex-1 bg-white rounded-2xl border overflow-hidden flex flex-col md:flex-row">
+                <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-l bg-gray-50 flex flex-col h-1/3 md:h-full">
+                  <div className="p-4 border-b font-bold text-sm bg-white shrink-0">قائمة العملاء</div>
+                  <div className="overflow-y-auto flex-1">
+                    {chatUsers.map(u => (
+                      <div key={u.id} onClick={() => handleSelectChatUser(u)} className={`p-4 border-b cursor-pointer transition-colors flex items-center justify-between ${selectedChatUser?.id === u.id ? "bg-primary/10 border-l-4 border-l-primary" : "hover:bg-muted"}`}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">{u.fullName[0]}</div>
+                          <div>
+                            <p className="font-semibold text-sm">{u.fullName}</p>
+                            <p className="text-xs text-muted-foreground">{u.email}</p>
+                          </div>
+                        </div>
+                        {u.unreadCount > 0 && <Badge variant="destructive" className="h-5 min-w-[1.25rem] rounded-full px-1">{u.unreadCount}</Badge>}
+                      </div>
+                    ))}
+                    {chatUsers.length === 0 && <p className="text-center text-muted-foreground py-8 text-sm">لا توجد محادثات</p>}
+                  </div>
+                </div>
+                <div className="flex-1 flex flex-col bg-slate-50 h-2/3 md:h-full relative">
+                  {selectedChatUser ? (
+                    <>
+                      <div className="p-4 border-b bg-white flex items-center gap-3 shrink-0 shadow-sm z-10">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">{selectedChatUser.fullName[0]}</div>
+                        <span className="font-bold">{selectedChatUser.fullName}</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {messages.map((m: any) => (
+                          <div key={m.id} className={`flex ${m.senderId === currentUser?.id ? "justify-end" : "justify-start"}`}>
+                            <div className={`p-3 rounded-2xl max-w-[85%] sm:max-w-[70%] text-sm shadow-sm ${m.senderId === currentUser?.id ? "bg-primary text-primary-foreground rounded-tl-none" : "bg-white border rounded-tr-none"}`}>
+                              <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                              <p className={`text-[10px] mt-2 opacity-70 ${m.senderId === currentUser?.id ? "text-right" : "text-left"}`}>
+                                {format(new Date(m.createdAt), "HH:mm", { locale: ar })}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                        {messages.length === 0 && <div className="h-full flex items-center justify-center text-muted-foreground text-sm">لا توجد رسائل سابقة. ابدأ المحادثة الآن.</div>}
+                      </div>
+                      {isMainAdmin || userPermissions.includes("reply_messages") ? (
+                        <form onSubmit={handleSendMessage} className="p-4 bg-white border-t flex gap-2 shrink-0">
+                          <Input
+                            value={msgInput}
+                            onChange={e => setMsgInput(e.target.value)}
+                            placeholder="اكتب رسالتك هنا..."
+                            className="bg-muted/50 border-none focus-visible:ring-1"
+                          />
+                          <Button type="submit" disabled={sendingMsg || !msgInput.trim()} className="shrink-0 rounded-xl px-5">
+                            <Send className="w-4 h-4 rtl:-scale-x-100" />
+                          </Button>
+                        </form>
+                      ) : (
+                        <div className="p-4 border-t bg-muted/30 text-center text-muted-foreground text-sm shrink-0">ليس لديك صلاحية للرد على الرسائل.</div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      <div className="text-center">
+                        <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                        <p>اختر محادثة من القائمة للبدء</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1522,7 +1664,7 @@ export default function Admin() {
                   <div className="flex items-center justify-between bg-muted/20 rounded-xl p-4 border">
                     <div>
                       <p className="font-medium text-sm">اشتراط دفع مقدّم</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">يُطلب من العميل رفع إيصال قبل بدء التنفيذ</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">يُطلب من العميل إدخال بيانات الدفع قبل بدء التنفيذ</p>
                     </div>
                     <Switch checked={depositRequire} onCheckedChange={setDepositRequire} />
                   </div>
@@ -1635,7 +1777,7 @@ export default function Admin() {
             <div className="space-y-6 max-w-xl">
               <div>
                 <h1 className="text-2xl font-bold flex items-center gap-2"><Mail className="w-6 h-6 text-primary" />إعدادات البريد الإلكتروني (SMTP / Brevo)</h1>
-                <p className="text-muted-foreground text-sm mt-1">أدخل بيانات مزود البريد (مثل Brevo) لإرسال رموز التحقق OTP وإشعارات النظام بدقة</p>
+                <p className="text-muted-foreground text-sm mt-1">أدخل بيانات مزود البريد لإرسال الردود، رموز التحقق وإشعارات النظام بدقة</p>
               </div>
 
               <div className="bg-white rounded-2xl border shadow-sm p-6">
@@ -1691,7 +1833,7 @@ export default function Admin() {
 
               <div className="bg-white rounded-2xl border shadow-sm p-6">
                 <h2 className="font-bold mb-1">اختبار الإرسال</h2>
-                <p className="text-sm text-muted-foreground mb-4">أرسل OTP تجريبياً للتحقق من صحة الإعداد</p>
+                <p className="text-sm text-muted-foreground mb-4">أرسل رسالة تجريبية للتحقق من صحة الإعداد</p>
                 <form onSubmit={handleTestOtp} className="flex gap-2">
                   <Input
                     type="email"

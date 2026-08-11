@@ -18,13 +18,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, CheckCircle2, Info, Upload, ArrowLeft, FileCheck, ShieldAlert, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, ArrowLeft, FileCheck, ShieldAlert, ChevronDown, ChevronUp, ExternalLink, CreditCard, Tag } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useSettings } from "@/lib/use-settings";
-import { useReceiptUpload } from "@/lib/use-receipt-upload";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api-fetch";
 
 const orderSchema = z.object({
@@ -48,36 +47,49 @@ function ReceiptStep({
   currency: string;
   onDone: () => void;
 }) {
-  const { uploadFile, isUploading, error } = useReceiptUpload();
-  const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [uploaded, setUploaded] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    transferAccount: "",
+    accountName: "",
+    transferAmount: "",
+  });
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ variant: "destructive", title: "الملف كبير جداً", description: "الحد الأقصى 10 ميجابايت" });
+  const handleSubmit = async () => {
+    const payload = {
+      transferAccount: formData.transferAccount.trim(),
+      accountName: formData.accountName.trim(),
+      transferAmount: formData.transferAmount.trim(),
+    };
+
+    if (!payload.transferAccount || !payload.accountName || !payload.transferAmount) {
+      toast({ variant: "destructive", title: "البيانات غير مكتملة", description: "يرجى تعبئة كل حقول التحويل قبل الإرسال" });
       return;
     }
-    const result = await uploadFile(file);
-    if (!result) return;
 
-    const res = await apiFetch(`/api/orders/${orderId}/receipt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ receiptUrl: result.url }),
-    });
+    setIsSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/orders/${orderId}/receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (res.ok) {
-      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-      setUploaded(true);
-      toast({ title: "تم رفع الإيصال بنجاح", description: "سيتم مراجعته من الإدارة قريباً وبدء التنفيذ" });
-    } else {
-      toast({ variant: "destructive", title: "خطأ", description: "تعذر حفظ الإيصال" });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        setUploaded(true);
+        toast({ title: "تم إرسال بيانات التحويل بنجاح", description: "سيتم مراجعتها من الإدارة قريباً وبدء التنفيذ" });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "خطأ", description: data.error || "تعذر حفظ بيانات التحويل" });
+      }
+    } catch {
+      toast({ variant: "destructive", title: "خطأ", description: "حدث خطأ في الاتصال، يرجى المحاولة مرة أخرى" });
+    } finally {
+      setIsSubmitting(false);
     }
-    if (inputRef.current) inputRef.current.value = "";
   };
 
   if (uploaded) {
@@ -86,9 +98,9 @@ function ReceiptStep({
         <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto">
           <FileCheck className="w-10 h-10 text-green-600" />
         </div>
-        <h3 className="text-2xl font-bold text-green-700">تم رفع الإيصال بنجاح!</h3>
+        <h3 className="text-2xl font-bold text-green-700">تم إرسال بيانات الدفع بنجاح!</h3>
         <p className="text-muted-foreground max-w-md mx-auto">
-          ستقوم الإدارة بمراجعة الإيصال والتأكيد خلال وقت قصير، ثم سيبدأ تنفيذ موقعك.
+          ستقوم الإدارة بمراجعة بيانات التحويل والتأكيد خلال وقت قصير، ثم سيبدأ تنفيذ موقعك.
         </p>
         <Button onClick={onDone} className="mt-4 gap-2">
           متابعة طلباتي
@@ -103,8 +115,8 @@ function ReceiptStep({
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white font-bold text-sm shrink-0">2</div>
         <div>
-          <h3 className="font-bold text-lg">رفع إيصال الدفع</h3>
-          <p className="text-sm text-muted-foreground">ادفع المقدم وارفع الإيصال لبدء التنفيذ</p>
+          <h3 className="font-bold text-lg">بيانات تحويل الدفعة المقدمة</h3>
+          <p className="text-sm text-muted-foreground">قم بتحويل المقدم ثم أدخل بيانات التحويل لتأكيد الدفع</p>
         </div>
       </div>
 
@@ -115,7 +127,7 @@ function ReceiptStep({
           <div className="mt-3 pt-3 border-t flex items-center gap-2 text-sm">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
             <span className="text-amber-700">
-              ادفع <strong>{depositPct}% كمقدم</strong> بالعملة {currency === "EGP" ? "المصرية" : "السعودية"} ثم ارفع الإيصال هنا
+              قم بتحويل <strong>{depositPct}% كمقدم</strong> بالعملة {currency === "EGP" ? "المصرية" : "السعودية"} ثم أدخل البيانات أدناه
             </span>
           </div>
         </div>
@@ -125,31 +137,57 @@ function ReceiptStep({
         <Alert className="bg-amber-50 border-amber-200">
           <AlertCircle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-700">
-            ادفع <strong>{depositPct}% كمقدم</strong> عبر أي طريقة دفع متاحة، ثم ارفع إيصال الدفع هنا.
+            قم بتحويل <strong>{depositPct}% كمقدم</strong> عبر أي طريقة دفع متاحة، ثم أدخل تفاصيل التحويل أدناه.
           </AlertDescription>
         </Alert>
       )}
 
-      {/* التعديل هنا: تحديد صيغ الصور عشان الموبايل يفتح الاستوديو (المعرض) بشكل أساسي وما يجبرش العميل على الكاميرا */}
-      <input 
-        ref={inputRef} 
-        type="file" 
-        accept="image/jpeg, image/png, image/webp, application/pdf" 
-        className="hidden" 
-        onChange={handleFile} 
-      />
-      <Button type="button"
-        className="w-full h-14 text-base gap-2"
-        disabled={isUploading}
-        onClick={() => inputRef.current?.click()}
-      >
-        <Upload className="w-5 h-5" />
-        {isUploading ? "جاري الرفع..." : "اختر إيصال الدفع وارفعه"}
-      </Button>
-      {error && <p className="text-sm text-destructive text-center">{error}</p>}
+      <div className="space-y-4 pt-2">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label>رقم الجوال أو الحساب</Label>
+            <Input
+              value={formData.transferAccount}
+              onChange={(e) => setFormData((current) => ({ ...current, transferAccount: e.target.value }))}
+              placeholder="01000000000"
+              className="bg-white"
+              dir="ltr"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>اسم صاحب الحساب</Label>
+            <Input
+              value={formData.accountName}
+              onChange={(e) => setFormData((current) => ({ ...current, accountName: e.target.value }))}
+              placeholder="الاسم الثلاثي"
+              className="bg-white"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>المبلغ المحول</Label>
+            <Input
+              value={formData.transferAmount}
+              onChange={(e) => setFormData((current) => ({ ...current, transferAmount: e.target.value }))}
+              placeholder="مثال: 500"
+              className="bg-white"
+              dir="ltr"
+            />
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          className="w-full h-12 text-base gap-2"
+          disabled={isSubmitting}
+          onClick={handleSubmit}
+        >
+          <CreditCard className="w-5 h-5" />
+          {isSubmitting ? "جاري الإرسال..." : "تأكيد بيانات التحويل"}
+        </Button>
+      </div>
 
       <p className="text-center text-sm text-muted-foreground">
-        يمكنك رفع الإيصال لاحقاً من صفحة{" "}
+        يمكنك إدخال بيانات التحويل لاحقاً من صفحة{" "}
         <button onClick={onDone} className="text-primary underline">طلباتي</button>
       </p>
     </div>
@@ -273,7 +311,7 @@ export default function Order() {
         <p className="text-muted-foreground text-lg">
           {step === "form"
             ? "أخبرنا عن موقعك وسنتواصل معك لتحديد الباقة والسعر المناسب."
-            : "الخطوة الأخيرة: ادفع المقدم وارفع الإيصال لبدء التنفيذ فوراً."}
+            : "الخطوة الأخيرة: ادفع المقدم وأدخل بيانات التحويل لبدء التنفيذ فوراً."}
         </p>
       </div>
 
@@ -303,7 +341,7 @@ export default function Order() {
               <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">
                 سيقوم فريقنا بمراجعة طلبك وتحديد السعر والمبلغ المطلوب دفعه كمقدم.
                 <br />
-                ستجد تفاصيل الدفع وزر رفع الإيصال في صفحة <strong>طلباتي</strong> قريباً.
+                ستجد تفاصيل الدفع وخانة إدخال بيانات التحويل في صفحة <strong>طلباتي</strong> قريباً.
               </p>
               <Button onClick={() => setLocation("/my-orders")} className="mt-2 gap-2">
                 متابعة طلباتي
@@ -459,7 +497,7 @@ export default function Order() {
                       {requireDeposit && (
                         <div className="flex items-center gap-2 pt-2 border-t text-amber-700 bg-amber-50 -mx-4 -mb-4 px-4 py-2 rounded-b-xl">
                           <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span>بعد إرسال الطلب، ستُطلب منك الدفع عبر هذه الطريقة ورفع الإيصال لبدء التنفيذ.</span>
+                          <span>بعد إرسال الطلب، ستُطلب منك الدفع عبر هذه الطريقة وإدخال بيانات التحويل لبدء التنفيذ.</span>
                         </div>
                       )}
                     </div>
