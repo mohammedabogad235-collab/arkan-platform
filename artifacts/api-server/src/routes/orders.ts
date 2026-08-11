@@ -883,18 +883,53 @@ router.patch("/notifications/:id/read", asyncHandler(async (req, res): Promise<v
 }));
 
 // ==========================================
-// 🛠️ تعديل وحذف الرسائل (Edit & Soft Delete)
+// 🛠️ تعديل وحذف الرسائل (Edit & Soft Delete مع الصلاحيات الصارمة)
 // ==========================================
 
-async function checkModifyMessagePermission(req: any): Promise<boolean> {
+async function canUserModifyMessage(req: any, msg: any): Promise<boolean> {
   const { userId, role } = getSession(req);
   if (!userId) return false;
-  if (role === "admin") return true;
-  if (role === "subadmin") {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-    const storedPermissions = parseStoredPermissions((user as any)?.permissions);
-    return storedPermissions.includes("modify_messages");
+
+  const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!currentUser) return false;
+
+  // جلب معلومات مُرسِل الرسالة الأصلي
+  const [senderUser] = await db.select().from(usersTable).where(eq(usersTable.id, msg.senderId));
+  const senderRole = senderUser?.role; // "admin", "subadmin", "user", "client"
+
+  const isMainAdmin = currentUser.role === "admin";
+  const isSubadmin = currentUser.role === "subadmin";
+  const isOwner = Number(msg.senderId) === Number(userId);
+
+  // 1. المدير الرئيسي (Admin) يستطيع تعديل أو حذف أي رسالة خاصة به أو خاصة بالمشرف الفرعي
+  if (isMainAdmin) {
+    return true;
   }
+
+  // 2. المشرف الفرعي (Subadmin)
+  if (isSubadmin) {
+    const storedPermissions = parseStoredPermissions((currentUser as any)?.permissions);
+    const hasPermission = storedPermissions.includes("modify_messages");
+    if (!hasPermission) return false;
+
+    // المشرف الفرعي ممنوع تماماً من تعديل أو حذف رسائل المدير الرئيسي (Admin)
+    if (senderRole === "admin") {
+      return false;
+    }
+
+    // المشرف الفرعي يمكنه تعديل وحذف رسائله الشخصية فقط
+    if (isOwner) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // 3. العميل العادي يمكنه تعديل وحذف رسائله الخاصة فقط
+  if (isOwner) {
+    return true;
+  }
+
   return false;
 }
 
@@ -912,10 +947,8 @@ router.patch("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId));
   if (!msg) { res.status(404).json({ error: "الرسالة غير موجودة" }); return; }
   
-  const hasPermission = await checkModifyMessagePermission(req);
-  const isOwner = Number(msg.senderId) === Number(userId);
-
-  if (!isOwner || !hasPermission) { 
+  const allowed = await canUserModifyMessage(req, msg);
+  if (!allowed) { 
     res.status(403).json({ error: "ليس لديك صلاحية لتعديل هذه الرسالة" }); 
     return; 
   }
@@ -934,12 +967,10 @@ router.delete("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   if (isNaN(msgId)) { res.status(400).json({ error: "معرف الرسالة غير صالح" }); return; }
 
   const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId));
-  if (!msg) { res.status(404).json({ error: "الرسالة غير موجودة" }); return; }
+  if (!msg) { res.status(404).json({ error: "الطلب غير موجود أو الرسالة محذوفة" }); return; }
   
-  const hasPermission = await checkModifyMessagePermission(req);
-  const isOwner = Number(msg.senderId) === Number(userId);
-
-  if (!isOwner || !hasPermission) { 
+  const allowed = await canUserModifyMessage(req, msg);
+  if (!allowed) { 
     res.status(403).json({ error: "ليس لديك صلاحية لحذف هذه الرسالة" }); 
     return; 
   }

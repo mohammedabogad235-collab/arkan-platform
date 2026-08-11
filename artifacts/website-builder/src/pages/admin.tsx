@@ -102,7 +102,7 @@ const PERMISSIONS_LIST = [
   { id: "settings",  label: "الإعدادات" },
   { id: "messages",  label: "رؤية الرسائل" }, 
   { id: "reply_messages", label: "الرد على الرسائل" },
-  { id: "modify_messages", label: "تعديل وحذف الرسائل" }, // 👈 إضافة صلاحية التعديل والحذف
+  { id: "modify_messages", label: "تعديل وحذف الرسائل" },
 ];
 
 function hasNavPermission(navId: string, permissions: string[] = []): boolean {
@@ -482,7 +482,6 @@ export default function Admin() {
   
   const canViewMessages = isMainAdmin || hasNavPermission("messages", userPermissions);
   const canReplyMessages = isMainAdmin || userPermissions.includes("reply_messages");
-  // 🚀 التحقق من صلاحية تعديل وحذف الرسائل للمشرف الفرعي
   const canModifyMessages = isMainAdmin || userPermissions.includes("modify_messages");
 
   const { data: stats } = useGetAdminStats();
@@ -1386,22 +1385,22 @@ export default function Admin() {
                       </div>
                       <div className="flex-1 overflow-y-auto p-4 space-y-4">
                         {messages.map((m: any) => {
-                          // 🚀 تحديد إذا كانت الرسالة من الإدارة (أدمن أو مشرف فرعي)
                           const isSenderAdmin = m.senderRole === "admin" || m.senderRole === "subadmin";
-                          
-                          // 🚀 هل المرسل هو المستخدم الحالي (سواء أدمن أو مشرف)؟
                           const isMyMessage = m.senderId === currentUser?.id;
+                          const hasModifyPerm = isMainAdmin || userPermissions.includes("modify_messages");
+                          
+                          const isSenderMainAdmin = m.senderRole === "admin";
+                          
+                          // 🚀 الأزرار ظاهرة وثابتة دائماً بجانب الرسالة
+                          const showModifyButtons = !m.isDeleted && editingMsgId !== m.id && (
+                            isMainAdmin ? true : (hasModifyPerm && isMyMessage && !isSenderMainAdmin)
+                          );
 
-                          // 🚀 هل تمتلك صلاحية التعديل/الحذف (مدير رئيسي أو لديه صلاحية modify_messages)؟
-                          const canModify = isMainAdmin || userPermissions.includes("modify_messages");
-
-                          // الرسائل الصادرة من الإدارة تظهر على اليمين باللون الأزرق
                           const showOnRight = isSenderAdmin;
-
                           const showEditedTag = m.isEdited;
 
                           return (
-                            <div key={m.id} className={`flex flex-col ${showOnRight ? "items-end" : "items-start"} group`}>
+                            <div key={m.id} className={`flex flex-col ${showOnRight ? "items-end" : "items-start"}`}>
                               
                               {m.isDeleted ? (
                                 <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm flex items-center gap-2 italic shadow-sm ${showOnRight ? "bg-muted/50 text-muted-foreground rounded-bl-none" : "bg-gray-100 text-gray-500 border rounded-br-none"}`}>
@@ -1409,14 +1408,13 @@ export default function Admin() {
                                   تم حذف هذه الرسالة
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-2">
-                                  {/* 🚀 تظهر أزرار التعديل والحذف لو هو مرسل الرسالة أو أدمن وصلاحية التعديل مفعّلة */}
-                                  {(isMyMessage || canModify) && !m.isDeleted && editingMsgId !== m.id && (
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                      <button onClick={() => { setEditingMsgId(m.id); setEditContent(m.content); }} className="p-1.5 text-muted-foreground hover:text-blue-600 bg-white rounded-full shadow-sm border border-transparent hover:border-blue-100 transition-all">
+                                <div className={`flex items-center gap-2 ${showOnRight ? "flex-row-reverse" : "flex-row"}`}>
+                                  {showModifyButtons && (
+                                    <div className="flex items-center gap-1 bg-white p-1 rounded-full shadow-sm border shrink-0">
+                                      <button onClick={() => { setEditingMsgId(m.id); setEditContent(m.content); }} className="p-1.5 text-muted-foreground hover:text-blue-600 transition-colors" title="تعديل">
                                         <Edit2 className="w-3.5 h-3.5" />
                                       </button>
-                                      <button onClick={() => handleDeleteMessage(m.id)} className="p-1.5 text-muted-foreground hover:text-red-600 bg-white rounded-full shadow-sm border border-transparent hover:border-red-100 transition-all">
+                                      <button onClick={() => handleDeleteMessage(m.id)} className="p-1.5 text-muted-foreground hover:text-red-600 transition-colors" title="حذف">
                                         <Trash2 className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
