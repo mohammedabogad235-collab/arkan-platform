@@ -1,26 +1,57 @@
+import { ReactNode, useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
-import { useLogout } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
+import { MessageCircle, Menu, X, Home, ShoppingBag, Star, LayoutDashboard, User as UserIcon, LogOut, Phone, Mail, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetMeQueryKey } from "@workspace/api-client-react";
-import { LogOut, User as UserIcon, Menu, LayoutDashboard, Phone, Mail, MapPin, MessageCircle } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useState, useEffect } from "react";
 import { useSettings } from "@/lib/use-settings";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth();
+  const [location, setLocation] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  
   const logout = useLogout();
   const queryClient = useQueryClient();
-  const [location, setLocation] = useLocation();
-  const [open, setOpen] = useState(false);
   const { data: settings } = useSettings();
 
-  // إغلاق قائمة الموبايل والتمرير للأعلى تلقائياً عند الانتقال لأي صفحة
+  const role = user?.role;
+  const isMainAdmin = role === "admin";
+  const isSubadmin = role === "subadmin";
+  const isAdminLike = isMainAdmin || isSubadmin;
+  const isClient = role === "client" || role === "user";
+  const isAdminPage = location.startsWith("/admin");
+
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  
+  // دالة جلب عدد الرسائل مع حل مشكلة الـ TypeScript Strict Mode
+  useEffect(() => {
+    if (isClient && isAuthenticated) {
+      const fetchUnread = async () => {
+        try {
+          const res = await fetch("/api/messages/unread-count");
+          if (res.ok) {
+            const data = await res.json();
+            setUnreadChatCount(data.unreadCount || 0);
+          }
+        } catch {}
+      };
+      fetchUnread();
+      const interval = setInterval(fetchUnread, 5000);
+      return () => clearInterval(interval);
+    }
+    return undefined; // 👈 تم إضافة هذا السطر لحل خطأ ts(7030)
+  }, [isClient, isAuthenticated]);
+
+  const showFloatingChatBubble = isAuthenticated && isClient && !isAdminPage && location !== "/chat";
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
     setOpen(false); 
+    setMobileMenuOpen(false);
   }, [location]);
 
   const handleLogout = () => {
@@ -32,16 +63,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const role = user?.role;
-  const isAdmin = role === "admin";
-  const isSubadmin = role === "subadmin";
-  const isAdminLike = isAdmin || isSubadmin;
-  const isClient = role === "client" || role === "user";
-  
-  const showFloatingChatBubble = isAuthenticated && isClient && location !== "/chat";
-
-  // 1. عزل الإدارة بالكامل: عرض هيدر الإدارة النظيف فقط للمديرين والمشرفين
-  if (isAdminLike) {
+  if (isAdminLike && isAdminPage) {
     return (
       <div className="min-h-screen flex flex-col bg-muted/30" dir="rtl">
         <header className="sticky top-0 z-50 w-full border-b bg-[#0f172a] shadow-sm">
@@ -56,9 +78,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Link href="/">
-                <Button variant="outline" size="sm" className="border-white/20 text-white/70 hover:bg-white/10 hover:text-white bg-transparent">موقع العملاء</Button>
-              </Link>
+              {isMainAdmin && (
+                <Link href="/">
+                  <Button variant="outline" size="sm" className="border-white/20 text-white/70 hover:bg-white/10 hover:text-white bg-transparent">موقع العملاء</Button>
+                </Link>
+              )}
               <div className="flex items-center gap-2 text-sm text-white/50 border border-white/10 rounded-full px-3 py-1">
                 <UserIcon className="w-3.5 h-3.5" />
                 <span>{user?.fullName}</span>
@@ -77,19 +101,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // 2. إزالة رابط المحادثة من القائمة (لأنها أصبحت في الفقاعة العائمة فقط)
   const NavLinks = () => (
     <>
-      <Link href="/" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-        الرئيسية
-      </Link>
-      <Link href="/testimonials" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-        آراء العملاء
-      </Link>
-      {isAuthenticated && (
-        <Link href="/my-orders" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-          طلباتي
-        </Link>
+      <Link href="/" className="text-sm font-medium text-foreground hover:text-primary transition-colors">الرئيسية</Link>
+      <Link href="/testimonials" className="text-sm font-medium text-foreground hover:text-primary transition-colors">آراء العملاء</Link>
+      {isAuthenticated && isClient && (
+        <Link href="/my-orders" className="text-sm font-medium text-foreground hover:text-primary transition-colors">طلباتي</Link>
+      )}
+      {isAdminLike && (
+        <Link href="/admin" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">لوحة التحكم</Link>
       )}
     </>
   );
@@ -97,7 +117,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hasContact = settings && (settings.phone1 || settings.phone2 || settings.email || settings.whatsapp || settings.address);
   const hasSocial = settings && (settings.facebookUrl || settings.instagramUrl || settings.twitterUrl);
 
-  // واجهة العملاء والزوار
   return (
     <div className="min-h-screen flex flex-col bg-background" dir="rtl">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -159,28 +178,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col min-h-0">
         {children}
       </main>
 
-      {/* 3. فقاعة المحادثة العائمة الأنيقة للعملاء (Bottom-Right) */}
       {showFloatingChatBubble && (
         <Link href="/chat">
           <a
-            aria-label="فتح المحادثة والدعم الفني"
-            className="fixed bottom-6 right-6 z-[999] group flex items-center gap-3 rounded-full border border-primary/20 bg-primary px-4 py-3 text-white shadow-[0_18px_45px_-18px_rgba(37,99,235,0.75)] transition-all duration-300 hover:-translate-y-1 hover:bg-primary/95 hover:shadow-[0_24px_55px_-18px_rgba(37,99,235,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            aria-label="المحادثة والدعم"
+            className="fixed bottom-6 right-6 z-[999] flex items-center justify-center w-14 h-14 rounded-full bg-primary text-white shadow-xl hover:scale-105 hover:shadow-primary/50 transition-all duration-200"
           >
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/30 group-hover:animate-pulse">
-              <MessageCircle className="h-5 w-5" />
-            </span>
-            <span className="hidden sm:flex flex-col items-start leading-tight text-right">
-              <span className="text-xs text-white/80">الدعم الفني</span>
-              <span className="text-sm font-bold">ابدأ المحادثة الآن</span>
-            </span>
-            {/* مؤشر التنبيه النقطة الحمراء (اختياري، يضيف لمسة احترافية) */}
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white border border-white shadow-sm">
-              !
-            </span>
+            <MessageCircle className="w-6 h-6" />
+            {unreadChatCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[11px] font-bold text-white border-2 border-white shadow-sm animate-pulse">
+                {unreadChatCount}
+              </span>
+            )}
           </a>
         </Link>
       )}
@@ -234,17 +247,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </div>
                   </a>
                 )}
-                {settings.address && (
-                  <a href={`https://maps.google.com/?q=${encodeURIComponent(settings.address)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-sm text-muted-foreground hover:text-primary transition-colors group sm:col-span-2 lg:col-span-1">
-                    <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors shrink-0">
-                      <MapPin className="w-4 h-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground/70">العنوان</p>
-                      <p className="font-medium text-foreground">{settings.address}</p>
-                    </div>
-                  </a>
-                )}
               </div>
             </div>
           </div>
@@ -258,15 +260,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex flex-wrap items-center gap-4 justify-center">
             {hasSocial && (
               <div className="flex items-center gap-3">
-                {settings.facebookUrl && (
-                  <a href={settings.facebookUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors text-sm">فيسبوك</a>
-                )}
-                {settings.instagramUrl && (
-                  <a href={settings.instagramUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors text-sm">إنستغرام</a>
-                )}
-                {settings.twitterUrl && (
-                  <a href={settings.twitterUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors text-sm">تويتر</a>
-                )}
+                {settings.facebookUrl && <a href={settings.facebookUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors text-sm">فيسبوك</a>}
+                {settings.instagramUrl && <a href={settings.instagramUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors text-sm">إنستغرام</a>}
+                {settings.twitterUrl && <a href={settings.twitterUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors text-sm">تويتر</a>}
               </div>
             )}
             <div className="flex gap-4 text-sm text-muted-foreground">
