@@ -39,7 +39,7 @@ import {
   TrendingUp, FileImage, BadgeCheck, Percent, MessageSquare,
   CreditCard, Package, BarChart3, Globe, Phone, Mail, MapPin,
   Facebook, Instagram, Twitter, ChevronDown, ChevronUp, Check, X,
-  Clock, Banknote, Star, ArrowUpRight, Tag, ToggleLeft, ToggleRight, Calendar, Shield, Lock, Unlock,
+  Clock, Banknote, Star, ArrowUpRight, Tag, Calendar, Shield,
   MessageCircle, Bell, Send
 } from "lucide-react";
 import { format } from "date-fns";
@@ -76,6 +76,7 @@ function getAdminOrderStatus(order: any): { label: string; color: string; bg: st
 const ALL_NAV = [
   { id: "overview",    label: "الإحصائيات",     icon: BarChart3,     adminOnly: false },
   { id: "orders",      label: "الطلبات",         icon: ShoppingCart,  adminOnly: false },
+  { id: "operations",  label: "قسم العمليات",   icon: Clock,         adminOnly: false },
   { id: "messages",    label: "الرسائل",         icon: MessageCircle, adminOnly: false },
   { id: "finances",    label: "المالية",         icon: TrendingUp,    adminOnly: false },
   { id: "users",       label: "المستخدمين",      icon: Users,         adminOnly: false },
@@ -91,6 +92,7 @@ const ALL_NAV = [
 const PERMISSIONS_LIST = [
   { id: "overview",  label: "الإحصائيات" },
   { id: "orders",    label: "الطلبات" },
+  { id: "operations", label: "قسم العمليات" },
   { id: "finances",  label: "المالية" },
   { id: "users",     label: "المستخدمين" },
   { id: "packages",  label: "الباقات" },
@@ -98,9 +100,16 @@ const PERMISSIONS_LIST = [
   { id: "reviews",   label: "الآراء" },
   { id: "coupons",   label: "الكوبونات" },
   { id: "settings",  label: "الإعدادات" },
-  { id: "messages",  label: "رؤية الرسائل" },
+  { id: "messages",  label: "رؤية الرسائل" }, 
   { id: "reply_messages", label: "الرد على الرسائل" },
 ];
+
+function hasNavPermission(navId: string, permissions: string[] = []): boolean {
+  const cleanPerms = permissions.map(p => p.trim());
+  if (navId === "messages") return cleanPerms.includes("messages") || cleanPerms.includes("view_messages");
+  if (navId === "operations") return cleanPerms.includes("operations") || cleanPerms.includes("orders");
+  return cleanPerms.includes(navId);
+}
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
   return (
@@ -469,6 +478,10 @@ export default function Admin() {
   const { user: currentUser } = useAuth();
   const isMainAdmin = currentUser?.role === "admin";
   const userPermissions: string[] = (currentUser as any)?.permissions || [];
+  
+  const canViewMessages = isMainAdmin || hasNavPermission("messages", userPermissions);
+  const canReplyMessages = isMainAdmin || userPermissions.includes("reply_messages");
+  const canAccessOperations = isMainAdmin || hasNavPermission("operations", userPermissions);
 
   const { data: stats } = useGetAdminStats();
   const { data: orders } = useListOrders();
@@ -505,6 +518,7 @@ export default function Admin() {
   const [messages, setMessages] = useState<any[]>([]);
   const [msgInput, setMsgInput] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const toggleOrder = (id: number) =>
     setExpandedOrders(prev => {
@@ -583,44 +597,60 @@ export default function Admin() {
       if (res.ok) {
         const usersList = await res.json();
         setChatUsers(usersList);
+        if (selectedChatUser?.id) {
+          const refreshedSelectedUser = usersList.find((user: any) => user.id === selectedChatUser.id) ?? null;
+          if (refreshedSelectedUser) {
+            setSelectedChatUser(refreshedSelectedUser);
+          }
+        }
       }
     } catch (err) {
       console.error(err);
     }
   };
 
-  // 🚨 تحديث تلقائي لقائمة العملاء كل 4 ثواني عشان لو عميل جديد بعث رسالة يظهر فوراً
+  // Live Polling لجلب العملاء والرسائل كل 4 ثوانٍ مع حل الـ TypeScript Error
   useEffect(() => {
-    if (activeTab === "messages") {
+    if (activeTab === "messages" && canViewMessages) {
       fetchChatUsers();
       const interval = setInterval(fetchChatUsers, 4000);
       return () => clearInterval(interval);
     }
-  }, [activeTab]);
+    return undefined;
+  }, [activeTab, canViewMessages, selectedChatUser?.id]);
 
   const fetchMessages = async (userId: number) => {
+    if (!userId) return;
     try {
       const res = await apiFetch(`/api/messages/${userId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "تعذر جلب الرسائل");
       }
+      const data = await res.json();
+      setMessages(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     }
   };
 
-  // 🚨 تحديث تلقائي للرسائل كل 4 ثوانٍ لو العميل مفتوح في الشات
+  // Live Polling للرسائل داخل الشات المفتوح كل 4 ثوانٍ مع حل الـ TypeScript Error
   useEffect(() => {
-    if (!selectedChatUser) return;
+    if (activeTab !== "messages" || !selectedChatUser?.id || !canViewMessages) return undefined;
+    fetchMessages(selectedChatUser.id);
     const interval = setInterval(() => {
       fetchMessages(selectedChatUser.id);
     }, 4000);
     return () => clearInterval(interval);
-  }, [selectedChatUser]);
+  }, [activeTab, selectedChatUser?.id, canViewMessages]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleSelectChatUser = (u: any) => {
     setSelectedChatUser(u);
+    setMessages([]);
     fetchMessages(u.id);
   };
 
@@ -651,7 +681,7 @@ export default function Admin() {
   useEffect(() => {
     if (currentUser?.role === "subadmin") {
       const perms: string[] = (currentUser as any).permissions || [];
-      const firstAllowed = ALL_NAV.find(n => !n.adminOnly && (n.id === "messages" ? perms.includes("view_messages") : perms.includes(n.id)));
+      const firstAllowed = ALL_NAV.find((navItem) => !navItem.adminOnly && hasNavPermission(navItem.id, perms));
       if (firstAllowed) setActiveTab(firstAllowed.id);
       setProfileForm(f => ({
         ...f,
@@ -715,7 +745,6 @@ export default function Admin() {
   const handleAmountSave = (orderId: number, amount: number | null, depositPct: number, couponCode?: string): Promise<void> => {
     return new Promise(async (resolve) => {
       let discountAmount = 0;
-
       if (amount !== null && amount > 0 && couponCode) {
         try {
           const res = await apiFetch("/api/coupons");
@@ -1074,7 +1103,7 @@ export default function Admin() {
 
   const NAV = isMainAdmin
     ? ALL_NAV
-    : ALL_NAV.filter(n => !n.adminOnly && userPermissions.includes(n.id === "messages" ? "view_messages" : n.id));
+    : ALL_NAV.filter((navItem) => !navItem.adminOnly && hasNavPermission(navItem.id, userPermissions));
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" dir="rtl">
@@ -1202,6 +1231,88 @@ export default function Admin() {
             </div>
           )}
 
+          {activeTab === "operations" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-2xl font-bold">قسم العمليات والمتابعة</h1>
+                <p className="text-muted-foreground text-sm mt-1">متابعة الطلبات قيد التنفيذ، التحويلات المعلقة، وإجراءات التشغيل السريعة</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white rounded-2xl border p-5 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold shrink-0">
+                    <FileImage className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">تحويلات بانتظار التأكيد</p>
+                    <p className="text-2xl font-bold">{allOrders.filter(o => hasTransferDetails(o) && !o.depositPaid).length}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border p-5 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">طلبات قيد التنفيذ</p>
+                    <p className="text-2xl font-bold">{allOrders.filter(o => o.status === 'in_progress' || o.status === 'started').length}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border p-5 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-green-100 text-green-600 flex items-center justify-center font-bold shrink-0">
+                    <CheckCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">طلبات جاهزة للتسليم</p>
+                    <p className="text-2xl font-bold">{allOrders.filter(o => o.status === 'completed').length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border shadow-sm overflow-hidden p-6 space-y-4">
+                <h2 className="font-bold text-lg">الطلبات النشطة والعمليات الجارية</h2>
+                <div className="space-y-3">
+                  {allOrders.filter(o => o.status !== 'cancelled').map(order => {
+                    const statusInfo = getAdminOrderStatus(order);
+                    return (
+                      <div key={order.id} className="border rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-muted/10">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-base">{order.siteName}</span>
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusInfo.bg} ${statusInfo.color}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
+                              {statusInfo.label}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            العميل: <strong className="text-foreground">{order.user?.fullName}</strong> ({order.user?.phone || order.user?.email}) · نوع الموقع: {order.siteType}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => {
+                              setActiveTab("orders");
+                              setExpandedOrders(prev => new Set(prev).add(order.id));
+                            }}
+                          >
+                            إدارة الطلب
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {allOrders.filter(o => o.status !== 'cancelled').length === 0 && (
+                    <p className="text-center text-muted-foreground py-8 text-sm">لا توجد عمليات جارية حالياً</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === "messages" && (
             <div className="space-y-4 h-[calc(100vh-10rem)] flex flex-col">
               <div>
@@ -1246,8 +1357,9 @@ export default function Admin() {
                           </div>
                         ))}
                         {messages.length === 0 && <div className="h-full flex items-center justify-center text-muted-foreground text-sm">لا توجد رسائل سابقة. ابدأ المحادثة الآن.</div>}
+                        <div ref={messagesEndRef} />
                       </div>
-                      {isMainAdmin || userPermissions.includes("reply_messages") ? (
+                      {canReplyMessages ? (
                         <form onSubmit={handleSendMessage} className="p-4 bg-white border-t flex gap-2 shrink-0">
                           <Input
                             value={msgInput}
@@ -1921,7 +2033,7 @@ export default function Admin() {
                         <p className="text-xs font-semibold text-muted-foreground mb-3">الصلاحيات</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           {PERMISSIONS_LIST.map(perm => {
-                            const enabled = sub.permissions.includes(perm.id);
+                            const enabled = (sub.permissions || []).includes(perm.id);
                             return (
                               <div
                                 key={perm.id}
@@ -1930,10 +2042,12 @@ export default function Admin() {
                                 <span className={`text-sm font-medium ${enabled ? "text-primary" : "text-muted-foreground"}`}>{perm.label}</span>
                                 <Switch
                                   checked={enabled}
-                                  onCheckedChange={async () => {
-                                    const newPerms = enabled
-                                      ? sub.permissions.filter((p: string) => p !== perm.id)
-                                      : [...sub.permissions, perm.id];
+                                  onCheckedChange={async (nextChecked) => {
+                                    const currentPerms = sub.permissions || [];
+                                    const newPerms = nextChecked 
+                                      ? [...currentPerms, perm.id] 
+                                      : currentPerms.filter((p: string) => p !== perm.id);
+                                    
                                     try {
                                       await apiFetchJson(`/api/subadmins/${sub.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: newPerms }) });
                                       fetchSubadmins();

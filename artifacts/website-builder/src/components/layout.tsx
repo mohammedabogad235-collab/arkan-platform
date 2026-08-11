@@ -17,8 +17,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { data: settings } = useSettings();
 
+  // إغلاق قائمة الموبايل والتمرير للأعلى تلقائياً عند الانتقال لأي صفحة
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
+    setOpen(false); 
   }, [location]);
 
   const handleLogout = () => {
@@ -30,12 +32,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const isAdmin = user?.role === "admin";
-  const isAdminPage = location.startsWith("/admin");
+  const role = user?.role;
+  const isAdmin = role === "admin";
+  const isSubadmin = role === "subadmin";
+  const isAdminLike = isAdmin || isSubadmin;
+  const isClient = role === "client" || role === "user";
+  
+  const showFloatingChatBubble = isAuthenticated && isClient && location !== "/chat";
 
-  if (isAdmin && isAdminPage) {
+  // 1. عزل الإدارة بالكامل: عرض هيدر الإدارة النظيف فقط للمديرين والمشرفين
+  if (isAdminLike) {
     return (
-      <div className="min-h-screen flex flex-col bg-muted/30">
+      <div className="min-h-screen flex flex-col bg-muted/30" dir="rtl">
         <header className="sticky top-0 z-50 w-full border-b bg-[#0f172a] shadow-sm">
           <div className="container mx-auto px-4 h-14 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -69,6 +77,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // 2. إزالة رابط المحادثة من القائمة (لأنها أصبحت في الفقاعة العائمة فقط)
   const NavLinks = () => (
     <>
       <Link href="/" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
@@ -78,19 +87,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         آراء العملاء
       </Link>
       {isAuthenticated && (
-        <>
-          <Link href="/my-orders" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-            طلباتي
-          </Link>
-          {/* 👈 تم إضافة رابط المحادثة هنا ليظهر للعملاء المسجلين */}
-          <Link href="/chat" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-            المحادثة
-          </Link>
-        </>
-      )}
-      {isAdmin && (
-        <Link href="/admin" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
-          لوحة التحكم
+        <Link href="/my-orders" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+          طلباتي
         </Link>
       )}
     </>
@@ -99,8 +97,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hasContact = settings && (settings.phone1 || settings.phone2 || settings.email || settings.whatsapp || settings.address);
   const hasSocial = settings && (settings.facebookUrl || settings.instagramUrl || settings.twitterUrl);
 
+  // واجهة العملاء والزوار
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background" dir="rtl">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
@@ -117,9 +116,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-4">
             {isAuthenticated ? (
               <div className="flex items-center gap-4">
-                <Link href="/order" className="hidden sm:block">
-                  <Button variant="default" size="sm">طلب موقع جديد</Button>
-                </Link>
+                {isClient && (
+                  <Link href="/order" className="hidden sm:block">
+                    <Button variant="default" size="sm">طلب موقع جديد</Button>
+                  </Link>
+                )}
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <UserIcon className="w-4 h-4" />
                   <span className="hidden sm:inline-block">{user?.fullName}</span>
@@ -147,7 +148,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </SheetTrigger>
               <SheetContent side="right" className="flex flex-col gap-6 pt-12">
                 <NavLinks />
-                {isAuthenticated && (
+                {isAuthenticated && isClient && (
                   <Link href="/order" onClick={() => setOpen(false)}>
                     <Button variant="default" className="w-full">طلب موقع جديد</Button>
                   </Link>
@@ -161,6 +162,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col">
         {children}
       </main>
+
+      {/* 3. فقاعة المحادثة العائمة الأنيقة للعملاء (Bottom-Right) */}
+      {showFloatingChatBubble && (
+        <Link href="/chat">
+          <a
+            aria-label="فتح المحادثة والدعم الفني"
+            className="fixed bottom-6 right-6 z-[999] group flex items-center gap-3 rounded-full border border-primary/20 bg-primary px-4 py-3 text-white shadow-[0_18px_45px_-18px_rgba(37,99,235,0.75)] transition-all duration-300 hover:-translate-y-1 hover:bg-primary/95 hover:shadow-[0_24px_55px_-18px_rgba(37,99,235,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/30 group-hover:animate-pulse">
+              <MessageCircle className="h-5 w-5" />
+            </span>
+            <span className="hidden sm:flex flex-col items-start leading-tight text-right">
+              <span className="text-xs text-white/80">الدعم الفني</span>
+              <span className="text-sm font-bold">ابدأ المحادثة الآن</span>
+            </span>
+            {/* مؤشر التنبيه النقطة الحمراء (اختياري، يضيف لمسة احترافية) */}
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white border border-white shadow-sm">
+              !
+            </span>
+          </a>
+        </Link>
+      )}
 
       <footer className="border-t bg-white mt-auto">
         {hasContact && (

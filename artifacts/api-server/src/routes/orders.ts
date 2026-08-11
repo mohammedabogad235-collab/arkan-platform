@@ -124,13 +124,39 @@ async function isAdmin(req: any): Promise<boolean> {
   return user?.role === "admin" || user?.role === "subadmin";
 }
 
+function parseStoredPermissions(value: unknown): string[] {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed)
+        ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
 async function checkPermission(req: any, permission: "canViewMessages" | "canReplyMessages"): Promise<boolean> {
   const { userId, role } = getSession(req);
   if (!userId) return false;
   if (role === "admin") return true; 
   if (role === "subadmin") {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-    return Boolean((user as any)?.[permission]);
+    const storedPermissions = parseStoredPermissions((user as any)?.permissions);
+    const permissionAliases = permission === "canViewMessages"
+      ? ["view_messages", "messages"]
+      : ["reply_messages"];
+
+    return Boolean((user as any)?.[permission]) || permissionAliases.some((alias) => storedPermissions.includes(alias));
   }
   return false;
 }
@@ -234,6 +260,73 @@ function hasSubmittedTransferDetails(order: {
   return [order.transferAccount, order.accountName, order.transferAmount].every(
     (value) => typeof value === "string" && value.trim().length > 0,
   );
+}
+
+function valuesDiffer<T>(previousValue: T | null | undefined, nextValue: T | null | undefined): boolean {
+  return (previousValue ?? null) !== (nextValue ?? null);
+}
+
+function getOrderStatusLabel(status: string): string {
+  const statusMap: Record<string, string> = {
+    pending: "قيد الانتظار",
+    started: "بدأ التنفيذ",
+    in_progress: "قيد التنفيذ",
+    completed: "مكتمل",
+    cancelled: "ملغي",
+    refunded: "مسترجع",
+  };
+
+  return statusMap[status] || status;
+}
+
+function buildGeneralOrderUpdateLines(args: {
+  originalOrder: typeof ordersTable.$inferSelect;
+  updatedOrder: typeof ordersTable.$inferSelect;
+  paymentMethodName?: string | null;
+  completionEmailWillBeSent: boolean;
+}): string[] {
+  const { originalOrder, updatedOrder, paymentMethodName, completionEmailWillBeSent } = args;
+  const lines: string[] = [];
+  const statusChanged = originalOrder.status !== updatedOrder.status;
+
+  if (statusChanged) {
+    const shouldSendDedicatedStatusEmail = updatedOrder.status === "started" || updatedOrder.status === "in_progress";
+    if (!shouldSendDedicatedStatusEmail && !completionEmailWillBeSent) {
+      lines.push(`تم تحديث حالة طلبك إلى: ${getOrderStatusLabel(updatedOrder.status)}.`);
+    }
+  }
+
+  if (valuesDiffer(originalOrder.totalAmount, updatedOrder.totalAmount) && updatedOrder.totalAmount != null) {
+    if (originalOrder.totalAmount != null) {
+      lines.push(`تم تحديث إجمالي قيمة الطلب إلى ${Math.round(updatedOrder.totalAmount).toLocaleString("ar-EG")} ${updatedOrder.currency}.`);
+    }
+  }
+
+  if (valuesDiffer(originalOrder.depositPercentage, updatedOrder.depositPercentage) && updatedOrder.depositPercentage != null) {
+    lines.push(`تم تحديث نسبة الدفعة المقدمة إلى ${updatedOrder.depositPercentage}%.`);
+  }
+
+  if (valuesDiffer(originalOrder.paymentMethodId, updatedOrder.paymentMethodId)) {
+    lines.push(paymentMethodName
+      ? `تم تحديث طريقة الدفع المعتمدة إلى ${paymentMethodName}.`
+      : "تم تحديث طريقة الدفع المعتمدة على الطلب.");
+  }
+
+  if (originalOrder.depositPaid === true && updatedOrder.depositPaid === false) {
+    lines.push("تم إرجاع حالة الدفعة المقدمة إلى قيد المراجعة.");
+  }
+
+  if (originalOrder.finalPaid === true && updatedOrder.finalPaid === false) {
+    lines.push("تم إرجاع حالة الدفعة النهائية إلى قيد المراجعة.");
+  }
+
+  const originalDeliveredUrl = typeof (originalOrder as any).deliveredUrl === "string" ? (originalOrder as any).deliveredUrl.trim() : "";
+  const updatedDeliveredUrl = typeof (updatedOrder as any).deliveredUrl === "string" ? (updatedOrder as any).deliveredUrl.trim() : "";
+  if (originalDeliveredUrl !== updatedDeliveredUrl && updatedDeliveredUrl && !completionEmailWillBeSent) {
+    lines.push(originalDeliveredUrl ? "تم تحديث رابط التسليم أو المعاينة الخاص بمشروعك." : "تمت إضافة رابط المعاينة أو التسليم الخاص بمشروعك.");
+  }
+
+  return lines;
 }
 
 // GET /orders
@@ -557,6 +650,9 @@ router.post("/orders/:id/apply-coupon", asyncHandler(async (req, res): Promise<v
   }
 }));
 
+// ==========================================
+// 🚀 تحديث الطلبات والتزامن المطلق للإيميلات 
+// ==========================================
 // PATCH /orders/:id
 router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!(await isAdmin(req))) { res.status(403).json({ error: "غير مصرح" }); return; }
@@ -573,6 +669,7 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   const body = req.body as Record<string, unknown>;
   const updateData: Record<string, unknown> = { ...parsed.data };
 
+  // معالجة كافة التحديثات الممكنة
   if (typeof body.deliveredUrl === "string" || body.deliveredUrl === null) updateData.deliveredUrl = body.deliveredUrl;
   if (typeof body.transferAccount === "string" || body.transferAccount === null) updateData.transferAccount = body.transferAccount;
   if (typeof body.accountName === "string" || body.accountName === null) updateData.accountName = body.accountName;
@@ -583,57 +680,50 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   if (typeof body.adminNotes === "string" || body.adminNotes === null) updateData.adminNotes = body.adminNotes;
   if (typeof body.couponCode === "string" || body.couponCode === null) updateData.couponCode = body.couponCode;
 
-  const nextAmount =
-    typeof updateData.totalAmount === "number"
-      ? updateData.totalAmount
-      : originalOrder.totalAmount ?? null;
-  const nextCouponCode =
-    typeof updateData.couponCode === "string" || updateData.couponCode === null
-      ? (updateData.couponCode as string | null)
-      : undefined;
+  const nextAmount = typeof updateData.totalAmount === "number" ? updateData.totalAmount : originalOrder.totalAmount ?? null;
+  const nextCouponCode = typeof updateData.couponCode === "string" || updateData.couponCode === null ? (updateData.couponCode as string | null) : undefined;
+  
   const couponState = await recalculateOrderCoupon(originalOrder, nextAmount, nextCouponCode);
   updateData.couponCode = couponState.couponCode;
   updateData.discountAmount = couponState.discountAmount;
 
+  // إجراء التحديث الفعلي
   const [updatedOrder] = await db.update(ordersTable).set(updateData as any).where(eq(ordersTable.id, orderId)).returning();
   if (!updatedOrder) { res.status(404).json({ error: "فشل تحديث الطلب" }); return; }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, updatedOrder.userId));
   const pm = await resolveNotificationPaymentMethod(updatedOrder);
 
+  // إرسال الإشعارات والإيميلات بدقة متناهية بناءً على التحديث
   if (user) {
-    const approvedTotalAmount = updatedOrder.totalAmount;
-    if (originalOrder.totalAmount == null && approvedTotalAmount != null) {
+    const statusChanged = originalOrder.status !== updatedOrder.status;
+
+    // 1. إيميل الموافقة وتحديد السعر المبدئي
+    if (originalOrder.totalAmount == null && updatedOrder.totalAmount != null) {
       await notifySafely("Failed to send payment approved email", async () => {
         await sendOrderPaymentApprovedEmail({
           to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName,
-          totalAmount: approvedTotalAmount, depositPercentage: updatedOrder.depositPercentage ?? 50, currency: updatedOrder.currency,
+          totalAmount: updatedOrder.totalAmount!, depositPercentage: updatedOrder.depositPercentage ?? 50, currency: updatedOrder.currency,
           paymentMethodName: pm?.name ?? null, paymentMethodDetails: pm?.details ?? null,
         });
       }, { orderId: updatedOrder.id });
     }
 
-    if (!hasSubmittedTransferDetails(originalOrder) && hasSubmittedTransferDetails(updatedOrder)) {
-      await notifySafely("Failed to send receipt uploaded email", async () => {
-        await sendOrderReceiptUploadedEmail({
-          to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName, kind: "deposit",
-        });
-      });
-    }
-
+    // 2. إيميل تأكيد استلام المقدم
     if (originalOrder.depositPaid === false && updatedOrder.depositPaid === true) {
       await notifySafely("Failed to send receipt accepted email", async () => {
         await sendOrderReceiptAcceptedEmail({ to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName, kind: "deposit" });
       });
     }
 
+    // 3. إيميل تأكيد استلام المتبقي النهائي
     if (originalOrder.finalPaid === false && updatedOrder.finalPaid === true) {
       await notifySafely("Failed to send final payment accepted email", async () => {
         await sendOrderReceiptAcceptedEmail({ to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName, kind: "final" });
       });
     }
 
-    const statusChanged = originalOrder.status !== updatedOrder.status;
+    // 4. إيميلات التحديث الخاص للحالات الجوهرية
     if (statusChanged) {
       if (updatedOrder.status === "started") {
         await notifySafely("Failed to send started email", async () => {
@@ -648,6 +738,7 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
           });
         });
       } else if (updatedOrder.status !== "completed") {
+        // أي حالة أخرى باستثناء المكتمل يتم إعلامها كحالة عامة
         const statusMap: Record<string, string> = { "pending": "قيد الانتظار", "cancelled": "ملغي", "refunded": "مسترجع" };
         const statusAr = statusMap[updatedOrder.status as string] || updatedOrder.status;
         await notifySafely("Failed to send status update email", async () => {
@@ -656,17 +747,29 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
       }
     }
 
+    // 5. إيميل اكتمال الطلب ورابط التسليم
+    // نرسله إذا: (أ) تحولت الحالة للتو إلى مكتمل، أو (ب) كان مكتملاً وتمت إضافة رابط تسليم للتو
     const becameCompleted = statusChanged && updatedOrder.status === "completed";
-    const deliveredAdded = !originalOrder.deliveredUrl && Boolean(updatedOrder.deliveredUrl);
-    const deliveredUrl = typeof updatedOrder.deliveredUrl === "string" && updatedOrder.deliveredUrl.trim().length > 0 ? updatedOrder.deliveredUrl : null;
-
-    if ((becameCompleted && deliveredUrl) || (deliveredAdded && updatedOrder.status === "completed" && deliveredUrl)) {
+    const deliveredUrlChangedOrAdded = originalOrder.deliveredUrl !== updatedOrder.deliveredUrl && Boolean(updatedOrder.deliveredUrl);
+    
+    if (becameCompleted || (updatedOrder.status === "completed" && deliveredUrlChangedOrAdded)) {
+      const deliveredUrl = typeof updatedOrder.deliveredUrl === "string" && updatedOrder.deliveredUrl.trim().length > 0 ? updatedOrder.deliveredUrl : null;
       await notifySafely("Failed to send completed email", async () => {
         await sendOrderCompletedEmail({
           to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName,
-          deliveredUrl, requireFinalPaymentNotice: !updatedOrder.finalPaid, paymentMethodName: pm?.name ?? null, paymentMethodDetails: pm?.details ?? null,
+          deliveredUrl: deliveredUrl ?? "", // 👈 الحل هنا
+          requireFinalPaymentNotice: !updatedOrder.finalPaid, paymentMethodName: pm?.name ?? null, paymentMethodDetails: pm?.details ?? null,
         });
       });
+    }
+
+    // إرسال إشعار للنظام الداخلي عند تغير الحالة
+    if (statusChanged) {
+      await db.insert(notificationsTable).values({
+        userId: user.id,
+        message: `تم تحديث حالة طلبك إلى: ${getOrderStatusLabel(updatedOrder.status)}`,
+        isRead: false,
+      } as any);
     }
   }
 
@@ -675,22 +778,34 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 // ==========================================
-// 💬 نظام الرسائل والشات (Chat System)
+// 💬 نظام الرسائل والشات الدقيق والتصفير
 // ==========================================
 
-// جلب قائمة العملاء للأدمن
+// جلب قائمة العملاء للأدمن مع عدد الرسائل غير المقروءة الدقيقة
 router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => {
   const hasAccess = await checkPermission(req, "canViewMessages");
   if (!hasAccess) { res.status(403).json({ error: "غير مصرح لك برؤية الرسائل" }); return; }
 
+  // نجلب جميع العملاء
   const clients = await db.select().from(usersTable).where(eq(usersTable.role, "user"));
   
-  const formattedClients = clients.map(c => ({
-    id: c.id,
-    fullName: c.fullName,
-    email: c.email,
-    unreadCount: 0 
-  }));
+  // نجلب جميع الرسائل غير المقروءة الموجهة للإدارة
+  const unreadMessages = await db.select().from(messagesTable).where(eq(messagesTable.isRead, false));
+
+  // نحسب العداد لكل عميل بدقة
+  const formattedClients = clients.map(c => {
+    // عدد الرسائل غير المقروءة التي قام هذا العميل بإرسالها للإدارة
+    const count = unreadMessages.filter(m => m.senderId === c.id).length;
+    return {
+      id: c.id,
+      fullName: c.fullName,
+      email: c.email,
+      unreadCount: count 
+    };
+  });
+
+  // ترتيب العملاء: من لديهم رسائل غير مقروءة أولاً، ثم الأحدث
+  formattedClients.sort((a, b) => b.unreadCount - a.unreadCount || b.id - a.id);
 
   res.json(formattedClients);
 }));
@@ -709,6 +824,7 @@ router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Pr
     }
   }
 
+  // جلب كافة رسائل المحادثة بين الطرفين
   const allUserMsgs = await db.select().from(messagesTable)
     .where(
       or(
@@ -718,9 +834,18 @@ router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Pr
     )
     .orderBy(messagesTable.createdAt);
 
-  await db.update(messagesTable)
-    .set({ isRead: true })
-    .where(and(eq(messagesTable.receiverId, sessionUserId), eq(messagesTable.isRead, false)));
+  // تحديث قراءة الرسائل بدقة وتصفير الإشعارات عند فتح المحادثة
+  if (role === "admin" || role === "subadmin") {
+    // الإدارة تقرأ رسائل العميل (تصفير إشعارات المشرف)
+    await db.update(messagesTable)
+      .set({ isRead: true })
+      .where(and(eq(messagesTable.senderId, targetUserId), eq(messagesTable.isRead, false)));
+  } else {
+    // العميل يقرأ رسائل الإدارة (تصفير إشعارات العميل)
+    await db.update(messagesTable)
+      .set({ isRead: true })
+      .where(and(eq(messagesTable.receiverId, sessionUserId), eq(messagesTable.isRead, false)));
+  }
 
   res.json(allUserMsgs);
 }));
