@@ -18,6 +18,7 @@ import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
 import ForgotPassword from "@/pages/forgot-password";
 import NotFound from "@/pages/not-found";
+import Chat from "@/pages/chat";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,12 @@ function Router() {
       <Route path="/my-orders">
         <ProtectedRoute>
           <MyOrders />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/chat">
+        <ProtectedRoute>
+          <Chat />
         </ProtectedRoute>
       </Route>
 
