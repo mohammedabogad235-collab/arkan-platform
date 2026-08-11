@@ -262,7 +262,6 @@ function hasSubmittedTransferDetails(order: {
   );
 }
 
-// 🚀 الدالة التي كانت مفقودة لحل الخطأ الخاص بـ getOrderStatusLabel
 function getOrderStatusLabel(status: string): string {
   const statusMap: Record<string, string> = {
     pending: "قيد الانتظار",
@@ -749,6 +748,7 @@ router.get("/messages/unread-count", asyncHandler(async (req, res): Promise<void
   res.json({ unreadCount: count.length });
 }));
 
+// 🚀 جلب الرسائل مع ربطها بجدول المستخدمين لكي يظهر دور المُرسِل (senderRole) بدقة
 router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Promise<void> => {
   const { userId: sessionUserId, role } = getSession(req);
   if (!sessionUserId) { res.status(401).json({ error: "غير مصرح" }); return; }
@@ -763,14 +763,26 @@ router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Pr
     }
   }
 
-  const allUserMsgs = await db.select().from(messagesTable)
-    .where(
-      or(
-        eq(messagesTable.senderId, targetUserId),
-        eq(messagesTable.receiverId, targetUserId)
-      )
+  const allUserMsgsRaw = await db.select({
+    id: messagesTable.id,
+    senderId: messagesTable.senderId,
+    receiverId: messagesTable.receiverId,
+    content: messagesTable.content,
+    isRead: messagesTable.isRead,
+    isEdited: messagesTable.isEdited,
+    isDeleted: messagesTable.isDeleted,
+    createdAt: messagesTable.createdAt,
+    senderRole: usersTable.role,
+  })
+  .from(messagesTable)
+  .leftJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+  .where(
+    or(
+      eq(messagesTable.senderId, targetUserId),
+      eq(messagesTable.receiverId, targetUserId)
     )
-    .orderBy(messagesTable.createdAt);
+  )
+  .orderBy(messagesTable.createdAt);
 
   if (role === "admin" || role === "subadmin") {
     await db.update(messagesTable)
@@ -782,7 +794,7 @@ router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Pr
       .where(and(eq(messagesTable.receiverId, sessionUserId), eq(messagesTable.isRead, false)));
   }
 
-  res.json(allUserMsgs);
+  res.json(allUserMsgsRaw);
 }));
 
 router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
@@ -869,9 +881,22 @@ router.patch("/notifications/:id/read", asyncHandler(async (req, res): Promise<v
 
   res.json({ success: true });
 }));
+
 // ==========================================
 // 🛠️ تعديل وحذف الرسائل (Edit & Soft Delete)
 // ==========================================
+
+async function checkModifyMessagePermission(req: any): Promise<boolean> {
+  const { userId, role } = getSession(req);
+  if (!userId) return false;
+  if (role === "admin") return true;
+  if (role === "subadmin") {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    const storedPermissions = parseStoredPermissions((user as any)?.permissions);
+    return storedPermissions.includes("modify_messages");
+  }
+  return false;
+}
 
 // تعديل رسالة
 router.patch("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
@@ -887,11 +912,10 @@ router.patch("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId));
   if (!msg) { res.status(404).json({ error: "الرسالة غير موجودة" }); return; }
   
-  const admin = await isAdmin(req);
+  const hasPermission = await checkModifyMessagePermission(req);
   const isOwner = Number(msg.senderId) === Number(userId);
 
-  // السماح حصرياً لصاحب الرسالة أو لأي مشرف/أدمن
-  if (!isOwner && !admin) { 
+  if (!isOwner || !hasPermission) { 
     res.status(403).json({ error: "ليس لديك صلاحية لتعديل هذه الرسالة" }); 
     return; 
   }
@@ -901,7 +925,7 @@ router.patch("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   res.json({ success: true });
 }));
 
-// حذف رسالة (حذف وهمي)
+// حذف رسالة
 router.delete("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   const { userId } = getSession(req);
   if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
@@ -912,11 +936,10 @@ router.delete("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId));
   if (!msg) { res.status(404).json({ error: "الرسالة غير موجودة" }); return; }
   
-  const admin = await isAdmin(req);
+  const hasPermission = await checkModifyMessagePermission(req);
   const isOwner = Number(msg.senderId) === Number(userId);
 
-  // السماح حصرياً لصاحب الرسالة أو لأي مشرف/أدمن
-  if (!isOwner && !admin) { 
+  if (!isOwner || !hasPermission) { 
     res.status(403).json({ error: "ليس لديك صلاحية لحذف هذه الرسالة" }); 
     return; 
   }
@@ -924,4 +947,5 @@ router.delete("/messages/:id", asyncHandler(async (req, res): Promise<void> => {
   await db.update(messagesTable).set({ isDeleted: true, content: "" } as any).where(eq(messagesTable.id, msgId));
   res.json({ success: true });
 }));
+
 export default router;

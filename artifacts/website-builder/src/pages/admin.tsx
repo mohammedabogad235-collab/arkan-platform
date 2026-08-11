@@ -102,6 +102,7 @@ const PERMISSIONS_LIST = [
   { id: "settings",  label: "الإعدادات" },
   { id: "messages",  label: "رؤية الرسائل" }, 
   { id: "reply_messages", label: "الرد على الرسائل" },
+  { id: "modify_messages", label: "تعديل وحذف الرسائل" }, // 👈 إضافة صلاحية التعديل والحذف
 ];
 
 function hasNavPermission(navId: string, permissions: string[] = []): boolean {
@@ -481,7 +482,8 @@ export default function Admin() {
   
   const canViewMessages = isMainAdmin || hasNavPermission("messages", userPermissions);
   const canReplyMessages = isMainAdmin || userPermissions.includes("reply_messages");
-  const canAccessOperations = isMainAdmin || hasNavPermission("operations", userPermissions);
+  // 🚀 التحقق من صلاحية تعديل وحذف الرسائل للمشرف الفرعي
+  const canModifyMessages = isMainAdmin || userPermissions.includes("modify_messages");
 
   const { data: stats } = useGetAdminStats();
   const { data: orders } = useListOrders();
@@ -520,7 +522,6 @@ export default function Admin() {
   const [sendingMsg, setSendingMsg] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 🚀 حالات التعديل لرسائل الأدمن/المشرف
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
 
@@ -680,7 +681,6 @@ export default function Admin() {
     }
   };
 
-  // 🚀 دوال الحذف والتعديل للأدمن
   const handleDeleteMessage = async (id: number) => {
     if (!confirm("هل أنت متأكد من حذف هذه الرسالة؟")) return;
     try {
@@ -1386,22 +1386,32 @@ export default function Admin() {
                       </div>
                       <div className="flex-1 overflow-y-auto p-4 space-y-4">
                         {messages.map((m: any) => {
-                          const isMe = m.senderId === currentUser?.id;
-                          // الأدمن بيشوف علامة التعديل على أي رسالة متعدلة (سواء بتاعته أو بتاعت العميل)
+                          // 🚀 تحديد إذا كانت الرسالة من الإدارة (أدمن أو مشرف فرعي)
+                          const isSenderAdmin = m.senderRole === "admin" || m.senderRole === "subadmin";
+                          
+                          // 🚀 هل المرسل هو المستخدم الحالي (سواء أدمن أو مشرف)؟
+                          const isMyMessage = m.senderId === currentUser?.id;
+
+                          // 🚀 هل تمتلك صلاحية التعديل/الحذف (مدير رئيسي أو لديه صلاحية modify_messages)؟
+                          const canModify = isMainAdmin || userPermissions.includes("modify_messages");
+
+                          // الرسائل الصادرة من الإدارة تظهر على اليمين باللون الأزرق
+                          const showOnRight = isSenderAdmin;
+
                           const showEditedTag = m.isEdited;
 
                           return (
-                            <div key={m.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} group`}>
+                            <div key={m.id} className={`flex flex-col ${showOnRight ? "items-end" : "items-start"} group`}>
                               
                               {m.isDeleted ? (
-                                <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm flex items-center gap-2 italic shadow-sm ${isMe ? "bg-muted/50 text-muted-foreground rounded-bl-none" : "bg-gray-100 text-gray-500 border rounded-br-none"}`}>
+                                <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm flex items-center gap-2 italic shadow-sm ${showOnRight ? "bg-muted/50 text-muted-foreground rounded-bl-none" : "bg-gray-100 text-gray-500 border rounded-br-none"}`}>
                                   <Ban className="w-4 h-4 opacity-50" />
                                   تم حذف هذه الرسالة
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2">
-                                  {/* أزرار التعديل والحذف للأدمن */}
-                                  {isMe && !m.isDeleted && editingMsgId !== m.id && (
+                                  {/* 🚀 تظهر أزرار التعديل والحذف لو هو مرسل الرسالة أو أدمن وصلاحية التعديل مفعّلة */}
+                                  {(isMyMessage || canModify) && !m.isDeleted && editingMsgId !== m.id && (
                                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                                       <button onClick={() => { setEditingMsgId(m.id); setEditContent(m.content); }} className="p-1.5 text-muted-foreground hover:text-blue-600 bg-white rounded-full shadow-sm border border-transparent hover:border-blue-100 transition-all">
                                         <Edit2 className="w-3.5 h-3.5" />
@@ -1412,7 +1422,7 @@ export default function Admin() {
                                     </div>
                                   )}
 
-                                  <div className={`max-w-[100%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isMe ? "bg-primary text-primary-foreground rounded-tl-none" : "bg-white border text-foreground rounded-tr-none"}`}>
+                                  <div className={`max-w-[100%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${showOnRight ? "bg-primary text-primary-foreground rounded-tl-none" : "bg-white border text-foreground rounded-tr-none"}`}>
                                     {editingMsgId === m.id ? (
                                       <div className="flex flex-col gap-2 min-w-[250px]">
                                         <Input value={editContent} onChange={e => setEditContent(e.target.value)} className="h-8 text-black bg-white" />
@@ -1429,7 +1439,7 @@ export default function Admin() {
                               )}
 
                               <div className="flex items-center gap-2 mt-1 px-1">
-                                <span className={`text-[10px] text-muted-foreground ${isMe ? "text-right" : "text-left"}`}>
+                                <span className={`text-[10px] text-muted-foreground ${showOnRight ? "text-right" : "text-left"}`}>
                                   {m.createdAt ? format(new Date(m.createdAt), "hh:mm a - dd MMM", { locale: ar }) : ""}
                                 </span>
                                 {showEditedTag && !m.isDeleted && (
