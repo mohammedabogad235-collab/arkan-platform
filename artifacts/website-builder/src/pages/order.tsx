@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { useSettings } from "@/lib/use-settings";
 import { useReceiptUpload } from "@/lib/use-receipt-upload";
 import { useRef, useState } from "react";
+import { apiFetch } from "@/lib/api-fetch";
 
 const orderSchema = z.object({
   siteName: z.string().min(2, { message: "اسم الموقع مطلوب" }),
@@ -63,11 +64,10 @@ function ReceiptStep({
     const result = await uploadFile(file);
     if (!result) return;
 
-    const res = await fetch(`/api/orders/${orderId}/receipt`, {
+    const res = await apiFetch(`/api/orders/${orderId}/receipt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ receiptUrl: result.url }),
-      credentials: "include",
     });
 
     if (res.ok) {
@@ -200,10 +200,9 @@ export default function Order() {
     if (!couponInput.trim()) return;
     setCouponStatus("checking");
     try {
-      const res = await fetch("/api/coupons/validate", {
+      const res = await apiFetch("/api/coupons/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ code: couponInput.trim().toUpperCase() }),
       });
       const data = await res.json();

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, Mail, KeyRound, Lock, CheckCircle } from "lucide-react";
 import { formatCountdown, useOtpCountdown } from "@/lib/use-otp-countdown";
+import { apiFetch } from "@/lib/api-fetch";
 
 export default function ForgotPassword() {
   const [, setLocation] = useLocation();
@@ -39,11 +40,10 @@ export default function ForgotPassword() {
     if (!email.trim()) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/send-otp", {
+      const res = await apiFetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
-        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) {
@@ -77,11 +77,10 @@ export default function ForgotPassword() {
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/verify-otp", {
+      const res = await apiFetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), otp: otp.trim(), newPassword }),
-        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) {
@@ -101,11 +100,10 @@ export default function ForgotPassword() {
     if (!countdown.canResend) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/send-otp", {
+      const res = await apiFetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
-        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) { toast({ variant: "destructive", title: "خطأ", description: data.error }); return; }

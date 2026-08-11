@@ -1,6 +1,19 @@
 import { useState, useCallback } from "react";
 import type { UppyFile } from "@uppy/core";
 
+function normalizeBaseUrl(url: string | null | undefined): string | null {
+  const trimmed = url?.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\/+$/, "");
+}
+
+function resolveApiBasePath(path: string): string {
+  if (!path.startsWith("/api")) return path;
+  const baseUrl = normalizeBaseUrl((import.meta as any)?.env?.VITE_API_URL);
+  if (!baseUrl) return path;
+  return `${baseUrl}${path}`;
+}
+
 interface UploadMetadata {
   name: string;
   size: number;
@@ -55,13 +68,14 @@ interface UseUploadOptions {
  */
 export function useUpload(options: UseUploadOptions = {}) {
   const basePath = options.basePath ?? "/api/storage";
+  const resolvedBasePath = resolveApiBasePath(basePath);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [progress, setProgress] = useState(0);
 
   const requestUploadUrl = useCallback(
     async (file: File): Promise<UploadResponse> => {
-      const response = await fetch(`${basePath}/uploads/request-url`, {
+      const response = await fetch(`${resolvedBasePath}/uploads/request-url`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -80,7 +94,7 @@ export function useUpload(options: UseUploadOptions = {}) {
 
       return response.json();
     },
-    []
+    [resolvedBasePath]
   );
 
   const uploadToPresignedUrl = useCallback(
@@ -136,7 +150,7 @@ export function useUpload(options: UseUploadOptions = {}) {
       url: string;
       headers?: Record<string, string>;
     }> => {
-      const response = await fetch(`${basePath}/uploads/request-url`, {
+      const response = await fetch(`${resolvedBasePath}/uploads/request-url`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -159,7 +173,7 @@ export function useUpload(options: UseUploadOptions = {}) {
         headers: { "Content-Type": file.type || "application/octet-stream" },
       };
     },
-    []
+    [resolvedBasePath]
   );
 
   return {

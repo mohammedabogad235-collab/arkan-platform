@@ -45,6 +45,7 @@ import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch, apiFetchJson } from "@/lib/api-fetch";
 
 function getAdminOrderStatus(order: any): { label: string; color: string; bg: string; dot: string } {
   const { status, totalAmount, receiptUrl, depositPaid, finalPaid, finalReceiptUrl } = order;
@@ -633,13 +634,6 @@ export default function Admin() {
   const [subadminForm, setSubadminForm] = useState<typeof emptySubAdmin>(emptySubAdmin);
   const [subadminFormLoading, setSubadminFormLoading] = useState(false);
 
-  const apiFetch = async (url: string, options: RequestInit) => {
-    const res = await fetch(url, { ...options, credentials: "include" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    return data;
-  };
-
   const handleUpdateOrderStatus = (orderId: number, status: string) => {
     updateOrder.mutate({ id: orderId, data: { status } }, {
       onSuccess: () => {
@@ -665,7 +659,7 @@ export default function Admin() {
       // لو فيه مبلغ وفي كود خصم، نحسب الخصم الأول
       if (amount !== null && amount > 0 && couponCode) {
         try {
-          const res = await fetch("/api/coupons", { credentials: "include" });
+          const res = await apiFetch("/api/coupons");
           if (res.ok) {
             const allCoupons = await res.json();
             const targetCoupon = allCoupons.find((c: any) => c.code === couponCode && c.isActive);
@@ -738,7 +732,7 @@ export default function Admin() {
   const handleToggleRole = async (userId: number, currentRole: string) => {
     const newRole = currentRole === "admin" ? "user" : "admin";
     try {
-      await apiFetch(`/api/users/${userId}/role`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: newRole }) });
+      await apiFetchJson(`/api/users/${userId}/role`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: newRole }) });
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       toast({ title: "تم التحديث", description: `تم تغيير الصلاحية إلى ${newRole === "admin" ? "مدير" : "مستخدم"}` });
     } catch (err: any) {
@@ -750,7 +744,7 @@ export default function Admin() {
     e.preventDefault();
     setAdminFormLoading(true);
     try {
-      await apiFetch("/api/admin/create-admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(adminForm) });
+      await apiFetchJson("/api/admin/create-admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(adminForm) });
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       toast({ title: "تم الإنشاء", description: "تم إنشاء حساب الأدمن بنجاح" });
       setCreateAdminOpen(false);
@@ -766,7 +760,7 @@ export default function Admin() {
     if (pwForm.newPassword.length < 6) { toast({ variant: "destructive", title: "خطأ", description: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }); return; }
     setPwLoading(true);
     try {
-      await apiFetch("/api/admin/change-password", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newPassword: pwForm.newPassword }) });
+      await apiFetchJson("/api/admin/change-password", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newPassword: pwForm.newPassword }) });
       toast({ title: "تم التحديث", description: "تم تغيير كلمة المرور بنجاح" });
       setPwForm({ newPassword: "", confirm: "" });
     } catch (err: any) {
@@ -824,7 +818,7 @@ export default function Admin() {
   const fetchCoupons = async () => {
     setCouponsLoading(true);
     try {
-      const res = await fetch("/api/coupons", { credentials: "include" });
+      const res = await apiFetch("/api/coupons");
       if (res.ok) setCoupons(await res.json());
     } finally { setCouponsLoading(false); }
   };
@@ -845,10 +839,10 @@ export default function Admin() {
     try {
       const body = { ...couponForm, minOrderAmount: couponForm.minOrderAmount === "" ? null : Number(couponForm.minOrderAmount), maxUses: couponForm.maxUses === "" ? null : Number(couponForm.maxUses), expiresAt: couponForm.expiresAt || null };
       if (couponEditId) {
-        await apiFetch(`/api/coupons/${couponEditId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        await apiFetchJson(`/api/coupons/${couponEditId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         toast({ title: "تم تحديث الكوبون" });
       } else {
-        await apiFetch("/api/coupons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        await apiFetchJson("/api/coupons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         toast({ title: "تم إنشاء الكوبون" });
       }
       setCouponDialogOpen(false);
@@ -861,7 +855,7 @@ export default function Admin() {
   const handleDeleteCoupon = async (id: number) => {
     if (!confirm("حذف هذا الكوبون؟")) return;
     try {
-      await apiFetch(`/api/coupons/${id}`, { method: "DELETE" });
+      await apiFetchJson(`/api/coupons/${id}`, { method: "DELETE" });
       toast({ title: "تم الحذف" });
       fetchCoupons();
     } catch {
@@ -871,7 +865,7 @@ export default function Admin() {
 
   const handleToggleCoupon = async (id: number, current: boolean) => {
     try {
-      await apiFetch(`/api/coupons/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !current }) });
+      await apiFetchJson(`/api/coupons/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !current }) });
       fetchCoupons();
     } catch {
       toast({ variant: "destructive", title: "خطأ" });
@@ -881,7 +875,7 @@ export default function Admin() {
   const fetchSubadmins = async () => {
     setSubadminsLoading(true);
     try {
-      const res = await fetch("/api/subadmins", { credentials: "include" });
+      const res = await apiFetch("/api/subadmins");
       if (res.ok) setSubadmins(await res.json());
     } finally { setSubadminsLoading(false); }
   };
@@ -904,10 +898,10 @@ export default function Admin() {
       if (subadminEditId) {
         const body: any = { permissions: subadminForm.permissions, fullName: subadminForm.fullName, phone: subadminForm.phone, email: subadminForm.email };
         if (subadminForm.password) body.password = subadminForm.password;
-        await apiFetch(`/api/subadmins/${subadminEditId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        await apiFetchJson(`/api/subadmins/${subadminEditId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         toast({ title: "تم التحديث", description: "تم تحديث بيانات المشرف الفرعي" });
       } else {
-        await apiFetch("/api/subadmins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(subadminForm) });
+        await apiFetchJson("/api/subadmins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(subadminForm) });
         toast({ title: "تم الإنشاء", description: "تم إنشاء حساب المشرف الفرعي بنجاح" });
       }
       setSubadminDialogOpen(false);
@@ -919,7 +913,7 @@ export default function Admin() {
 
   const handleToggleSubadmin = async (id: number) => {
     try {
-      await apiFetch(`/api/subadmins/${id}/toggle`, { method: "PATCH" });
+      await apiFetchJson(`/api/subadmins/${id}/toggle`, { method: "PATCH" });
       fetchSubadmins();
     } catch {
       toast({ variant: "destructive", title: "خطأ في تغيير الحالة" });
@@ -929,7 +923,7 @@ export default function Admin() {
   const handleDeleteSubadmin = async (id: number) => {
     if (!confirm("هل أنت متأكد من حذف هذا المشرف؟")) return;
     try {
-      await apiFetch(`/api/subadmins/${id}`, { method: "DELETE" });
+      await apiFetchJson(`/api/subadmins/${id}`, { method: "DELETE" });
       toast({ title: "تم الحذف" });
       fetchSubadmins();
     } catch {
@@ -949,7 +943,7 @@ export default function Admin() {
       if (profileForm.email.trim()) body.email = profileForm.email.trim();
       if (profileForm.password) body.password = profileForm.password;
       if (Object.keys(body).length === 0) { toast({ title: "لا يوجد تغيير", duration: 2000 }); setProfileSaving(false); return; }
-      await apiFetch("/api/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      await apiFetchJson("/api/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       toast({ title: "تم تحديث بيانات حسابك", duration: 2000 });
       setProfileForm(f => ({ ...f, password: "", confirm: "" }));
       setProfileOpen(false);
@@ -971,7 +965,7 @@ export default function Admin() {
     if (!otpTestEmail) { toast({ variant: "destructive", title: "أدخل بريداً للاختبار", duration: 2000 }); return; }
     setOtpTestLoading(true);
     try {
-      const res = await fetch("/api/auth/send-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: otpTestEmail }), credentials: "include" });
+      const res = await apiFetch("/api/auth/send-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: otpTestEmail }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "فشل الإرسال");
       toast({ title: "✅ تم الإرسال", description: `تحقق من صندوق الوارد لـ ${otpTestEmail}`, duration: 4000 });
@@ -1780,7 +1774,7 @@ export default function Admin() {
                                       ? sub.permissions.filter((p: string) => p !== perm.id)
                                       : [...sub.permissions, perm.id];
                                     try {
-                                      await apiFetch(`/api/subadmins/${sub.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: newPerms }) });
+                                      await apiFetchJson(`/api/subadmins/${sub.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: newPerms }) });
                                       fetchSubadmins();
                                     } catch {
                                       toast({ variant: "destructive", title: "خطأ في تحديث الصلاحية" });

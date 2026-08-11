@@ -23,6 +23,7 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/lib/use-settings";
+import { apiFetch } from "@/lib/api-fetch";
 
 function getDisplayStatus(order: any): { label: string; color: string } {
   const { status, totalAmount, receiptUrl, depositPaid, finalPaid } = order;
@@ -61,7 +62,7 @@ function ReceiptUploader({ orderId }: { orderId: number }) {
     const result = await uploadFile(file);
     if (!result) return;
 
-    const res = await fetch(`/api/orders/${orderId}/receipt`, {
+    const res = await apiFetch(`/api/orders/${orderId}/receipt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ receiptUrl: result.url }),
@@ -113,7 +114,7 @@ function FinalReceiptUploader({ orderId }: { orderId: number }) {
     const result = await uploadFile(file);
     if (!result) return;
 
-    const res = await fetch(`/api/orders/${orderId}/final-receipt`, {
+    const res = await apiFetch(`/api/orders/${orderId}/final-receipt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ receiptUrl: result.url }),
@@ -161,7 +162,7 @@ function DeleteOrderButton({ order }: { order: any }) {
     e.preventDefault(); // منع النافذة من الإغلاق فوراً
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}`, {
+      const res = await apiFetch(`/api/orders/${order.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
@@ -223,10 +224,9 @@ function CouponApplier({ orderId, onApplied }: { orderId: number; onApplied: () 
     setStatus("loading");
     setErrorMsg("");
     try {
-      const res = await fetch(`/api/orders/${orderId}/apply-coupon`, {
+      const res = await apiFetch(`/api/orders/${orderId}/apply-coupon`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ code: code.trim().toUpperCase() }),
       });
       let data: any = {};

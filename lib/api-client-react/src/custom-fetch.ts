@@ -15,7 +15,17 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 // Module-level configuration
 // ---------------------------------------------------------------------------
 
-let _baseUrl: string | null = null;
+function normalizeBaseUrl(url: string | null | undefined): string | null {
+  const trimmed = url?.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\/+$/, "");
+}
+
+// Prefer Vite env in web builds (production on Render, etc.)
+// Falls back to null in non-Vite runtimes (e.g. Expo / Node).
+const _envBaseUrl = normalizeBaseUrl((import.meta as any)?.env?.VITE_API_URL);
+
+let _baseUrl: string | null = _envBaseUrl;
 let _authTokenGetter: AuthTokenGetter | null = null;
 
 function shouldIncludeCredentials(url: string): boolean {
@@ -69,8 +79,8 @@ function isUrl(input: RequestInfo | URL): input is URL {
 function applyBaseUrl(input: RequestInfo | URL): RequestInfo | URL {
   if (!_baseUrl) return input;
   const url = resolveUrl(input);
-  // Only prepend to relative paths (starting with /)
-  if (!url.startsWith("/")) return input;
+  // Only prepend to API paths
+  if (!url.startsWith("/api")) return input;
 
   const absolute = `${_baseUrl}${url}`;
   if (typeof input === "string") return absolute;

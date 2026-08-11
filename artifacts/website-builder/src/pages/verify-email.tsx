@@ -8,6 +8,7 @@ import { MailCheck } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey } from "@workspace/api-client-react";
 import { formatCountdown, useOtpCountdown } from "@/lib/use-otp-countdown";
+import { apiFetch } from "@/lib/api-fetch";
 
 export default function VerifyEmail() {
   const search = useSearch();
@@ -35,11 +36,10 @@ export default function VerifyEmail() {
     }
     setIsLoading(true);
     try {
-      const res = await fetch("/api/auth/verify-signup-otp", {
+      const res = await apiFetch("/api/auth/verify-signup-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp: otp.trim() }),
-        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) {
@@ -59,11 +59,10 @@ export default function VerifyEmail() {
   async function handleResend() {
     setResendLoading(true);
     try {
-      const res = await fetch("/api/auth/send-signup-otp", {
+      const res = await apiFetch("/api/auth/send-signup-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
-        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) {
