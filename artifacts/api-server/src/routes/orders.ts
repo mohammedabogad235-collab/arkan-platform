@@ -8,8 +8,8 @@ import {
   paymentMethodsTable,
   siteSettingsTable,
   usersTable,
-  messagesTable,       // 👈 أضفنا جدول الرسائل
-  notificationsTable,  // 👈 أضفنا جدول الإشعارات
+  messagesTable,
+  notificationsTable,
 } from "@workspace/db";
 import { Api } from "@workspace/api-zod";
 import {
@@ -21,7 +21,7 @@ import {
   sendOrderReceiptUploadedEmail,
   sendOrderReceivedEmail,
   sendOrderStatusUpdateEmail,
-  sendChatReplyEmail, // 👈 دالة إرسال إيميل الرد على المحادثة
+  sendChatReplyEmail,
 } from "../lib/mailer";
 import { asyncHandler } from "../lib/http";
 import { logger } from "../lib/logger";
@@ -124,7 +124,6 @@ async function isAdmin(req: any): Promise<boolean> {
   return user?.role === "admin" || user?.role === "subadmin";
 }
 
-// 🛡️ دالة التحقق من صلاحيات المشرفين الفرعيين
 async function checkPermission(req: any, permission: "canViewMessages" | "canReplyMessages"): Promise<boolean> {
   const { userId, role } = getSession(req);
   if (!userId) return false;
@@ -368,7 +367,7 @@ router.delete("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   }
 }));
 
-// POST /orders/:id/receipt (الدفعة المقدمة بالنصوص)
+// POST /orders/:id/receipt 
 router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
   const orderId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   if (isNaN(orderId)) { res.status(400).json({ error: "معرف غير صالح" }); return; }
@@ -430,7 +429,7 @@ router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
   res.json(updated);
 });
 
-// POST /orders/:id/final-receipt (الدفعة النهائية بالنصوص)
+// POST /orders/:id/final-receipt 
 router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
   const orderId = parseInt(req.params.id as string, 10);
   if (isNaN(orderId)) { res.status(400).json({ error: "معرف غير صالح" }); return; }
@@ -679,12 +678,11 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
 // 💬 نظام الرسائل والشات (Chat System)
 // ==========================================
 
-// جلب قائمة العملاء للأدمن (مع استبعاد المديرين)
+// جلب قائمة العملاء للأدمن
 router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => {
   const hasAccess = await checkPermission(req, "canViewMessages");
   if (!hasAccess) { res.status(403).json({ error: "غير مصرح لك برؤية الرسائل" }); return; }
 
-  // جلب المستخدمين العاديين فقط
   const clients = await db.select().from(usersTable).where(eq(usersTable.role, "user"));
   
   const formattedClients = clients.map(c => ({
@@ -697,8 +695,8 @@ router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => 
   res.json(formattedClients);
 }));
 
-// جلب رسائل المحادثة بين العميل والإدارة
-router.get("/messages/:userId?", asyncHandler(async (req, res): Promise<void> => {
+// 🚨 التعديل السحري هنا: استخدام مسارين منفصلين بدلاً من علامة الاستفهام
+router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Promise<void> => {
   const { userId: sessionUserId, role } = getSession(req);
   if (!sessionUserId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
@@ -708,7 +706,7 @@ router.get("/messages/:userId?", asyncHandler(async (req, res): Promise<void> =>
     const hasAccess = await checkPermission(req, "canViewMessages");
     if (!hasAccess) { res.status(403).json({ error: "غير مصرح لك برؤية الرسائل" }); return; }
     if (req.params.userId) {
-      targetUserId = parseInt(req.params.userId as string, 10); // 👈 تم التعديل هنا
+      targetUserId = parseInt(req.params.userId as string, 10);
     }
   }
 
@@ -795,7 +793,7 @@ router.get("/notifications", asyncHandler(async (req, res): Promise<void> => {
 
 router.patch("/notifications/:id/read", asyncHandler(async (req, res): Promise<void> => {
   const { userId } = getSession(req);
-  const notifId = parseInt(req.params.id as string, 10); // 👈 تم التعديل هنا
+  const notifId = parseInt(req.params.id as string, 10); 
   
   if (!userId || isNaN(notifId)) { res.status(400).json({ error: "بيانات غير صالحة" }); return; }
 
