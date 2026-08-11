@@ -78,9 +78,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
         آراء العملاء
       </Link>
       {isAuthenticated && (
-        <Link href="/my-orders" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-          طلباتي
-        </Link>
+        <>
+          <Link href="/my-orders" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+            طلباتي
+          </Link>
+          {/* 👈 تم إضافة رابط المحادثة هنا ليظهر للعملاء المسجلين */}
+          <Link href="/chat" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+            المحادثة
+          </Link>
+        </>
       )}
       {isAdmin && (
         <Link href="/admin" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
