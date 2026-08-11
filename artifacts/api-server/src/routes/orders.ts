@@ -740,9 +740,9 @@ router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
     if (!hasAccess) { res.status(403).json({ error: "ليس لديك صلاحية للرد على الرسائل" }); return; }
   }
 
-  let actualReceiverId = receiverId;
+  let actualReceiverId = receiverId ? Number(receiverId) : null;
 
-  if (!isAdminUser) {
+  if (!isAdminUser || !actualReceiverId) {
     const adminUser = await db.select().from(usersTable).where(or(eq(usersTable.role, "admin"), eq(usersTable.role, "subadmin"))).limit(1);
     
     if (adminUser && adminUser.length > 0) {
