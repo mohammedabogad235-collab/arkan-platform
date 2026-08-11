@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Send, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ChatPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -17,7 +19,7 @@ export default function ChatPage() {
 
   const fetchMessages = async () => {
     try {
-      const res = await apiFetch("/messages");
+      const res = await apiFetch("/api/messages");
       if (res.ok) {
         const data = await res.json();
         setMessages(data);
@@ -29,7 +31,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     fetchMessages();
-    const interval = setInterval(fetchMessages, 5000); // تحديث تلقائي كل 5 ثوانٍ
+    const interval = setInterval(fetchMessages, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -39,28 +41,32 @@ export default function ChatPage() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || loading) return;
 
     setLoading(true);
     try {
-      const res = await apiFetch("/messages", {
+      const res = await apiFetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: newMessage.trim() }),
       });
+
       if (res.ok) {
         setNewMessage("");
         fetchMessages();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "خطأ", description: data.error || "تعذر إرسال الرسالة" });
       }
     } catch (err) {
-      console.error(err);
+      toast({ variant: "destructive", title: "خطأ", description: "حدث خطأ في الاتصال، حاول مرة أخرى" });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="container mx-auto px-4 py-12 max-w-4xl">
       <Card className="h-[75vh] flex flex-col shadow-lg border">
         <CardHeader className="border-b bg-muted/30 py-4 px-6 flex flex-row items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -109,7 +115,7 @@ export default function ChatPage() {
             />
             <Button type="submit" disabled={loading || !newMessage.trim()} className="h-12 px-6 gap-2">
               <Send className="w-4 h-4" />
-              إرسال
+              {loading ? "جاري الإرسال..." : "إرسال"}
             </Button>
           </form>
         </div>
