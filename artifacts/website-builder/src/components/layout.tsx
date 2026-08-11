@@ -8,7 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useSettings } from "@/lib/use-settings";
 
-export default function Layout({ children }: { children: ReactNode }) {
+export function Layout({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth();
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -27,7 +27,6 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   
-  // دالة جلب عدد الرسائل مع حل مشكلة الـ TypeScript Strict Mode
   useEffect(() => {
     if (isClient && isAuthenticated) {
       const fetchUnread = async () => {
@@ -43,7 +42,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       const interval = setInterval(fetchUnread, 5000);
       return () => clearInterval(interval);
     }
-    return undefined; // 👈 تم إضافة هذا السطر لحل خطأ ts(7030)
+    return undefined;
   }, [isClient, isAuthenticated]);
 
   const showFloatingChatBubble = isAuthenticated && isClient && !isAdminPage && location !== "/chat";
@@ -275,3 +274,5 @@ export default function Layout({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+export default Layout;
