@@ -40,7 +40,7 @@ import {
   CreditCard, Package, BarChart3, Globe, Phone, Mail, MapPin,
   Facebook, Instagram, Twitter, ChevronDown, ChevronUp, Check, X,
   Clock, Banknote, Star, ArrowUpRight, Tag, ToggleLeft, ToggleRight, Calendar, Shield, Lock, Unlock,
-  MessageCircle, Bell, Send // أيقونات المحادثة والإشعارات
+  MessageCircle, Bell, Send
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -48,14 +48,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch, apiFetchJson } from "@/lib/api-fetch";
 
-// التحقق من وجود بيانات التحويل النصية (3 حقول)
 function hasTransferDetails(order: any): boolean {
   return [order?.transferAccount, order?.accountName, order?.transferAmount].every(
     (value) => typeof value === "string" && value.trim().length > 0,
   );
 }
 
-// تحديث حالة الطلب وإزالة الاعتماد على الصور
 function getAdminOrderStatus(order: any): { label: string; color: string; bg: string; dot: string } {
   const { status, totalAmount, depositPaid, finalPaid } = order;
 
@@ -75,11 +73,10 @@ function getAdminOrderStatus(order: any): { label: string; color: string; bg: st
   return { label: status, color: "text-gray-700", bg: "bg-gray-100 border-gray-200", dot: "bg-gray-500" };
 }
 
-// إضافة المحادثات للقائمة
 const ALL_NAV = [
-  { id: "overview",    label: "الإحصائيات",      icon: BarChart3,     adminOnly: false },
+  { id: "overview",    label: "الإحصائيات",     icon: BarChart3,     adminOnly: false },
   { id: "orders",      label: "الطلبات",         icon: ShoppingCart,  adminOnly: false },
-  { id: "messages",    label: "الرسائل",         icon: MessageCircle, adminOnly: false }, // تمت الإضافة
+  { id: "messages",    label: "الرسائل",         icon: MessageCircle, adminOnly: false },
   { id: "finances",    label: "المالية",         icon: TrendingUp,    adminOnly: false },
   { id: "users",       label: "المستخدمين",      icon: Users,         adminOnly: false },
   { id: "packages",    label: "الباقات",         icon: Package,       adminOnly: false },
@@ -91,7 +88,6 @@ const ALL_NAV = [
   { id: "subadmins",   label: "مشرفون فرعيون",   icon: Shield,        adminOnly: true  },
 ];
 
-// تحديث الصلاحيات
 const PERMISSIONS_LIST = [
   { id: "overview",  label: "الإحصائيات" },
   { id: "orders",    label: "الطلبات" },
@@ -102,8 +98,8 @@ const PERMISSIONS_LIST = [
   { id: "reviews",   label: "الآراء" },
   { id: "coupons",   label: "الكوبونات" },
   { id: "settings",  label: "الإعدادات" },
-  { id: "messages",  label: "رؤية الرسائل" }, // صلاحية الرؤية
-  { id: "reply_messages", label: "الرد على الرسائل" }, // صلاحية الرد
+  { id: "messages",  label: "رؤية الرسائل" },
+  { id: "reply_messages", label: "الرد على الرسائل" },
 ];
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
@@ -182,8 +178,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
   const [amountInput, setAmountInput] = useState(order.totalAmount?.toString() ?? "");
   const [savingAmount, setSavingAmount] = useState(false);
   const liveAmount = amountInput !== "" ? Number(amountInput) : null;
-  const deposit = liveAmount ? Math.round((liveAmount * pct) / 100) : null;
-  const remaining = liveAmount && deposit !== null ? liveAmount - deposit : null;
   const displayStatus = getAdminOrderStatus(order);
 
   return (
@@ -400,7 +394,6 @@ function OrderCard({ order, expanded, onToggle, onStatusChange, onPaymentChange,
 
               <DeliveredUrlInput order={order} />
 
-              {/* بيانات التحويل (تم تعديلها للنصوص فقط وإزالة أي صور) */}
               {hasTransferDetails(order) && (
                 <div className="bg-white rounded-xl border p-3 space-y-3">
                   <div className="flex items-center justify-between gap-3">
@@ -505,7 +498,6 @@ export default function Admin() {
   const [profileForm, setProfileForm] = useState({ phone: "", email: "", password: "", confirm: "" });
   const [profileSaving, setProfileSaving] = useState(false);
 
-  // إعدادات الشات والإشعارات
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [chatUsers, setChatUsers] = useState<any[]>([]);
@@ -565,7 +557,6 @@ export default function Admin() {
     if (activeTab === "messages") fetchChatUsers();
   }, [activeTab]);
 
-  // جلب الإشعارات الخاصة بالأدمن بشكل دوري
   const fetchNotifications = async () => {
     try {
       const res = await apiFetch("/api/notifications");
@@ -575,7 +566,7 @@ export default function Admin() {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000); // تحديث كل 15 ثانية
+    const interval = setInterval(fetchNotifications, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -597,12 +588,23 @@ export default function Admin() {
     try {
       const res = await apiFetch(`/api/messages/${userId}`);
       if (res.ok) {
-        setMessages(await res.json());
-        // تحديث قائمة اليوزرز عشان نشيل الشارة لو فيه رسايل غير مقروءة
+        const data = await res.json();
+        setMessages(data);
         fetchChatUsers();
       }
-    } catch (err) { }
+    } catch (err) {
+      console.error(err);
+    }
   };
+
+  // 🚨 تحديث تلقائي للرسائل كل 4 ثوانٍ لو العميل مفتوح في الشات
+  useEffect(() => {
+    if (!selectedChatUser) return;
+    const interval = setInterval(() => {
+      fetchMessages(selectedChatUser.id);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [selectedChatUser]);
 
   const handleSelectChatUser = (u: any) => {
     setSelectedChatUser(u);
@@ -611,16 +613,21 @@ export default function Admin() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!msgInput.trim() || !selectedChatUser) return;
+    if (!msgInput.trim() || !selectedChatUser || sendingMsg) return;
     setSendingMsg(true);
     try {
-      await apiFetchJson("/api/messages", {
+      const res = await apiFetchJson("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ receiverId: selectedChatUser.id, content: msgInput.trim() })
+        body: JSON.stringify({ 
+          receiverId: selectedChatUser.id, 
+          content: msgInput.trim() 
+        })
       });
-      setMsgInput("");
-      fetchMessages(selectedChatUser.id);
+      if (res) {
+        setMsgInput("");
+        fetchMessages(selectedChatUser.id);
+      }
     } catch (err: any) {
       toast({ variant: "destructive", title: "خطأ في الإرسال", description: err.message });
     } finally {
@@ -1077,7 +1084,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* الإشعارات */}
           <div className="relative">
             <Button variant="ghost" size="icon" className="relative" onClick={() => setNotifOpen(true)}>
               <Bell className="w-5 h-5 text-muted-foreground" />
@@ -1299,9 +1305,9 @@ export default function Admin() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 <StatCard icon={DollarSign}  label="صافي الإيرادات (بعد الخصم)" value={totalRevenue.toLocaleString()}     color="bg-primary/10 text-primary" />
-                <StatCard icon={Banknote}    label="مقدمات محصلة"               value={depositCollected.toFixed(0)}        color="bg-amber-100 text-amber-600" />
-                <StatCard icon={CheckCircle} label="مبالغ نهائية محصلة"         value={finalCollected.toFixed(0)}          color="bg-green-100 text-green-600" />
-                <StatCard icon={Tag}         label="إجمالي الخصومات الممنوحة"    value={totalDiscounts.toLocaleString()}    color="bg-purple-100 text-purple-600" />
+                <StatCard icon={Banknote}    label="مقدمات محصلة"               value={depositCollected.toFixed(0)}         color="bg-amber-100 text-amber-600" />
+                <StatCard icon={CheckCircle} label="مبالغ نهائية محصلة"       value={finalCollected.toFixed(0)}          color="bg-green-100 text-green-600" />
+                <StatCard icon={Tag}         label="إجمالي الخصومات الممنوحة"    value={totalDiscounts.toLocaleString()}     color="bg-purple-100 text-purple-600" />
               </div>
               <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b">
