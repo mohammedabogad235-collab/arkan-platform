@@ -1,27 +1,20 @@
 /**
  * API Fetch Wrapper
  * - يحل مشكلة "Failed to fetch" في الإنتاج عندما تكون طلبات الفرونت `/api/...` نسبية
- * - يقرأ الـ Base URL من `import.meta.env.VITE_API_URL`
+ * - يجبر الـ Base URL على الإنتاج دائماً
  * - يضيفه تلقائياً فقط قبل أي مسار يبدأ بـ `/api`
  */
 
-function normalizeBaseUrl(url: string | null | undefined): string | null {
-  const trimmed = url?.trim();
-  if (!trimmed) return null;
-  return trimmed.replace(/\/+$/, "");
-}
-
-const API_BASE_URL = normalizeBaseUrl((import.meta as any)?.env?.VITE_API_URL);
+const API_BASE_URL = "https://arkan-platform.onrender.com";
 
 export function resolveApiUrl(url: string): string {
   if (!url.startsWith("/api")) return url;
-  if (!API_BASE_URL) return url; // في التطوير مع proxy تظل شغالة
   return `${API_BASE_URL}${url}`;
 }
 
 /**
  * نفس `fetch` لكن:
- * - يحول `/api/...` إلى `VITE_API_URL + /api/...`
+ * - يحول `/api/...` إلى عنوان مطلق على سيرفر الإنتاج
  * - يضع `credentials: "include"` افتراضياً (مهم للجلسات والكوكيز)
  */
 export function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
@@ -49,4 +42,3 @@ export async function apiFetchJson<T = any>(
   }
   return data as T;
 }
-

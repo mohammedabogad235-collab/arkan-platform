@@ -74,7 +74,7 @@ export default function Privacy() {
         </div>
       ) : (
         <div className="prose prose-lg max-w-none space-y-6 text-foreground">
-          {DEFAULT_PRIVACY.map((section, i) => (
+          {(Array.isArray(DEFAULT_PRIVACY) ? DEFAULT_PRIVACY : []).map((section, i) => (
             <section key={i} className="bg-card rounded-2xl p-6 border shadow-sm">
               <h2 className="text-xl font-bold mb-4 text-primary">{section.title}</h2>
               <p className="text-muted-foreground leading-relaxed">{section.body}</p>

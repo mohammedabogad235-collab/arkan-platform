@@ -303,7 +303,7 @@ router.get("/orders", async (req, res): Promise<void> => {
     .where(where.length ? (where.length === 1 ? where[0] : and(...where)) : undefined)
     .orderBy(ordersTable.id);
 
-  const formatted = rows.filter((r) => Boolean(r.user)).map((r) =>
+  const formatted = (Array.isArray(rows) ? rows : []).filter((r) => Boolean(r.user)).map((r) =>
     formatOrderRow({ order: r.order, user: r.user!, pkg: r.pkg ?? null, pm: r.pm ?? null })
   );
 
@@ -722,8 +722,8 @@ router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => 
   
   const unreadMessages = await db.select().from(messagesTable).where(eq(messagesTable.isRead, false));
 
-  const formattedClients = clients.map(c => {
-    const count = unreadMessages.filter(m => m.senderId === c.id).length;
+  const formattedClients = (Array.isArray(clients) ? clients : []).map(c => {
+    const count = (Array.isArray(unreadMessages) ? unreadMessages : []).filter(m => m.senderId === c.id).length;
     return {
       id: c.id,
       fullName: c.fullName,

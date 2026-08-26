@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { AuthProvider, ProtectedRoute } from "@/lib/auth";
 import { Layout } from "@/components/layout";
 
@@ -17,7 +18,6 @@ import AdminLogin from "@/pages/admin-login";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
 import ForgotPassword from "@/pages/forgot-password";
-import NotFound from "@/pages/not-found";
 import Chat from "@/pages/chat";
 
 const queryClient = new QueryClient();
@@ -64,7 +64,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route component={NotFound} />
+      <Route component={Home} />
     </Switch>
   );
 
@@ -77,8 +77,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
+          <WouterRouter>
+            <ErrorBoundary title="Router runtime error">
+              <Router />
+            </ErrorBoundary>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>

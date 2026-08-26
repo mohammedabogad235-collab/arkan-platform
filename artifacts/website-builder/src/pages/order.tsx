@@ -228,8 +228,8 @@ export default function Order() {
 
   const watchedPaymentMethodId = form.watch("paymentMethodId");
   const watchedCurrency = form.watch("currency");
-  const allActivePaymentMethods = paymentMethods?.filter(p => p.isActive) || [];
-  const activePaymentMethods = allActivePaymentMethods.filter(
+  const allActivePaymentMethods = (Array.isArray(paymentMethods) ? paymentMethods : []).filter((p) => p?.isActive);
+  const activePaymentMethods = (Array.isArray(allActivePaymentMethods) ? allActivePaymentMethods : []).filter(
     p => (p as any).currency === watchedCurrency || (p as any).currency === "both" || !(p as any).currency
   );
   const selectedPaymentMethod = activePaymentMethods.find(p => p.id === watchedPaymentMethodId) || null;
@@ -477,7 +477,7 @@ export default function Order() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {activePaymentMethods.map(p => (
+                              {(Array.isArray(activePaymentMethods) ? activePaymentMethods : []).map(p => (
                                 <SelectItem key={p.id} value={p.id.toString()}>
                                   {p.name}
                                 </SelectItem>

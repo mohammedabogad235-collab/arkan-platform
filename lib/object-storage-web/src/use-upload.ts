@@ -1,17 +1,11 @@
 import { useState, useCallback } from "react";
 import type { UppyFile } from "@uppy/core";
 
-function normalizeBaseUrl(url: string | null | undefined): string | null {
-  const trimmed = url?.trim();
-  if (!trimmed) return null;
-  return trimmed.replace(/\/+$/, "");
-}
+const FORCED_API_ORIGIN = "https://arkan-platform.onrender.com";
 
 function resolveApiBasePath(path: string): string {
   if (!path.startsWith("/api")) return path;
-  const baseUrl = normalizeBaseUrl((import.meta as any)?.env?.VITE_API_URL);
-  if (!baseUrl) return path;
-  return `${baseUrl}${path}`;
+  return `${FORCED_API_ORIGIN}${path}`;
 }
 
 interface UploadMetadata {

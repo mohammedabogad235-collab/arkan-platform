@@ -100,7 +100,7 @@ router.get("/subadmins", asyncHandler(async (req, res): Promise<void> => {
   const list = await db.select().from(usersTable)
     .where(eq(usersTable.role, "subadmin"))
     .orderBy(usersTable.createdAt);
-  res.json(list.map(sanitizeSubAdmin));
+  res.json((Array.isArray(list) ? list : []).map(sanitizeSubAdmin));
 }));
 
 router.post("/subadmins", asyncHandler(async (req, res): Promise<void> => {

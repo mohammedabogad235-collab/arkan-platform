@@ -19,13 +19,14 @@ export default function ChatPage() {
 
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
+  const safeMessages = Array.isArray(messages) ? messages : [];
 
   const fetchMessages = async () => {
     try {
       const res = await apiFetch("/api/messages");
       if (res.ok) {
         const data = await res.json();
-        setMessages(data);
+        setMessages(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error(err);
@@ -40,7 +41,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [safeMessages.length]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,12 +121,12 @@ export default function ChatPage() {
         </CardHeader>
 
         <CardContent className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
-          {messages.length === 0 ? (
+          {safeMessages.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
               <p>لا توجد رسائل سابقة. ابدأ المحادثة وسيقوم فريق الدعم بالرد عليك قريباً.</p>
             </div>
           ) : (
-            messages.map((msg) => {
+            (Array.isArray(safeMessages) ? safeMessages : []).map((msg) => {
               const isMe = msg.senderId === user?.id;
               const isAdminOrSubadmin = user?.role === "admin" || user?.role === "subadmin";
               

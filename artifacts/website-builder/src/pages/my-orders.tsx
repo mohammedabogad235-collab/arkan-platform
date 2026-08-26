@@ -365,7 +365,8 @@ export default function MyOrders() {
   const { data: orders, isLoading } = useListOrders({ userId: user?.id });
   const { data: settings } = useSettings();
   const { data: allPaymentMethods } = useListPaymentMethods();
-  const activePMs = (allPaymentMethods || []).filter((pm: any) => pm.isActive);
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  const activePMs = (Array.isArray(allPaymentMethods) ? allPaymentMethods : []).filter((pm: any) => pm?.isActive);
 
   if (isLoading) {
     return (
@@ -390,7 +391,7 @@ export default function MyOrders() {
         <p className="text-muted-foreground text-lg">تابع حالة طلباتك ومراحل تنفيذ مواقعك.</p>
       </div>
 
-      {(!orders || orders.length === 0) ? (
+      {safeOrders.length === 0 ? (
         <Card className="text-center py-16 border-dashed border-2">
           <CardContent className="flex flex-col items-center justify-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-4">
@@ -410,7 +411,7 @@ export default function MyOrders() {
             { status: "completed",   label: "مكتمل",        dot: "bg-green-400", badge: "text-green-700 bg-green-50 border-green-200" },
             { status: "cancelled",   label: "ملغي",         dot: "bg-red-400",   badge: "text-red-700 bg-red-50 border-red-200" },
           ].map(({ status: grpStatus, label: grpLabel, dot, badge }) => {
-            const groupOrders = orders.filter(o => o.status === grpStatus);
+            const groupOrders = (Array.isArray(safeOrders) ? safeOrders : []).filter((o) => o?.status === grpStatus);
             if (groupOrders.length === 0) return null;
             return (
               <div key={grpStatus}>
@@ -421,7 +422,7 @@ export default function MyOrders() {
                   <div className="flex-1 h-px bg-border/60" />
                 </div>
                 <div className="space-y-6">
-                {groupOrders.map((order) => {
+                {(Array.isArray(groupOrders) ? groupOrders : []).map((order) => {
             const requireDeposit = settings?.requireDeposit ?? true;
             const depositPct = order.depositPercentage ?? settings?.depositPercentageValue ?? 50;
             const totalAmount = (order as any).totalAmount ? Number((order as any).totalAmount) : null;
@@ -513,7 +514,7 @@ export default function MyOrders() {
                           ) : activePMs.length > 0 ? (
                             <div className="space-y-2">
                               <p className="text-amber-800 font-medium">حسابات الدفع المتاحة:</p>
-                              {activePMs.map((pm: any) => (
+                              {(Array.isArray(activePMs) ? activePMs : []).map((pm: any) => (
                                 <div key={pm.id} className="bg-amber-100 border border-amber-200 rounded-xl px-3 py-2.5 space-y-0.5">
                                   <p className="font-semibold text-xs text-amber-900">{pm.name}</p>
                                   {pm.details && (
@@ -545,7 +546,7 @@ export default function MyOrders() {
                                 <p className="text-blue-800 text-xs whitespace-pre-line font-mono leading-relaxed">{order.paymentMethod.details}</p>
                               )}
                             </div>
-                          ) : activePMs.map((pm: any) => (
+                          ) : (Array.isArray(activePMs) ? activePMs : []).map((pm: any) => (
                             <div key={pm.id} className="bg-white border border-blue-200 rounded-xl px-3 py-2.5 space-y-0.5">
                               <p className="font-semibold text-xs text-blue-900">{pm.name}</p>
                               {pm.details && (

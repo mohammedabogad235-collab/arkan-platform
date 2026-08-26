@@ -21,7 +21,7 @@ export default function Testimonials() {
   const [form, setForm] = useState({ clientName: user?.fullName || "", rating: 5, comment: "" });
   const [submitted, setSubmitted] = useState(false);
 
-  const activeTestimonials = testimonials?.filter(t => t.isActive) || [];
+  const activeTestimonials = (Array.isArray(testimonials) ? testimonials : []).filter((t) => t?.isActive);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +62,7 @@ export default function Testimonials() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {activeTestimonials.map((testimonial, i) => (
+          {(Array.isArray(activeTestimonials) ? activeTestimonials : []).map((testimonial, i) => (
             <motion.div
               key={testimonial.id}
               initial={{ opacity: 0, y: 20 }}

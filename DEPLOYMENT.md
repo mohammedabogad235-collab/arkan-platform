@@ -103,7 +103,7 @@ When creating a **Web Service** on Render:
 ```bash
 cd artifacts/website-builder
 cp .env.example .env
-# Edit .env to set VITE_API_URL=http://localhost:8080
+# Edit .env to set VITE_API_URL=https://arkan-platform.onrender.com
 pnpm run dev
 ```
 

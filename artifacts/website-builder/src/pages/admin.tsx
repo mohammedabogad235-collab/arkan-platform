@@ -106,7 +106,7 @@ const PERMISSIONS_LIST = [
 ];
 
 function hasNavPermission(navId: string, permissions: string[] = []): boolean {
-  const cleanPerms = permissions.map(p => p.trim());
+  const cleanPerms = (Array.isArray(permissions) ? permissions : []).map((p) => p.trim());
   if (navId === "messages") return cleanPerms.includes("messages") || cleanPerms.includes("view_messages");
   if (navId === "operations") return cleanPerms.includes("operations") || cleanPerms.includes("orders");
   return cleanPerms.includes(navId);
@@ -478,7 +478,7 @@ const DEFAULT_PRIVACY_TEXT = `1. التزامنا بحماية خصوصيتك...
 export default function Admin() {
   const { user: currentUser } = useAuth();
   const isMainAdmin = currentUser?.role === "admin";
-  const userPermissions: string[] = (currentUser as any)?.permissions || [];
+  const userPermissions: string[] = Array.isArray((currentUser as any)?.permissions) ? (currentUser as any).permissions : [];
   
   const canViewMessages = isMainAdmin || hasNavPermission("messages", userPermissions);
   const canReplyMessages = isMainAdmin || userPermissions.includes("reply_messages");
@@ -519,6 +519,7 @@ export default function Admin() {
   const [messages, setMessages] = useState<any[]>([]);
   const [msgInput, setMsgInput] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
+  const safeMessages = Array.isArray(messages) ? messages : [];
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
@@ -578,7 +579,10 @@ export default function Admin() {
   const fetchNotifications = async () => {
     try {
       const res = await apiFetch("/api/notifications");
-      if (res.ok) setNotifications(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(Array.isArray(data) ? data : []);
+      }
     } catch (err) { }
   };
 
@@ -599,7 +603,8 @@ export default function Admin() {
     try {
       const res = await apiFetch("/api/admin/chat-users");
       if (res.ok) {
-        const usersList = await res.json();
+        const data = await res.json();
+        const usersList = Array.isArray(data) ? data : [];
         setChatUsers(usersList);
         if (selectedChatUser?.id) {
           const refreshedSelectedUser = usersList.find((user: any) => user.id === selectedChatUser.id) ?? null;
@@ -648,7 +653,7 @@ export default function Admin() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [safeMessages.length]);
 
   const handleSelectChatUser = (u: any) => {
     setSelectedChatUser(u);
@@ -761,6 +766,15 @@ export default function Admin() {
   const [subadminEditId, setSubadminEditId] = useState<number | null>(null);
   const [subadminForm, setSubadminForm] = useState<typeof emptySubAdmin>(emptySubAdmin);
   const [subadminFormLoading, setSubadminFormLoading] = useState(false);
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  const safeUsers = Array.isArray(users) ? users : [];
+  const safePackages = Array.isArray(packages) ? packages : [];
+  const safePaymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
+  const safeTestimonials = Array.isArray(testimonials) ? testimonials : [];
+  const safeNotifications = Array.isArray(notifications) ? notifications : [];
+  const safeChatUsers = Array.isArray(chatUsers) ? chatUsers : [];
+  const safeCoupons = Array.isArray(coupons) ? coupons : [];
+  const safeSubadmins = Array.isArray(subadmins) ? subadmins : [];
 
   const handleUpdateOrderStatus = (orderId: number, status: string) => {
     updateOrder.mutate({ id: orderId, data: { status } }, {
@@ -787,7 +801,8 @@ export default function Admin() {
         try {
           const res = await apiFetch("/api/coupons");
           if (res.ok) {
-            const allCoupons = await res.json();
+            const data = await res.json();
+            const allCoupons = Array.isArray(data) ? data : [];
             const targetCoupon = allCoupons.find((c: any) => c.code === couponCode && c.isActive);
             if (targetCoupon) {
               if (targetCoupon.discountType === "percentage") {
@@ -944,7 +959,10 @@ export default function Admin() {
     setCouponsLoading(true);
     try {
       const res = await apiFetch("/api/coupons");
-      if (res.ok) setCoupons(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setCoupons(Array.isArray(data) ? data : []);
+      }
     } finally { setCouponsLoading(false); }
   };
 
@@ -1001,7 +1019,10 @@ export default function Admin() {
     setSubadminsLoading(true);
     try {
       const res = await apiFetch("/api/subadmins");
-      if (res.ok) setSubadmins(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setSubadmins(Array.isArray(data) ? data : []);
+      }
     } finally { setSubadminsLoading(false); }
   };
 
@@ -1131,17 +1152,17 @@ export default function Admin() {
     });
   };
 
-  const allOrders = orders || [];
+  const allOrders = Array.isArray(safeOrders) ? safeOrders : [];
   const effectiveAmt = (o: any) => Math.max(0, (o.totalAmount || 0) - (o.discountAmount || 0));
   const totalRevenue = allOrders.reduce((s, o) => s + effectiveAmt(o as any), 0);
   const totalDiscounts = allOrders.reduce((s, o) => s + ((o as any).discountAmount || 0), 0);
-  const depositCollected = allOrders.filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * p / 100); }, 0);
-  const finalCollected = allOrders.filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * (100 - p) / 100); }, 0);
-  const pendingReceipts = allOrders.filter(o => hasTransferDetails(o) && !o.depositPaid).length;
+  const depositCollected = (Array.isArray(allOrders) ? allOrders : []).filter(o => o.depositPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * p / 100); }, 0);
+  const finalCollected = (Array.isArray(allOrders) ? allOrders : []).filter(o => o.finalPaid).reduce((s, o) => { const p = o.depositPercentage ?? 50; return s + (effectiveAmt(o as any) * (100 - p) / 100); }, 0);
+  const pendingReceipts = (Array.isArray(allOrders) ? allOrders : []).filter(o => hasTransferDetails(o) && !o.depositPaid).length;
 
   const NAV = isMainAdmin
-    ? ALL_NAV
-    : ALL_NAV.filter((navItem) => !navItem.adminOnly && hasNavPermission(navItem.id, userPermissions));
+    ? (Array.isArray(ALL_NAV) ? ALL_NAV : [])
+    : (Array.isArray(ALL_NAV) ? ALL_NAV : []).filter((navItem) => !navItem.adminOnly && hasNavPermission(navItem.id, userPermissions));
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" dir="rtl">
@@ -1167,7 +1188,7 @@ export default function Admin() {
           <div className="relative">
             <Button variant="ghost" size="icon" className="relative" onClick={() => setNotifOpen(true)}>
               <Bell className="w-5 h-5 text-muted-foreground" />
-              {notifications.filter(n => !n.isRead).length > 0 && (
+              {(Array.isArray(safeNotifications) ? safeNotifications : []).filter((n) => !n?.isRead).length > 0 && (
                 <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
               )}
             </Button>
@@ -1177,10 +1198,10 @@ export default function Admin() {
                   <DialogTitle>الإشعارات</DialogTitle>
                 </DialogHeader>
                 <div className="overflow-y-auto flex-1 p-2 space-y-2">
-                  {notifications.length === 0 ? (
+                  {safeNotifications.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8 text-sm">لا توجد إشعارات</p>
                   ) : (
-                    notifications.map(n => (
+                    (Array.isArray(safeNotifications) ? safeNotifications : []).map((n) => (
                       <div key={n.id} className={`p-3 rounded-lg border ${!n.isRead ? "bg-primary/5 border-primary/20" : "bg-white"} cursor-pointer hover:bg-muted transition-colors`} onClick={() => { handleMarkNotifRead(n.id); setActiveTab("messages"); setNotifOpen(false); }}>
                         <p className={`text-sm ${!n.isRead ? "font-bold text-primary" : "text-muted-foreground"}`}>{n.message}</p>
                         <p className="text-xs text-muted-foreground mt-1">{format(new Date(n.createdAt), "dd MMM HH:mm", { locale: ar })}</p>
@@ -1211,7 +1232,7 @@ export default function Admin() {
       <div className="flex flex-1">
         <aside className="hidden md:flex w-52 bg-white border-l sticky top-14 self-start h-[calc(100vh-3.5rem)] flex-col shadow-sm shrink-0 overflow-y-auto py-4">
           <nav className="flex flex-col gap-1 px-3">
-            {NAV.map(item => {
+            {(Array.isArray(NAV) ? NAV : []).map(item => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
@@ -1251,7 +1272,7 @@ export default function Admin() {
                   </Button>
                 </div>
                 <div className="space-y-3">
-                  {allOrders.slice(-5).reverse().map(order => (
+                  {(Array.isArray(allOrders) ? allOrders : []).slice(-5).reverse().map(order => (
                     <div key={order.id} className="bg-white rounded-xl border px-4 py-3 flex items-center gap-4">
                       <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                         <Globe className="w-4 h-4 text-primary" />
@@ -1283,7 +1304,7 @@ export default function Admin() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">تحويلات بانتظار التأكيد</p>
-                    <p className="text-2xl font-bold">{allOrders.filter(o => hasTransferDetails(o) && !o.depositPaid).length}</p>
+                    <p className="text-2xl font-bold">{(Array.isArray(allOrders) ? allOrders : []).filter(o => hasTransferDetails(o) && !o.depositPaid).length}</p>
                   </div>
                 </div>
 
@@ -1293,7 +1314,7 @@ export default function Admin() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">طلبات قيد التنفيذ</p>
-                    <p className="text-2xl font-bold">{allOrders.filter(o => o.status === 'in_progress' || o.status === 'started').length}</p>
+                    <p className="text-2xl font-bold">{(Array.isArray(allOrders) ? allOrders : []).filter(o => o.status === 'in_progress' || o.status === 'started').length}</p>
                   </div>
                 </div>
 
@@ -1303,7 +1324,7 @@ export default function Admin() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">طلبات جاهزة للتسليم</p>
-                    <p className="text-2xl font-bold">{allOrders.filter(o => o.status === 'completed').length}</p>
+                    <p className="text-2xl font-bold">{(Array.isArray(allOrders) ? allOrders : []).filter(o => o.status === 'completed').length}</p>
                   </div>
                 </div>
               </div>
@@ -1311,7 +1332,7 @@ export default function Admin() {
               <div className="bg-white rounded-2xl border shadow-sm overflow-hidden p-6 space-y-4">
                 <h2 className="font-bold text-lg">الطلبات النشطة والعمليات الجارية</h2>
                 <div className="space-y-3">
-                  {allOrders.filter(o => o.status !== 'cancelled').map(order => {
+                  {(Array.isArray(allOrders) ? allOrders : []).filter(o => o.status !== 'cancelled').map(order => {
                     const statusInfo = getAdminOrderStatus(order);
                     return (
                       <div key={order.id} className="border rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-muted/10">
@@ -1343,7 +1364,7 @@ export default function Admin() {
                       </div>
                     );
                   })}
-                  {allOrders.filter(o => o.status !== 'cancelled').length === 0 && (
+                  {(Array.isArray(allOrders) ? allOrders : []).filter(o => o.status !== 'cancelled').length === 0 && (
                     <p className="text-center text-muted-foreground py-8 text-sm">لا توجد عمليات جارية حالياً</p>
                   )}
                 </div>
@@ -1361,7 +1382,7 @@ export default function Admin() {
                 <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-l bg-gray-50 flex flex-col h-1/3 md:h-full">
                   <div className="p-4 border-b font-bold text-sm bg-white shrink-0">قائمة العملاء</div>
                   <div className="overflow-y-auto flex-1">
-                    {chatUsers.map(u => (
+                    {(Array.isArray(safeChatUsers) ? safeChatUsers : []).map((u) => (
                       <div key={u.id} onClick={() => handleSelectChatUser(u)} className={`p-4 border-b cursor-pointer transition-colors flex items-center justify-between ${selectedChatUser?.id === u.id ? "bg-primary/10 border-l-4 border-l-primary" : "hover:bg-muted"}`}>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">{u.fullName[0]}</div>
@@ -1373,7 +1394,7 @@ export default function Admin() {
                         {u.unreadCount > 0 && <Badge variant="destructive" className="h-5 min-w-[1.25rem] rounded-full px-1">{u.unreadCount}</Badge>}
                       </div>
                     ))}
-                    {chatUsers.length === 0 && <p className="text-center text-muted-foreground py-8 text-sm">لا توجد محادثات</p>}
+                    {safeChatUsers.length === 0 && <p className="text-center text-muted-foreground py-8 text-sm">لا توجد محادثات</p>}
                   </div>
                 </div>
                 <div className="flex-1 flex flex-col bg-slate-50 h-2/3 md:h-full relative">
@@ -1384,7 +1405,7 @@ export default function Admin() {
                         <span className="font-bold">{selectedChatUser.fullName}</span>
                       </div>
                       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {messages.map((m: any) => {
+                        {(Array.isArray(safeMessages) ? safeMessages : []).map((m: any) => {
                           const isSenderAdmin = m.senderRole === "admin" || m.senderRole === "subadmin";
                           const isMyMessage = m.senderId === currentUser?.id;
                           const hasModifyPerm = isMainAdmin || userPermissions.includes("modify_messages");
@@ -1447,7 +1468,7 @@ export default function Admin() {
                             </div>
                           );
                         })}
-                        {messages.length === 0 && <div className="h-full flex items-center justify-center text-muted-foreground text-sm">لا توجد رسائل سابقة. ابدأ المحادثة الآن.</div>}
+                        {safeMessages.length === 0 && <div className="h-full flex items-center justify-center text-muted-foreground text-sm">لا توجد رسائل سابقة. ابدأ المحادثة الآن.</div>}
                         <div ref={messagesEndRef} />
                       </div>
                       {canReplyMessages ? (
@@ -1494,7 +1515,7 @@ export default function Admin() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {[...allOrders].reverse().map(order => (
+                  {[...(Array.isArray(allOrders) ? allOrders : [])].reverse().map(order => (
                     <OrderCard
                       key={order.id}
                       order={order}
@@ -1530,10 +1551,10 @@ export default function Admin() {
                   <h2 className="font-bold text-base">تفاصيل الطلبات المالية</h2>
                 </div>
                 <div className="divide-y">
-                  {allOrders.filter(o => o.totalAmount).length === 0 && (
+                  {(Array.isArray(allOrders) ? allOrders : []).filter(o => o.totalAmount).length === 0 && (
                     <p className="text-center text-muted-foreground py-10 text-sm">لا توجد طلبات بمبالغ محددة</p>
                   )}
-                  {allOrders.filter(o => o.totalAmount).map(order => {
+                  {(Array.isArray(allOrders) ? allOrders : []).filter(o => o.totalAmount).map(order => {
                     const p = order.depositPercentage ?? siteSettings?.depositPercentageValue ?? 50;
                     const disc = (order as any).discountAmount ? Number((order as any).discountAmount) : 0;
                     const eff = Math.max(0, (order.totalAmount || 0) - disc);
@@ -1589,7 +1610,7 @@ export default function Admin() {
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold">المستخدمين</h1>
-                  <p className="text-muted-foreground text-sm mt-1">{users?.length || 0} مستخدم</p>
+                  <p className="text-muted-foreground text-sm mt-1">{safeUsers.length} مستخدم</p>
                 </div>
                 <Button size="sm" onClick={() => setCreateAdminOpen(true)} className="gap-1.5">
                   <UserPlus className="w-4 h-4" /> إضافة أدمن
@@ -1597,7 +1618,7 @@ export default function Admin() {
               </div>
               <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
                 <div className="divide-y">
-                  {users?.map(user => (
+                  {(Array.isArray(safeUsers) ? safeUsers : []).map((user) => (
                     <div key={user.id} className="px-5 py-4 flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-base shrink-0">
                         {user.fullName?.[0] || "U"}
@@ -1622,7 +1643,7 @@ export default function Admin() {
                       </div>
                     </div>
                   ))}
-                  {(!users || users.length === 0) && (
+                  {safeUsers.length === 0 && (
                     <p className="text-center text-muted-foreground py-10 text-sm">لا يوجد مستخدمون</p>
                   )}
                 </div>
@@ -1640,7 +1661,7 @@ export default function Admin() {
                 <Button size="sm" onClick={openAddPkg} className="gap-1.5"><Plus className="w-4 h-4" /> إضافة باقة</Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {packages?.map(pkg => (
+                {(Array.isArray(safePackages) ? safePackages : []).map((pkg) => (
                   <div key={pkg.id} className={`bg-white rounded-2xl border shadow-sm p-5 flex flex-col gap-3 ${!pkg.isActive ? "opacity-60" : ""}`}>
                     <div className="flex items-start justify-between">
                       <div>
@@ -1674,7 +1695,7 @@ export default function Admin() {
                     </div>
                   </div>
                 ))}
-                {(!packages || packages.length === 0) && (
+                {safePackages.length === 0 && (
                   <div className="col-span-3 bg-white rounded-2xl border p-16 text-center">
                     <Package className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
                     <p className="text-muted-foreground text-sm">لا توجد باقات — اضغط "إضافة باقة" للبدء</p>
@@ -1694,7 +1715,7 @@ export default function Admin() {
                 <Button size="sm" onClick={openAddPm} className="gap-1.5"><Plus className="w-4 h-4" /> إضافة طريقة</Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {paymentMethods?.map(pm => (
+                {(Array.isArray(safePaymentMethods) ? safePaymentMethods : []).map((pm) => (
                   <div key={pm.id} className={`bg-white rounded-2xl border shadow-sm p-5 ${!pm.isActive ? "opacity-60" : ""}`}>
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
@@ -1721,7 +1742,7 @@ export default function Admin() {
                     <p className="text-sm text-muted-foreground whitespace-pre-line bg-muted/20 rounded-lg p-3 leading-relaxed">{pm.details}</p>
                   </div>
                 ))}
-                {(!paymentMethods || paymentMethods.length === 0) && (
+                {safePaymentMethods.length === 0 && (
                   <div className="col-span-2 bg-white rounded-2xl border p-16 text-center">
                     <CreditCard className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
                     <p className="text-muted-foreground text-sm">لا توجد طرق دفع</p>
@@ -1738,7 +1759,7 @@ export default function Admin() {
                 <p className="text-muted-foreground text-sm mt-1">راجع وانشر آراء عملائك</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {testimonials?.map(t => (
+                {(Array.isArray(safeTestimonials) ? safeTestimonials : []).map((t) => (
                   <div key={t.id} className={`bg-white rounded-2xl border shadow-sm p-5 ${!t.isActive ? "opacity-70 border-dashed" : ""}`}>
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
@@ -1769,7 +1790,7 @@ export default function Admin() {
                     <p className="text-sm text-muted-foreground leading-relaxed bg-muted/20 rounded-lg p-3">"{t.comment}"</p>
                   </div>
                 ))}
-                {(!testimonials || testimonials.length === 0) && (
+                {safeTestimonials.length === 0 && (
                   <div className="col-span-2 bg-white rounded-2xl border p-16 text-center">
                     <MessageSquare className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
                     <p className="text-muted-foreground text-sm">لا توجد آراء حتى الآن</p>
@@ -1784,7 +1805,7 @@ export default function Admin() {
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold">كوبونات الخصم</h1>
-                  <p className="text-muted-foreground text-sm mt-1">{coupons.length} كوبون</p>
+                  <p className="text-muted-foreground text-sm mt-1">{safeCoupons.length} كوبون</p>
                 </div>
                 <Button size="sm" onClick={() => handleOpenCouponDialog()} className="gap-1.5">
                   <Plus className="w-4 h-4" /> كوبون جديد
@@ -1793,7 +1814,7 @@ export default function Admin() {
 
               {couponsLoading ? (
                 <div className="text-center py-12 text-muted-foreground text-sm">جاري التحميل...</div>
-              ) : coupons.length === 0 ? (
+              ) : safeCoupons.length === 0 ? (
                 <div className="bg-white rounded-2xl border p-16 text-center">
                   <Tag className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
                   <p className="text-muted-foreground text-sm">لا توجد كوبونات حتى الآن</p>
@@ -1804,7 +1825,7 @@ export default function Admin() {
               ) : (
                 <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
                   <div className="divide-y">
-                    {coupons.map((coupon: any) => (
+                    {(Array.isArray(safeCoupons) ? safeCoupons : []).map((coupon: any) => (
                       <div key={coupon.id} className={`px-5 py-4 flex items-center gap-4 ${!coupon.isActive ? "opacity-60" : ""}`}>
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                           <Tag className="w-5 h-5 text-primary" />
@@ -2087,7 +2108,7 @@ export default function Admin() {
 
               {subadminsLoading ? (
                 <div className="text-center py-12 text-muted-foreground">جاري التحميل...</div>
-              ) : subadmins.length === 0 ? (
+              ) : safeSubadmins.length === 0 ? (
                 <div className="bg-white rounded-2xl border p-16 text-center">
                   <Shield className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
                   <p className="text-muted-foreground font-medium">لا يوجد مشرفون فرعيون</p>
@@ -2095,7 +2116,7 @@ export default function Admin() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {subadmins.map(sub => (
+                  {(Array.isArray(safeSubadmins) ? safeSubadmins : []).map((sub) => (
                     <div key={sub.id} className={`bg-white rounded-2xl border shadow-sm p-5 transition-opacity ${!sub.isActive ? "opacity-60" : ""}`}>
                       <div className="flex items-center justify-between gap-4 mb-5">
                         <div className="flex items-center gap-3">
@@ -2123,7 +2144,7 @@ export default function Admin() {
                       <div className="border-t pt-4">
                         <p className="text-xs font-semibold text-muted-foreground mb-3">الصلاحيات</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                          {PERMISSIONS_LIST.map(perm => {
+                          {(Array.isArray(PERMISSIONS_LIST) ? PERMISSIONS_LIST : []).map(perm => {
                             const enabled = (sub.permissions || []).includes(perm.id);
                             return (
                               <div
@@ -2134,10 +2155,10 @@ export default function Admin() {
                                 <Switch
                                   checked={enabled}
                                   onCheckedChange={async (nextChecked) => {
-                                    const currentPerms = sub.permissions || [];
+                                    const currentPerms = Array.isArray(sub.permissions) ? sub.permissions : [];
                                     const newPerms = nextChecked 
                                       ? [...currentPerms, perm.id] 
-                                      : currentPerms.filter((p: string) => p !== perm.id);
+                                      : (Array.isArray(currentPerms) ? currentPerms : []).filter((p: string) => p !== perm.id);
                                     
                                     try {
                                       await apiFetchJson(`/api/subadmins/${sub.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: newPerms }) });
@@ -2376,7 +2397,7 @@ export default function Admin() {
 
       <nav className="md:hidden fixed bottom-0 right-0 left-0 z-30 bg-white border-t shadow-lg" dir="rtl">
         <div className="flex overflow-x-auto scrollbar-hide">
-          {NAV.map(item => {
+          {(Array.isArray(NAV) ? NAV : []).map(item => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             const hasBadge = item.id === "orders" && pendingReceipts > 0;

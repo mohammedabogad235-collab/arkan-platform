@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: Website Builder Platform API
 servers:
-  - url: /api
+  - url: https://arkan-platform.onrender.com/api
     description: Base API path
 tags:
   - name: health

@@ -1,12 +1,14 @@
 import { ReactNode, useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Link, useLocation } from "wouter";
-import { MessageCircle, Menu, X, Home, ShoppingBag, Star, LayoutDashboard, User as UserIcon, LogOut, Phone, Mail, MapPin } from "lucide-react";
+import { MessageCircle, Menu, X, Home, ShoppingBag, Star, LayoutDashboard, User as UserIcon, LogOut, Phone, Mail, MapPin, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useSettings } from "@/lib/use-settings";
+import { apiFetch } from "@/lib/api-fetch";
+import { Capacitor } from "@capacitor/core";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth();
@@ -31,7 +33,7 @@ export function Layout({ children }: { children: ReactNode }) {
     if (isClient && isAuthenticated) {
       const fetchUnread = async () => {
         try {
-          const res = await fetch("/api/messages/unread-count");
+          const res = await apiFetch("/api/messages/unread-count");
           if (res.ok) {
             const data = await res.json();
             setUnreadChatCount(data.unreadCount || 0);
@@ -270,6 +272,24 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </div>
+
+        {/* زر تحميل تطبيق الأندرويد - يظهر في المتصفح فقط وفي أخر الفوتر تماماً */}
+        {Capacitor.getPlatform() === 'web' && (
+          <div className="border-t bg-muted/20 py-4 text-center">
+            <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <span className="text-sm font-medium text-muted-foreground">استمتع بتجربة أسرع عبر تطبيق الهاتف:</span>
+              <a
+                href="https://drive.google.com/drive/folders/1OrsQuXQyYC6ZFPxcvhPQ0p-Rh-TemxjO?usp=drive_link"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white transition-all duration-300 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-md hover:scale-105 hover:shadow-lg"
+              >
+                <Download className="w-4 h-4" />
+                تحميل تطبيق الأندرويد الآن
+              </a>
+            </div>
+          </div>
+        )}
       </footer>
     </div>
   );

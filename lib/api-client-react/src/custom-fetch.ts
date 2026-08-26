@@ -15,17 +15,8 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 // Module-level configuration
 // ---------------------------------------------------------------------------
 
-function normalizeBaseUrl(url: string | null | undefined): string | null {
-  const trimmed = url?.trim();
-  if (!trimmed) return null;
-  return trimmed.replace(/\/+$/, "");
-}
-
-// Prefer Vite env in web builds (production on Render, etc.)
-// Falls back to null in non-Vite runtimes (e.g. Expo / Node).
-const _envBaseUrl = normalizeBaseUrl((import.meta as any)?.env?.VITE_API_URL);
-
-let _baseUrl: string | null = _envBaseUrl;
+const FORCED_API_ORIGIN = "https://arkan-platform.onrender.com";
+let _baseUrl: string | null = FORCED_API_ORIGIN;
 let _authTokenGetter: AuthTokenGetter | null = null;
 
 function shouldIncludeCredentials(url: string): boolean {
@@ -41,8 +32,9 @@ function shouldIncludeCredentials(url: string): boolean {
  * Useful for Expo bundles that need to call a remote API server.
  * Pass `null` to clear the base URL.
  */
-export function setBaseUrl(url: string | null): void {
-  _baseUrl = url ? url.replace(/\/+$/, "") : null;
+export function setBaseUrl(_url: string | null): void {
+  // Forced: keep a single stable API origin across all runtimes.
+  _baseUrl = FORCED_API_ORIGIN;
 }
 
 /**

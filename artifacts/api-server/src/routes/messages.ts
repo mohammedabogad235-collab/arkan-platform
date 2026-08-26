@@ -66,8 +66,8 @@ router.get("/admin/chat-users", asyncHandler(async (req, res): Promise<void> => 
   
   const unreadMessages = await db.select().from(messagesTable).where(eq(messagesTable.isRead, false));
 
-  const formattedClients = clients.map(c => {
-    const count = unreadMessages.filter(m => m.senderId === c.id).length;
+  const formattedClients = (Array.isArray(clients) ? clients : []).map(c => {
+    const count = (Array.isArray(unreadMessages) ? unreadMessages : []).filter(m => m.senderId === c.id).length;
     return {
       id: c.id,
       fullName: c.fullName,

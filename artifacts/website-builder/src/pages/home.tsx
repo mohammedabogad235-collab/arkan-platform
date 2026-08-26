@@ -5,18 +5,43 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Star, MonitorSmartphone, Code, Zap, HeadphonesIcon, Phone, Mail, MapPin, MessageCircle, Facebook, Instagram, Twitter } from "lucide-react";
 import { motion } from "framer-motion";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useSettings } from "@/lib/use-settings";
 
-export default function Home() {
-  const { data: packages, isLoading: isLoadingPackages } = useListPackages();
-  const { data: testimonials, isLoading: isLoadingTestimonials } = useListTestimonials();
-  const { data: settings } = useSettings();
+function HomeContent() {
+  const {
+    data: packages,
+    isLoading: isLoadingPackages,
+    error: packagesError,
+  } = useListPackages();
+  const {
+    data: testimonials,
+    isLoading: isLoadingTestimonials,
+    error: testimonialsError,
+  } = useListTestimonials();
+  const { data: settings, error: settingsError } = useSettings();
 
-  const activePackages = packages?.filter(p => p.isActive) || [];
-  const activeTestimonials = testimonials?.filter(t => t.isActive) || [];
+  const activePackages = Array.isArray(packages) ? packages.filter((p) => p?.isActive) : [];
+  const activeTestimonials = Array.isArray(testimonials)
+    ? testimonials.filter((t) => t?.isActive)
+    : [];
+  const homeDataErrors = [packagesError, testimonialsError, settingsError]
+    .filter(Boolean)
+    .map((error) => (error instanceof Error ? error.message : "Unknown data loading error"));
 
   return (
     <div className="flex flex-col w-full overflow-hidden">
+      {homeDataErrors.length > 0 && (
+        <section className="container mx-auto px-4 pt-6">
+          <div className="rounded-lg border border-red-500 bg-red-50 p-4 text-red-700">
+            <h2 className="mb-2 text-lg font-bold">Home data error</h2>
+            <pre className="whitespace-pre-wrap break-words text-sm">
+              {homeDataErrors.join("\n\n")}
+            </pre>
+          </div>
+        </section>
+      )}
+
       {/* Hero Section */}
       <section className="relative py-20 lg:py-32 overflow-hidden bg-primary/5">
         <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
@@ -121,7 +146,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {activePackages.map((pkg, i) => (
+              {(Array.isArray(activePackages) ? activePackages : []).map((pkg, i) => (
                 <motion.div
                   key={pkg.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -145,7 +170,7 @@ export default function Home() {
                     </CardHeader>
                     <CardContent className="flex-1 pt-8">
                       <ul className="space-y-4">
-                        {pkg.features.split('\n').filter(Boolean).map((feature, idx) => (
+                        {(pkg.features ?? "").split("\n").filter(Boolean).map((feature, idx) => (
                           <li key={idx} className="flex items-start gap-3">
                             <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
                             <span className="text-muted-foreground">{feature}</span>
@@ -191,21 +216,21 @@ export default function Home() {
              </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {activeTestimonials.slice(0, 3).map((testimonial) => (
+              {(Array.isArray(activeTestimonials) ? activeTestimonials : []).slice(0, 3).map((testimonial) => (
                 <Card key={testimonial.id} className="bg-muted/30 border-none">
                   <CardContent className="p-6">
                     <div className="flex gap-1 mb-4 text-secondary">
                       {Array.from({ length: 5 }).map((_, i) => (
-                        <Star key={i} className={`w-5 h-5 ${i < testimonial.rating ? 'fill-current' : 'text-muted'}`} />
+                        <Star key={i} className={`w-5 h-5 ${i < (testimonial.rating ?? 0) ? 'fill-current' : 'text-muted'}`} />
                       ))}
                     </div>
-                    <p className="text-foreground text-lg mb-6 leading-relaxed line-clamp-3">"{testimonial.comment}"</p>
+                    <p className="text-foreground text-lg mb-6 leading-relaxed line-clamp-3">"{testimonial.comment ?? ""}"</p>
                     <div className="flex items-center gap-3 mt-auto">
                       <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xl shrink-0">
-                        {testimonial.clientName.charAt(0)}
+                        {(testimonial.clientName ?? "?").charAt(0)}
                       </div>
                       <div>
-                        <h4 className="font-bold text-base">{testimonial.clientName}</h4>
+                        <h4 className="font-bold text-base">{testimonial.clientName ?? "Unknown client"}</h4>
                       </div>
                     </div>
                   </CardContent>
@@ -357,5 +382,13 @@ export default function Home() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <ErrorBoundary title="Home runtime error">
+      <HomeContent />
+    </ErrorBoundary>
   );
 }
