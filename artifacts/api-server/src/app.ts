@@ -48,49 +48,26 @@ app.use(
   }),
 );
 
-function normalizeOrigin(origin: string) {
-  try {
-    const url = new URL(origin.trim());
-    return `${url.protocol}//${url.host}`;
-  } catch {
-    return null;
-  }
-}
-
-const allowedOrigins = new Set(
-  [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://arkan-platform.onrender.com",
-  ]
-    .map((origin) => (origin ? normalizeOrigin(origin) : null))
-    .filter((origin): origin is string => Boolean(origin)),
-);
-
-function isAllowedOrigin(origin?: string) {
-  if (!origin) return true;
-
-  const normalizedOrigin = normalizeOrigin(origin);
-  if (!normalizedOrigin) return false;
-
-  return allowedOrigins.has(normalizedOrigin);
-}
-
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-      } else {
-        logger.warn({ origin }, "Blocked CORS origin");
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    /**
+     * Allow ALL origins.
+     *
+     * Note: When `credentials: true`, using `origin: "*"` is not valid per the CORS spec
+     * (browsers will reject it). `origin: true` tells `cors` to reflect the request's
+     * Origin header, effectively allowing any origin while still permitting cookies.
+     */
+    origin: true,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Accept",
+      "Origin",
+      "X-Requested-With",
+      "X-CSRF-Token",
+    ],
     optionsSuccessStatus: 204,
   })
 );
