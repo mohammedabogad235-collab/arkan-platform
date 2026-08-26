@@ -179,7 +179,28 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col min-h-0">
+      <main className="flex-1 flex flex-col min-h-0 relative">
+        {/* زر تحميل تطبيق الأندرويد الفخم - يظهر في المتصفح فقط وبشكل عائم ومميز */}
+        {Capacitor.getPlatform() === 'web' && (
+          <div className="container mx-auto px-4 pt-6 flex justify-center">
+            <a
+              href="https://drive.google.com/drive/folders/1OrsQuXQyYC6ZFPxcvhPQ0p-Rh-TemxjO?usp=drive_link"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group relative inline-flex items-center gap-3 px-8 py-3.5 text-sm font-bold text-white transition-all duration-300 bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 border border-white/20 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm shadow-inner">
+                <Download className="w-5 h-5 text-white animate-bounce" />
+              </div>
+              <div className="flex flex-col text-right">
+                <span className="text-[11px] text-white/80 font-medium">تجربة أسرع وأسهل</span>
+                <span className="text-base tracking-wide">تحميل تطبيق أندرويد الرسمي</span>
+              </div>
+            </a>
+          </div>
+        )}
+
         {children}
       </main>
 
@@ -272,24 +293,6 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </div>
-
-        {/* زر تحميل تطبيق الأندرويد - يظهر في المتصفح فقط وفي أخر الفوتر تماماً */}
-        {Capacitor.getPlatform() === 'web' && (
-          <div className="border-t bg-muted/20 py-4 text-center">
-            <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <span className="text-sm font-medium text-muted-foreground">استمتع بتجربة أسرع عبر تطبيق الهاتف:</span>
-              <a
-                href="https://drive.google.com/drive/folders/1OrsQuXQyYC6ZFPxcvhPQ0p-Rh-TemxjO?usp=drive_link"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white transition-all duration-300 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-md hover:scale-105 hover:shadow-lg"
-              >
-                <Download className="w-4 h-4" />
-                تحميل تطبيق الأندرويد الآن
-              </a>
-            </div>
-          </div>
-        )}
       </footer>
     </div>
   );
