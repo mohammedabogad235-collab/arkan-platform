@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { useListPackages, useListTestimonials } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Star, MonitorSmartphone, Code, Zap, HeadphonesIcon, Phone, Mail, MapPin, MessageCircle, Facebook, Instagram, Twitter } from "lucide-react";
+import { CheckCircle2, Star, MonitorSmartphone, Code, Zap, HeadphonesIcon, Phone, Mail, MapPin, MessageCircle, Facebook, Instagram, Twitter, Smartphone } from "lucide-react";
 import { motion } from "framer-motion";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useSettings } from "@/lib/use-settings";
+import { Capacitor } from "@capacitor/core";
 
 function HomeContent() {
   const {
@@ -67,7 +68,7 @@ function HomeContent() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto"
+              className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto items-center justify-center flex-wrap"
             >
               <Link href="/order" className="w-full sm:w-auto">
                 <Button size="lg" className="w-full text-lg h-14 px-8 rounded-xl shadow-lg shadow-primary/25">
@@ -79,6 +80,24 @@ function HomeContent() {
                   تصفح أعمالنا
                 </Button>
               </Link>
+
+              {/* زر التحميل الفخم جداً - يظهر في المتصفح فقط وتحت الأزرار الرئيسية مباشرة */}
+              {Capacitor.getPlatform() === 'web' && (
+                <div className="w-full sm:w-auto mt-2">
+                  <a
+                    href="https://drive.google.com/drive/folders/1OrsQuXQyYC6ZFPxcvhPQ0p-Rh-TemxjO?usp=drive_link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group relative inline-flex items-center justify-center gap-3 w-full sm:w-auto px-8 py-4 text-sm font-bold text-white transition-all duration-300 bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-600 rounded-xl shadow-[0_10px_25px_rgba(13,148,136,0.35)] hover:shadow-[0_15px_35px_rgba(13,148,136,0.55)] hover:scale-[1.03] border border-white/30 overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-md shadow-sm shrink-0">
+                      <Smartphone className="w-4 h-4 text-white animate-pulse" />
+                    </div>
+                    <span className="tracking-wide">انقر لتحميل تطبيق أركان ويب الرسمي علي اندرويد</span>
+                  </a>
+                </div>
+              )}
             </motion.div>
           </div>
         </div>

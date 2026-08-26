@@ -1,14 +1,13 @@
 import { ReactNode, useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Link, useLocation } from "wouter";
-import { MessageCircle, Menu, X, Home, ShoppingBag, Star, LayoutDashboard, User as UserIcon, LogOut, Phone, Mail, MapPin, Download } from "lucide-react";
+import { MessageCircle, Menu, X, Home, ShoppingBag, Star, LayoutDashboard, User as UserIcon, LogOut, Phone, Mail, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useSettings } from "@/lib/use-settings";
 import { apiFetch } from "@/lib/api-fetch";
-import { Capacitor } from "@capacitor/core";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth();
@@ -179,28 +178,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col min-h-0 relative">
-        {/* زر تحميل تطبيق الأندرويد الفخم - يظهر في المتصفح فقط وبشكل عائم ومميز */}
-        {Capacitor.getPlatform() === 'web' && (
-          <div className="container mx-auto px-4 pt-6 flex justify-center">
-            <a
-              href="https://drive.google.com/drive/folders/1OrsQuXQyYC6ZFPxcvhPQ0p-Rh-TemxjO?usp=drive_link"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group relative inline-flex items-center gap-3 px-8 py-3.5 text-sm font-bold text-white transition-all duration-300 bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 border border-white/20 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm shadow-inner">
-                <Download className="w-5 h-5 text-white animate-bounce" />
-              </div>
-              <div className="flex flex-col text-right">
-                <span className="text-[11px] text-white/80 font-medium">تجربة أسرع وأسهل</span>
-                <span className="text-base tracking-wide">تحميل تطبيق أندرويد الرسمي</span>
-              </div>
-            </a>
-          </div>
-        )}
-
+      <main className="flex-1 flex flex-col min-h-0">
         {children}
       </main>
 
