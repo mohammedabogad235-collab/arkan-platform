@@ -92,13 +92,13 @@ function HomeContent() {
                     <DialogTrigger asChild>
                       <button
                         type="button"
-                        className="group relative inline-flex w-full sm:w-auto items-center justify-center gap-3 px-7 py-4 text-sm font-semibold text-white rounded-2xl border border-white/10 bg-neutral-950/70 backdrop-blur-md shadow-[0_14px_40px_rgba(0,0,0,0.28)] transition-all duration-300 hover:bg-neutral-950/80 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        className="group relative inline-flex w-full sm:w-auto items-center justify-center gap-3 px-7 py-4 text-sm font-semibold text-white rounded-2xl border border-primary/30 bg-gradient-to-r from-slate-800 to-slate-900 shadow-[0_14px_40px_rgba(15,23,42,0.35)] transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_18px_55px_rgba(37,99,235,0.20)] focus:outline-none focus:ring-2 focus:ring-primary/40"
                       >
                         <span className="absolute inset-0 rounded-2xl ring-1 ring-white/10" />
                         <div className="relative w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shadow-sm shrink-0">
                           <Smartphone className="w-4 h-4 text-white" />
                         </div>
-                        <span className="relative tracking-wide">تحميل تطبيق أركان ويب للأندرويد</span>
+                        <span className="relative tracking-wide whitespace-nowrap">تحميل تطبيق أركان ويب للأندرويد</span>
                       </button>
                     </DialogTrigger>
 
@@ -117,17 +117,6 @@ function HomeContent() {
 
                       {/* Body */}
                       <div className="p-6 sm:p-8 space-y-6">
-                        <a
-                          href={apkDownloadHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group relative inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-primary px-6 py-4 text-base font-bold text-primary-foreground shadow-[0_18px_45px_rgba(0,0,0,0.18)] transition-transform duration-300 hover:scale-[1.015] focus:outline-none focus:ring-2 focus:ring-primary/40"
-                        >
-                          <span className="absolute inset-0 rounded-2xl ring-1 ring-black/10" />
-                          <Download className="h-5 w-5" />
-                          <span>Download APK</span>
-                        </a>
-
                         <div className="rounded-3xl border bg-muted/25 p-5 sm:p-6">
                           <h3 className="text-base sm:text-lg font-bold mb-5 text-right">
                             خطوات التثبيت الآمن
@@ -186,6 +175,12 @@ function HomeContent() {
                         <p className="text-xs text-muted-foreground leading-relaxed text-right">
                           ملاحظة: هذا الزر يظهر في المتصفح فقط وسيختفي داخل تطبيق الأندرويد تلقائياً.
                         </p>
+
+                        <Button size="lg" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
+                          <a href={apkDownloadHref} target="_blank" rel="noopener noreferrer" className="w-full">
+                            تحميل التطبيق الآن 🚀
+                          </a>
+                        </Button>
                       </div>
                     </DialogContent>
                   </Dialog>
