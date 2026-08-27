@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1052276353519",
+    "project_id": "arkan-app6",
+    "storage_bucket": "arkan-app6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1052276353519:android:f4e89c508e1887fcb4ee1a",
+        "android_client_info": {
+          "package_name": "com.arkan.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcPBbq-CPjrtWICqsrYc30bWYm9PnfL10"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
