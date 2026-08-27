@@ -5,7 +5,7 @@
   "scripts": {
     "preinstall": "node -e \"if(process.env.npm_config_user_agent&&!process.env.npm_config_user_agent.startsWith('pnpm')){console.error('Use pnpm instead');process.exit(1)}\"",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
-    "db:push": "pnpm --filter @workspace/db run push",
+    "db:push": "pnpm --filter @workspace/db run push-force",
     "start": "node artifacts/api-server/dist/index.mjs",
     "start:standalone": "node server.js",
     "typecheck:libs": "tsc --build",
