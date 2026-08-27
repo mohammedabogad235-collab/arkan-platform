@@ -99,74 +99,77 @@ function HomeContent() {
                       </button>
                     </DialogTrigger>
 
-                    <DialogContent className="p-0 overflow-hidden max-w-xl" dir="rtl">
-                      {/* Header */}
-                      <div className="relative px-6 py-6 sm:px-8 bg-neutral-950 text-white border-b border-white/10">
-                          <DialogTitle className="text-xl sm:text-2xl font-extrabold tracking-tight text-right">
-                            تحميل تطبيق أركان ويب للأندرويد
-                          </DialogTitle>
-                          <DialogDescription className="text-sm sm:text-base text-muted-foreground text-right leading-relaxed">
-                            اتبع الخطوات التالية للتثبيت بشكل آمن على جهازك.
-                          </DialogDescription>
-                        </DialogHeader>
+                    <DialogContent
+                      dir="rtl"
+                      className="w-[95vw] sm:max-w-md max-h-[85vh] overflow-y-auto rounded-3xl p-4 sm:p-6"
+                    >
+                      <DialogHeader>
+                        <DialogTitle className="text-xl sm:text-2xl font-extrabold tracking-tight text-right">
+                          تحميل تطبيق أركان ويب للأندرويد
+                        </DialogTitle>
+                        <DialogDescription className="text-sm sm:text-base text-muted-foreground text-right leading-relaxed">
+                          اتبع الخطوات التالية للتثبيت بشكل آمن على جهازك.
+                        </DialogDescription>
+                      </DialogHeader>
 
-                        <div className="grid gap-4">
-                          {/* Step 1 */}
-                          <div className="rounded-2xl border bg-muted/20 p-4">
-                            <div className="flex items-start gap-4">
-                              <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-                                <Download className="h-5 w-5" />
-                              </div>
-                              <div className="space-y-1">
-                                <p className="font-extrabold text-right">الخطوة 1: تحميل الـ APK بأمان</p>
-                                <p className="text-sm text-muted-foreground text-right leading-relaxed">
-                                  قم بتحميل التطبيق من الرابط الرسمي.
-                                </p>
-                              </div>
+                      <div className="step-by-step-guide mt-6 grid gap-4">
+                        {/* Step 1 */}
+                        <div className="rounded-2xl border bg-muted/20 p-4">
+                          <div className="flex items-start gap-4">
+                            <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                              <Download className="h-5 w-5" />
                             </div>
-                          </div>
-
-                          {/* Step 2 */}
-                          <div className="rounded-2xl border bg-muted/20 p-4">
-                            <div className="flex items-start gap-4">
-                              <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                                <AlertTriangle className="h-5 w-5" />
-                              </div>
-                              <div className="space-y-1">
-                                <p className="font-extrabold text-right">الخطوة 2: عند ظهور Play Protect</p>
-                                <p className="text-sm text-muted-foreground text-right leading-relaxed">
-                                  اضغط <span className="font-semibold">More details</span> / <span className="font-semibold">(التفاصيل)</span>.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Step 3 */}
-                          <div className="rounded-2xl border bg-muted/20 p-4">
-                            <div className="flex items-start gap-4">
-                              <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                                <ShieldCheck className="h-5 w-5" />
-                              </div>
-                              <div className="space-y-1">
-                                <p className="font-extrabold text-right">الخطوة 3: التثبيت على أي حال</p>
-                                <p className="text-sm text-muted-foreground text-right leading-relaxed">
-                                  اختر <span className="font-semibold">Install anyway</span> / <span className="font-semibold">(التثبيت على أي حال)</span>.
-                                </p>
-                              </div>
+                            <div className="space-y-1">
+                              <p className="font-extrabold text-right">الخطوة 1: تحميل الـ APK بأمان</p>
+                              <p className="text-sm text-muted-foreground text-right leading-relaxed">
+                                قم بتحميل التطبيق من الرابط الرسمي.
+                              </p>
                             </div>
                           </div>
                         </div>
 
-                        <a
-                          href={apkDownloadHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full flex items-center justify-center gap-2 py-4 mt-6 text-lg font-extrabold text-white bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.3)] hover:scale-[1.02] transition-all"
-                        >
-                          <Download className="h-6 w-6" />
-                          <span>تحميل التطبيق الآن 🚀</span>
-                        </a>
+                        {/* Step 2 */}
+                        <div className="rounded-2xl border bg-muted/20 p-4">
+                          <div className="flex items-start gap-4">
+                            <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                              <AlertTriangle className="h-5 w-5" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="font-extrabold text-right">الخطوة 2: عند ظهور Play Protect</p>
+                              <p className="text-sm text-muted-foreground text-right leading-relaxed">
+                                اضغط <span className="font-semibold">More details</span> /{" "}
+                                <span className="font-semibold">(التفاصيل)</span>.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Step 3 */}
+                        <div className="rounded-2xl border bg-muted/20 p-4">
+                          <div className="flex items-start gap-4">
+                            <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                              <ShieldCheck className="h-5 w-5" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="font-extrabold text-right">الخطوة 3: التثبيت على أي حال</p>
+                              <p className="text-sm text-muted-foreground text-right leading-relaxed">
+                                اختر <span className="font-semibold">Install anyway</span> /{" "}
+                                <span className="font-semibold">(التثبيت على أي حال)</span>.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
+
+                      <a
+                        href={apkDownloadHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center justify-center gap-2 py-4 mt-6 text-lg font-extrabold text-white bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.3)] hover:scale-[1.02] transition-all"
+                      >
+                        <Download className="h-6 w-6" />
+                        <span>تحميل التطبيق الآن</span>
+                      </a>
                     </DialogContent>
                   </Dialog>
                 </div>
