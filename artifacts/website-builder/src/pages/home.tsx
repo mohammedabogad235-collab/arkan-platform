@@ -72,7 +72,7 @@ function HomeContent() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="flex flex-col sm:flex-row flex-wrap justify-center items-center gap-4 w-full"
+              className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 w-full mt-6"
             >
               <Link href="/order" className="w-full sm:w-auto">
                 <Button size="lg" className="w-full text-lg h-14 px-8 rounded-xl shadow-lg shadow-primary/25">
@@ -92,95 +92,80 @@ function HomeContent() {
                     <DialogTrigger asChild>
                       <button
                         type="button"
-                        className="group relative inline-flex w-full sm:w-auto items-center justify-center gap-3 px-7 py-4 text-sm font-semibold text-white rounded-2xl border border-primary/30 bg-gradient-to-r from-slate-800 to-slate-900 shadow-[0_14px_40px_rgba(15,23,42,0.35)] transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_18px_55px_rgba(37,99,235,0.20)] focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-violet-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all text-sm sm:text-base"
                       >
-                        <span className="absolute inset-0 rounded-2xl ring-1 ring-white/10" />
-                        <div className="relative w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shadow-sm shrink-0">
-                          <Smartphone className="w-4 h-4 text-white" />
-                        </div>
-                        <span className="relative tracking-wide whitespace-nowrap">تحميل تطبيق أركان ويب للأندرويد</span>
+                        <Smartphone className="w-5 h-5 text-white" />
+                        <span>تحميل تطبيق أركان ويب للأندرويد</span>
                       </button>
                     </DialogTrigger>
 
                     <DialogContent className="p-0 overflow-hidden max-w-xl" dir="rtl">
                       {/* Header */}
                       <div className="relative px-6 py-6 sm:px-8 bg-neutral-950 text-white border-b border-white/10">
-                        <DialogHeader className="relative">
                           <DialogTitle className="text-xl sm:text-2xl font-extrabold tracking-tight text-right">
                             تحميل تطبيق أركان ويب للأندرويد
                           </DialogTitle>
-                          <DialogDescription className="text-white/85 text-sm sm:text-base mt-1 text-right leading-relaxed">
-                            دليل تثبيت فاخر وآمن مع خطوات تجاوز تحذير Play Protect عند الحاجة.
+                          <DialogDescription className="text-sm sm:text-base text-muted-foreground text-right leading-relaxed">
+                            اتبع الخطوات التالية للتثبيت بشكل آمن على جهازك.
                           </DialogDescription>
                         </DialogHeader>
-                      </div>
 
-                      {/* Body */}
-                      <div className="p-6 sm:p-8 space-y-6">
-                        <div className="rounded-3xl border bg-muted/25 p-5 sm:p-6">
-                          <h3 className="text-base sm:text-lg font-bold mb-5 text-right">
-                            خطوات التثبيت الآمن
-                          </h3>
-
-                          <div className="grid gap-4">
-                            {/* Step 1 */}
-                            <div className="rounded-2xl border bg-background/60 p-4 sm:p-5 shadow-sm">
-                              <div className="flex items-start gap-4">
-                                <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-                                  <Download className="h-5 w-5" />
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="font-bold text-right">الخطوة 1: تحميل الـ APK بأمان</p>
-                                  <p className="text-sm text-muted-foreground text-right leading-relaxed">
-                                    اضغط زر <span className="font-semibold">Download APK</span> بالأعلى وسيتم فتح الرابط في نافذة جديدة.
-                                  </p>
-                                </div>
+                        <div className="grid gap-4">
+                          {/* Step 1 */}
+                          <div className="rounded-2xl border bg-muted/20 p-4">
+                            <div className="flex items-start gap-4">
+                              <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                                <Download className="h-5 w-5" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="font-extrabold text-right">الخطوة 1: تحميل الـ APK بأمان</p>
+                                <p className="text-sm text-muted-foreground text-right leading-relaxed">
+                                  قم بتحميل التطبيق من الرابط الرسمي.
+                                </p>
                               </div>
                             </div>
+                          </div>
 
-                            {/* Step 2 */}
-                            <div className="rounded-2xl border bg-background/60 p-4 sm:p-5 shadow-sm">
-                              <div className="flex items-start gap-4">
-                                <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                                  <AlertTriangle className="h-5 w-5" />
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="font-bold text-right">الخطوة 2: عند ظهور Play Protect</p>
-                                  <p className="text-sm text-muted-foreground text-right leading-relaxed">
-                                    إذا ظهرت رسالة <span className="font-semibold">(Harmful app blocked)</span> اضغط{" "}
-                                    <span className="font-semibold">More details</span> / <span className="font-semibold">(التفاصيل)</span>.
-                                  </p>
-                                </div>
+                          {/* Step 2 */}
+                          <div className="rounded-2xl border bg-muted/20 p-4">
+                            <div className="flex items-start gap-4">
+                              <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                                <AlertTriangle className="h-5 w-5" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="font-extrabold text-right">الخطوة 2: عند ظهور Play Protect</p>
+                                <p className="text-sm text-muted-foreground text-right leading-relaxed">
+                                  اضغط <span className="font-semibold">More details</span> / <span className="font-semibold">(التفاصيل)</span>.
+                                </p>
                               </div>
                             </div>
+                          </div>
 
-                            {/* Step 3 */}
-                            <div className="rounded-2xl border bg-background/60 p-4 sm:p-5 shadow-sm">
-                              <div className="flex items-start gap-4">
-                                <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                                  <ShieldCheck className="h-5 w-5" />
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="font-bold text-right">الخطوة 3: التثبيت على أي حال</p>
-                                  <p className="text-sm text-muted-foreground text-right leading-relaxed">
-                                    اختر <span className="font-semibold">Install anyway</span> /{" "}
-                                    <span className="font-semibold">(التثبيت على أي حال)</span> لإكمال التثبيت.
-                                  </p>
-                                </div>
+                          {/* Step 3 */}
+                          <div className="rounded-2xl border bg-muted/20 p-4">
+                            <div className="flex items-start gap-4">
+                              <div className="mt-0.5 h-11 w-11 shrink-0 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                                <ShieldCheck className="h-5 w-5" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="font-extrabold text-right">الخطوة 3: التثبيت على أي حال</p>
+                                <p className="text-sm text-muted-foreground text-right leading-relaxed">
+                                  اختر <span className="font-semibold">Install anyway</span> / <span className="font-semibold">(التثبيت على أي حال)</span>.
+                                </p>
                               </div>
                             </div>
                           </div>
                         </div>
 
-                        <p className="text-xs text-muted-foreground leading-relaxed text-right">
-                          ملاحظة: هذا الزر يظهر في المتصفح فقط وسيختفي داخل تطبيق الأندرويد تلقائياً.
-                        </p>
-
-                        <Button size="lg" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
-                          <a href={apkDownloadHref} target="_blank" rel="noopener noreferrer" className="w-full">
-                            تحميل التطبيق الآن 🚀
-                          </a>
-                        </Button>
+                        <a
+                          href={apkDownloadHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center justify-center gap-2 py-4 mt-6 text-lg font-extrabold text-white bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.3)] hover:scale-[1.02] transition-all"
+                        >
+                          <Download className="h-6 w-6" />
+                          <span>تحميل التطبيق الآن 🚀</span>
+                        </a>
                       </div>
                     </DialogContent>
                   </Dialog>
