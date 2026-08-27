@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { AuthProvider, ProtectedRoute } from "@/lib/auth";
 import { Layout } from "@/components/layout";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 
 import Home from "@/pages/home";
 import Login from "@/pages/login";
@@ -73,6 +74,9 @@ function Router() {
 }
 
 function App() {
+  // Push Notifications init (native only). No email logic touched.
+  usePushNotifications();
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

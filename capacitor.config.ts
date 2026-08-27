@@ -7,6 +7,12 @@ const config: CapacitorConfig = {
   server: {
     cleartext: true,
   },
+  plugins: {
+    // iOS uses presentationOptions; Android ignores safely. Kept here for completeness.
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
+  },
 };
 
 export default config;
