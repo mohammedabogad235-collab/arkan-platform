@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useSettings, useUpdateSettings, SETTINGS_KEY } from "@/lib/use-settings";
 import {
@@ -1184,6 +1185,18 @@ export default function Admin() {
               <span className="sm:hidden">{pendingReceipts} تحويل</span>
             </div>
           )}
+
+          <Link href="/admin/system-status" className="hidden sm:block">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-xl border-gray-200 bg-white hover:bg-gray-50"
+              title="غرفة التحكم (System Status)"
+            >
+              <Shield className="w-4 h-4" />
+              غرفة التحكم
+            </Button>
+          </Link>
 
           <div className="relative">
             <Button variant="ghost" size="icon" className="relative" onClick={() => setNotifOpen(true)}>

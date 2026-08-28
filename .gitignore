@@ -16,6 +16,9 @@ node_modules
 .env.*
 !.env.example
 
+# backend secrets
+artifacts/api-server/.secrets/
+
 # IDEs and editors
 /.idea
 .project

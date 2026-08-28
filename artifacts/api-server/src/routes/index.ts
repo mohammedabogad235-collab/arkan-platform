@@ -13,6 +13,7 @@ import couponsRouter from "./coupons";
 import subadminsRouter from "./subadmins";
 import profileRouter from "./profile";
 import otpRouter from "./otp";
+import systemStatusRouter from "./system-status";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(couponsRouter);
 router.use(subadminsRouter);
 router.use(profileRouter);
 router.use(otpRouter);
+router.use(systemStatusRouter);
 
 export default router;

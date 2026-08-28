@@ -3,9 +3,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { AuthProvider, ProtectedRoute } from "@/lib/auth";
+import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { Layout } from "@/components/layout";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { apiFetchJson } from "@/lib/api-fetch";
+import { useCallback } from "react";
+import { SystemGuard } from "@/components/system-guard";
 
 import Home from "@/pages/home";
 import Login from "@/pages/login";
@@ -20,10 +23,38 @@ import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
 import ForgotPassword from "@/pages/forgot-password";
 import Chat from "@/pages/chat";
+import AdminSystemStatus from "@/pages/admin-system-status";
 
 const queryClient = new QueryClient();
 
 const ADMIN_STANDALONE_PATHS = ["/admin/login"];
+
+function PushNotificationsBridge() {
+  const { isAuthenticated } = useAuth();
+
+  const registerToken = useCallback(
+    async (token: string) => {
+      // لا نرسل أي شيء للباك إند قبل تسجيل الدخول
+      if (!isAuthenticated) return;
+
+      try {
+        await apiFetchJson("/api/profile/fcm-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+      } catch (err) {
+        // لا نكسر الواجهة لو فشل التسجيل لأي سبب
+        // eslint-disable-next-line no-console
+        console.error("[Push] failed to save token:", err);
+      }
+    },
+    [isAuthenticated],
+  );
+
+  usePushNotifications(registerToken);
+  return null;
+}
 
 function Router() {
   const [location] = useLocation();
@@ -40,6 +71,11 @@ function Router() {
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/admin/system-status">
+        <ProtectedRoute adminOnly>
+          <AdminSystemStatus />
+        </ProtectedRoute>
+      </Route>
 
       <Route path="/order">
         <ProtectedRoute>
@@ -74,16 +110,16 @@ function Router() {
 }
 
 function App() {
-  // Push Notifications init (native only). No email logic touched.
-  usePushNotifications();
-
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <PushNotificationsBridge />
         <TooltipProvider>
           <WouterRouter>
             <ErrorBoundary title="Router runtime error">
-              <Router />
+              <SystemGuard>
+                <Router />
+              </SystemGuard>
             </ErrorBoundary>
           </WouterRouter>
           <Toaster />

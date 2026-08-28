@@ -13,6 +13,8 @@ export const usersTable = pgTable("users", {
   permissions: text("permissions"),
   isActive: boolean("is_active").notNull().default(true),
   isVerified: boolean("is_verified").notNull().default(true),
+  // ✅ توكن جهاز المستخدم لإشعارات FCM (Push Notifications)
+  fcmToken: text("fcm_token"),
   
   // 👇 الصلاحيات الجديدة الخاصة بنظام المحادثة للمشرفين
   canViewMessages: boolean("can_view_messages").default(false),

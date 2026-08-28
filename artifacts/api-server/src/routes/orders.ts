@@ -23,6 +23,7 @@ import {
   sendOrderStatusUpdateEmail,
   sendChatReplyEmail,
 } from "../lib/mailer";
+import { sendPushNotification } from "../lib/push";
 import { asyncHandler } from "../lib/http";
 import { logger } from "../lib/logger";
 
@@ -265,13 +266,37 @@ function hasSubmittedTransferDetails(order: {
 function getOrderStatusLabel(status: string): string {
   const statusMap: Record<string, string> = {
     pending: "قيد الانتظار",
+    accepted: "مقبول",
+    payment_required: "بانتظار الدفع",
     started: "بدأ التنفيذ",
     in_progress: "قيد التنفيذ",
+    processing: "قيد التنفيذ",
+    payment_confirmed: "تم تأكيد الدفع",
+    paid: "مدفوع",
     completed: "مكتمل",
     cancelled: "ملغي",
     refunded: "مسترجع",
   };
   return statusMap[status] || status;
+}
+
+function getOrderStatusPushMessage(status: string): { title: string; body: string } {
+  // ✅ رسائل عربية مطلوبة حرفياً (مع الإيموجي)
+  const title = "تحديث الطلب";
+
+  if (status === "processing" || status === "in_progress" || status === "started") {
+    return { title, body: "طلبك الآن قيد التنفيذ ⏳" };
+  }
+
+  if (status === "completed") {
+    return { title, body: "تم اكتمال طلبك بنجاح! 🎉" };
+  }
+
+  if (status === "payment_confirmed" || status === "paid") {
+    return { title, body: "تم تأكيد الدفع لطلبك بنجاح 💸" };
+  }
+
+  return { title, body: `تم تحديث حالة طلبك إلى: ${getOrderStatusLabel(status)}` };
 }
 
 // GET /orders
@@ -679,6 +704,23 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
           await sendOrderStatusUpdateEmail(user.email, user.fullName, updatedOrder.id, updatedOrder.siteName, statusAr, "يرجى مراجعة لوحة التحكم للإطلاع على أحدث تطورات مشروعك.");
         });
       }
+    }
+
+    // 🔔 إشعار Push (FCM) — معزول تماماً عن نظام البريد
+    if (statusChanged && user.fcmToken) {
+      const msg = getOrderStatusPushMessage(updatedOrder.status);
+      await notifySafely("Failed to send order status push notification", async () => {
+        await sendPushNotification({
+          fcmToken: user.fcmToken!,
+          title: msg.title,
+          body: msg.body,
+          data: {
+            type: "order_status",
+            orderId: String(updatedOrder.id),
+            status: String(updatedOrder.status),
+          },
+        });
+      }, { orderId: updatedOrder.id, userId: user.id, status: updatedOrder.status });
     }
 
     const becameCompleted = statusChanged && updatedOrder.status === "completed";

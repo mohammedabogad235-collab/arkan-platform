@@ -35,6 +35,7 @@ async function buildAll() {
       "canvas",
       "bcrypt",
       "argon2",
+      "firebase-admin",
       "fsevents",
       "re2",
       "farmhash",
