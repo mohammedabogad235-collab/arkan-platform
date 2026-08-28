@@ -1186,17 +1186,18 @@ export default function Admin() {
             </div>
           )}
 
-          <Link href="/admin/system-status" className="hidden sm:block">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 rounded-xl border-gray-200 bg-white hover:bg-gray-50"
-              title="غرفة التحكم (System Status)"
-            >
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="gap-2 rounded-xl border-gray-200 bg-white hover:bg-gray-50"
+            title="حالة النظام والصيانة"
+          >
+            <Link href="/admin/system-status">
               <Shield className="w-4 h-4" />
-              غرفة التحكم
-            </Button>
-          </Link>
+              حالة النظام والصيانة
+            </Link>
+          </Button>
 
           <div className="relative">
             <Button variant="ghost" size="icon" className="relative" onClick={() => setNotifOpen(true)}>
@@ -1259,6 +1260,17 @@ export default function Admin() {
                 </button>
               );
             })}
+
+            <Button
+              asChild
+              variant="outline"
+              className="mt-3 h-auto w-full justify-start gap-3 rounded-xl border-primary/20 bg-primary/5 px-3 py-2.5 text-right text-sm font-medium text-primary hover:bg-primary/10"
+            >
+              <Link href="/admin/system-status">
+                <Shield className="w-4 h-4 shrink-0" />
+                حالة النظام والصيانة
+              </Link>
+            </Button>
           </nav>
         </aside>
 

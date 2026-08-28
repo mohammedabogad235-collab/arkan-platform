@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Shield, Globe, Smartphone, Save, Link as LinkIcon, Timer } from "lucide-react";
+import { Shield, Globe, Smartphone, Save, Link as LinkIcon, Timer, BellRing, LaptopMinimal, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -95,6 +95,9 @@ export default function AdminSystemStatus() {
     });
   };
 
+  const webCountdownEnabled = webMaintenanceEndLocal.trim().length > 0;
+  const appCountdownEnabled = appMaintenanceEndLocal.trim().length > 0;
+
   return (
     <div className="min-h-screen bg-slate-950 text-white" dir="rtl">
       <div className="relative overflow-hidden border-b border-white/10">
@@ -105,9 +108,9 @@ export default function AdminSystemStatus() {
               <Shield className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight">غرفة التحكم</h1>
+              <h1 className="text-3xl font-extrabold tracking-tight">حالة النظام والصيانة</h1>
               <p className="text-white/70 mt-1">
-                System Status, Root Kill-Switch & Cross-Routing (Web/App) مع عدّ تنازلي حي
+                إدارة صيانة الويب والتطبيق، التحديث الإجباري، العدّ التنازلي، وروابط التحويل البديلة من مكان واحد.
               </p>
             </div>
           </div>
@@ -121,37 +124,71 @@ export default function AdminSystemStatus() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between gap-3 mb-6">
-          <div className="text-white/70 text-sm">
-            {isLoading ? "جارٍ التحميل..." : "جاهز للتعديل"}
-          </div>
+        <div className="mb-6 grid grid-cols-1 xl:grid-cols-[1.5fr_auto] gap-4 items-start">
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+            <CardContent className="p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm text-white/60">لوحة الإدارة</p>
+                  <h2 className="mt-1 text-xl font-bold">التحكم الكامل في حالة النظام</h2>
+                  <p className="mt-2 text-sm text-white/70">
+                    فعّل وضع الصيانة للويب، افرض تحديث التطبيق، واضبط توقيت انتهاء الرسائل والشاشات المقفلة.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <p className="text-xs text-white/50">حالة الويب</p>
+                    <p className="mt-1 font-semibold">{webMaintenanceMode ? "الصيانة مفعلة" : "الويب يعمل"}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <p className="text-xs text-white/50">حالة التطبيق</p>
+                    <p className="mt-1 font-semibold">{appMaintenanceMode ? "الصيانة مفعلة" : "التطبيق يعمل"}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <p className="text-xs text-white/50">التحديث الإجباري</p>
+                    <p className="mt-1 font-semibold">{appUpdateRequired ? "مفعل" : "غير مفعل"}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Button
             onClick={save}
             disabled={update.isPending}
-            className="h-11 px-5 rounded-2xl bg-gradient-to-l from-cyan-500 to-fuchsia-600 hover:from-cyan-400 hover:to-fuchsia-500"
+            className="h-14 px-6 rounded-2xl bg-gradient-to-l from-cyan-500 to-fuchsia-600 hover:from-cyan-400 hover:to-fuchsia-500 text-base font-semibold shadow-[0_0_30px_rgba(34,211,238,0.22)]"
           >
-            <Save className="w-4 h-4 ms-2" />
-            {update.isPending ? "جارٍ الحفظ..." : "حفظ الإعدادات"}
+            <BellRing className="w-4 h-4 ms-2" />
+            {update.isPending ? "جارٍ الحفظ..." : "Save & Notify"}
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Web Card */}
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="text-white/70 text-sm">
+            {isLoading ? "جارٍ تحميل الإعدادات الحالية..." : "كل الحقول جاهزة للتعديل والحفظ"}
+          </div>
+          <div className="text-xs text-white/50">
+            احفظ التغييرات بعد تعديل أي بطاقة بالأسفل.
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Globe className="w-5 h-5" />
-                Web Control
+                Web Maintenance
               </CardTitle>
               <CardDescription className="text-white/60">
-                صيانة الويب + رسالة + عدّ تنازلي + تفعيل عرض بديل التطبيق
+                تحكم كامل في إغلاق نسخة الويب مع رسالة مخصصة وخيار توجيه المستخدم للتطبيق.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div>
                   <Label className="text-white">webMaintenanceMode</Label>
-                  <p className="text-xs text-white/60 mt-1">حظر واجهة الويب بالكامل (مع استثناء الأدمن)</p>
+                  <p className="text-xs text-white/60 mt-1">تعطيل نسخة الويب مؤقتاً مع الإبقاء على وصول الأدمن.</p>
                 </div>
                 <Switch checked={webMaintenanceMode} onCheckedChange={setWebMaintenanceMode} />
               </div>
@@ -161,15 +198,116 @@ export default function AdminSystemStatus() {
                 <Textarea
                   value={webMaintenanceMessage}
                   onChange={(e) => setWebMaintenanceMessage(e.target.value)}
-                  placeholder="اكتب رسالة الصيانة التي ستظهر للمستخدمين..."
+                  placeholder="اكتب رسالة الصيانة التي ستظهر لمستخدمي الويب..."
                   className="min-h-28 bg-white/5 border-white/10 text-white placeholder:text-white/40"
                 />
               </div>
 
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div>
+                  <Label className="text-white">webShowAppAlternative</Label>
+                  <p className="text-xs text-white/60 mt-1">إظهار كارت بديل لتحميل التطبيق أثناء صيانة الويب.</p>
+                </div>
+                <Switch checked={webShowAppAlternative} onCheckedChange={setWebShowAppAlternative} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5" />
+                App Maintenance
+              </CardTitle>
+              <CardDescription className="text-white/60">
+                قفل التطبيق مؤقتاً مع رسالة واضحة وخيار توجيه المستخدم إلى نسخة الويب.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div>
+                  <Label className="text-white">appMaintenanceMode</Label>
+                  <p className="text-xs text-white/60 mt-1">إظهار شاشة صيانة للتطبيق الأصلي.</p>
+                </div>
+                <Switch checked={appMaintenanceMode} onCheckedChange={setAppMaintenanceMode} />
+              </div>
+
               <div className="space-y-2">
-                <Label className="text-white/80" dir="ltr">
-                  webMaintenanceEndTime
-                </Label>
+                <Label className="text-white/80">appStatusMessage</Label>
+                <Textarea
+                  value={appStatusMessage}
+                  onChange={(e) => setAppStatusMessage(e.target.value)}
+                  placeholder="اكتب رسالة الصيانة أو الحالة التي ستظهر داخل التطبيق..."
+                  className="min-h-28 bg-white/5 border-white/10 text-white placeholder:text-white/40"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div>
+                  <Label className="text-white">appShowWebAlternative</Label>
+                  <p className="text-xs text-white/60 mt-1">إظهار زر تحويل المستخدم إلى الويب أثناء إغلاق التطبيق.</p>
+                </div>
+                <Switch checked={appShowWebAlternative} onCheckedChange={setAppShowWebAlternative} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="w-5 h-5" />
+                App Force Update
+              </CardTitle>
+              <CardDescription className="text-white/60">
+                فعّل التحديث الإجباري وحدد رابط الـ APK الذي يظهر داخل الويب والتطبيق.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div>
+                  <Label className="text-white">appUpdateRequired</Label>
+                  <p className="text-xs text-white/60 mt-1">إظهار شاشة تحديث إجباري مع زر تحميل بعد انتهاء المؤقت.</p>
+                </div>
+                <Switch checked={appUpdateRequired} onCheckedChange={setAppUpdateRequired} />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white/80">appUpdateLink</Label>
+                <div className="relative">
+                  <LinkIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
+                  <Input
+                    value={appUpdateLink}
+                    onChange={(e) => setAppUpdateLink(e.target.value)}
+                    placeholder={DEFAULT_APK_LINK}
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-10"
+                    dir="ltr"
+                  />
+                </div>
+                <p className="text-xs text-white/50">
+                  استخدم رابطاً مباشراً وواضحاً لتحميل آخر نسخة من التطبيق.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Timer className="w-5 h-5" />
+                Countdown Timers
+              </CardTitle>
+              <CardDescription className="text-white/60">
+                اضبط وقت انتهاء صيانة الويب والتطبيق لعرض العدّ التنازلي بشكل حي للمستخدمين.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <LaptopMinimal className="w-4 h-4 text-cyan-300" />
+                  <Label className="text-white/90" dir="ltr">
+                    webMaintenanceEndTime
+                  </Label>
+                </div>
                 <div className="flex items-center gap-2">
                   <Input
                     type="datetime-local"
@@ -186,64 +324,18 @@ export default function AdminSystemStatus() {
                     مسح
                   </Button>
                 </div>
-                <p className="text-xs text-white/50 flex items-center gap-2">
-                  <Timer className="w-3.5 h-3.5" />
-                  عند ضبط الوقت، سيظهر عدّ تنازلي حي للمستخدمين.
+                <p className="text-xs text-white/50">
+                  {webCountdownEnabled ? "تم تفعيل مؤقت نهاية صيانة الويب." : "يمكنك ترك الحقل فارغاً لتعطيل عدّاد الويب."}
                 </p>
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div>
-                  <Label className="text-white">webShowAppAlternative</Label>
-                  <p className="text-xs text-white/60 mt-1">عرض كارت بديل لتحميل التطبيق داخل شاشة الصيانة</p>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-fuchsia-300" />
+                  <Label className="text-white/90" dir="ltr">
+                    appMaintenanceEndTime
+                  </Label>
                 </div>
-                <Switch checked={webShowAppAlternative} onCheckedChange={setWebShowAppAlternative} />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* App Card */}
-          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Smartphone className="w-5 h-5" />
-                App Control
-              </CardTitle>
-              <CardDescription className="text-white/60">
-                صيانة التطبيق + تحديث إجباري + عدّ تنازلي + روابط توجيه متبادل
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div>
-                  <Label className="text-white">appMaintenanceMode</Label>
-                  <p className="text-xs text-white/60 mt-1">قفل واجهة التطبيق (Native)</p>
-                </div>
-                <Switch checked={appMaintenanceMode} onCheckedChange={setAppMaintenanceMode} />
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div>
-                  <Label className="text-white">appUpdateRequired</Label>
-                  <p className="text-xs text-white/60 mt-1">إظهار شاشة تحديث إجباري (مع زر تحميل بعد انتهاء العداد)</p>
-                </div>
-                <Switch checked={appUpdateRequired} onCheckedChange={setAppUpdateRequired} />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-white/80">appStatusMessage</Label>
-                <Textarea
-                  value={appStatusMessage}
-                  onChange={(e) => setAppStatusMessage(e.target.value)}
-                  placeholder="رسالة الحالة/الصيانة/التحديث داخل التطبيق..."
-                  className="min-h-28 bg-white/5 border-white/10 text-white placeholder:text-white/40"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-white/80" dir="ltr">
-                  appMaintenanceEndTime
-                </Label>
                 <div className="flex items-center gap-2">
                   <Input
                     type="datetime-local"
@@ -260,41 +352,49 @@ export default function AdminSystemStatus() {
                     مسح
                   </Button>
                 </div>
-                <p className="text-xs text-white/50 flex items-center gap-2">
-                  <Timer className="w-3.5 h-3.5" />
-                  نفس نهاية الوقت تُستخدم للعدّ التنازلي للتحديث الإجباري أيضاً.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div>
-                  <Label className="text-white">appShowWebAlternative</Label>
-                  <p className="text-xs text-white/60 mt-1">عرض زر تحويل للويب داخل شاشة التطبيق المقفلة</p>
-                </div>
-                <Switch checked={appShowWebAlternative} onCheckedChange={setAppShowWebAlternative} />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-white/80">appUpdateLink</Label>
-                <div className="relative">
-                  <LinkIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
-                  <Input
-                    value={appUpdateLink}
-                    onChange={(e) => setAppUpdateLink(e.target.value)}
-                    placeholder={DEFAULT_APK_LINK}
-                    className="bg-white/5 border-white/10 text-white placeholder:text-white/40 pr-10"
-                    dir="ltr"
-                  />
-                </div>
                 <p className="text-xs text-white/50">
-                  هذا الرابط يُستخدم لزر التحميل في الويب والتطبيق عند تفعيل التحديث الإجباري.
+                  {appCountdownEnabled
+                    ? "سيُستخدم هذا الوقت لعدّاد الصيانة والتحديث الإجباري داخل التطبيق."
+                    : "يمكنك ترك الحقل فارغاً إذا لم تكن بحاجة إلى عدّ تنازلي للتطبيق."}
                 </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm font-semibold text-white">ملاحظات سريعة</p>
+                <ul className="mt-3 space-y-2 text-sm text-white/70">
+                  <li>يظهر عدّاد الويب فقط عند ضبط وقت نهاية صيانة الويب.</li>
+                  <li>يظهر زر تحميل التحديث بعد انتهاء عدّاد التطبيق عند التحديث الإجباري.</li>
+                  <li>تبقى صفحة الأدمن متاحة حتى أثناء تفعيل وضع الصيانة.</li>
+                </ul>
               </div>
             </CardContent>
           </Card>
+
+          <div className="xl:col-span-2">
+            <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+              <CardContent className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">جاهز لنشر التغييرات؟</p>
+                  <p className="text-sm text-white/60 mt-1">
+                    اضغط على الزر لحفظ آخر الإعدادات وتحديث حالة النظام فوراً.
+                  </p>
+                </div>
+                <Label className="text-white/80" dir="ltr">
+                  آخر خطوة
+                </Label>
+                <Button
+                  onClick={save}
+                  disabled={update.isPending}
+                  className="h-12 px-6 rounded-2xl bg-gradient-to-l from-cyan-500 to-fuchsia-600 hover:from-cyan-400 hover:to-fuchsia-500 text-base font-semibold"
+                >
+                  <Save className="w-4 h-4 ms-2" />
+                  {update.isPending ? "جارٍ الحفظ..." : "Save & Notify"}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
