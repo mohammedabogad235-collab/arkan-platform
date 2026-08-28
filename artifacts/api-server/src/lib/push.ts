@@ -1,4 +1,5 @@
-import admin from "firebase-admin";
+import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import { readFileSync } from "node:fs";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 import { logger } from "./logger";
@@ -56,7 +57,7 @@ function loadServiceAccountRaw(): string | null {
   return null;
 }
 
-function getFirebaseApp(): admin.app.App | null {
+function getFirebaseApp(): App | null {
   // ✅ لو متضبطتش متغيرات البيئة، نخلي الإشعارات تتخطى بصمت بدون كسر السيرفر
   const rawServiceAccountJson = loadServiceAccountRaw();
   if (!rawServiceAccountJson) {
@@ -67,9 +68,9 @@ function getFirebaseApp(): admin.app.App | null {
   if (!serviceAccount) return null;
 
   try {
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+    if (!getApps().length) {
+      initializeApp({
+        credential: cert(serviceAccount as ServiceAccount),
       });
       firebaseAppInitialized = true;
       logger.info(
@@ -80,7 +81,7 @@ function getFirebaseApp(): admin.app.App | null {
       );
     }
 
-    return admin.app();
+    return getApps()[0] ?? null;
   } catch (error) {
     logger.error({ err: error }, "Failed to initialize Firebase Admin");
     return null;
@@ -109,7 +110,7 @@ export async function sendPushNotification(options: PushNotificationOptions): Pr
   }
 
   try {
-    await admin.messaging(app).send({
+    await getMessaging(app).send({
       token,
       notification: {
         title: options.title,

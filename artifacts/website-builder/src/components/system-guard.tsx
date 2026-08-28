@@ -42,22 +42,19 @@ function CountdownBoxes({ countdown }: { countdown: CountdownParts | null }) {
 export function SystemGuard({ children }: PropsWithChildren) {
   const [location] = useLocation();
   const { data: status } = useSystemStatus();
-
   const platform = Capacitor.getPlatform();
   const isWeb = platform === "web";
+  const webBlocked = isWeb && !!status?.webMaintenanceMode;
+  const appBlocked = !isWeb && !!status?.appMaintenanceMode;
+  const appUpdateBlocked = !isWeb && !!status?.appUpdateRequired;
+  const blocked = webBlocked || appBlocked || appUpdateBlocked;
+  const endTimeIso = webBlocked ? status?.webMaintenanceEndTime : status?.appMaintenanceEndTime;
+  const countdown = useCountdown(endTimeIso);
 
   // ✅ Kill Switch Bypass: لوحة التحكم يجب ألا تُحجب أبداً
   if (location.startsWith("/admin")) return <>{children}</>;
 
   if (!status) return <>{children}</>;
-
-  const webBlocked = isWeb && status.webMaintenanceMode;
-  const appBlocked = !isWeb && status.appMaintenanceMode;
-  const appUpdateBlocked = !isWeb && status.appUpdateRequired;
-
-  const blocked = webBlocked || appBlocked || appUpdateBlocked;
-  const endTimeIso = webBlocked ? status.webMaintenanceEndTime : status.appMaintenanceEndTime;
-  const countdown = useCountdown(endTimeIso);
 
   if (!blocked) return <>{children}</>;
   const canShowDownload = !appUpdateBlocked || !countdown || countdown.isExpired;
