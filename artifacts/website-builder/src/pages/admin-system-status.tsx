@@ -52,6 +52,7 @@ export default function AdminSystemStatus() {
   const [appStatusMessage, setAppStatusMessage] = useState("");
   const [appMaintenanceEndLocal, setAppMaintenanceEndLocal] = useState("");
   const [appUpdateLink, setAppUpdateLink] = useState(DEFAULT_APK_LINK);
+  const [requiredAppVersion, setRequiredAppVersion] = useState("0.0.0");
 
   useEffect(() => {
     if (!initial) return;
@@ -67,6 +68,7 @@ export default function AdminSystemStatus() {
     setAppStatusMessage(initial.appStatusMessage ?? "");
     setAppMaintenanceEndLocal(isoToDatetimeLocal(initial.appMaintenanceEndTime));
     setAppUpdateLink(initial.appUpdateLink || DEFAULT_APK_LINK);
+    setRequiredAppVersion((initial.requiredAppVersion ?? "0.0.0").trim() || "0.0.0");
   }, [initial]);
 
   const save = async () => {
@@ -78,6 +80,7 @@ export default function AdminSystemStatus() {
 
       appMaintenanceMode,
       appUpdateRequired,
+      requiredAppVersion: requiredAppVersion.trim() || "0.0.0",
       appShowWebAlternative,
       appStatusMessage,
       appMaintenanceEndTime: datetimeLocalToIso(appMaintenanceEndLocal),
@@ -125,7 +128,7 @@ export default function AdminSystemStatus() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6 grid grid-cols-1 xl:grid-cols-[1.5fr_auto] gap-4 items-start">
-          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.35)]">
             <CardContent className="p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -173,8 +176,8 @@ export default function AdminSystemStatus() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.35)]">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Globe className="w-5 h-5" />
@@ -184,8 +187,8 @@ export default function AdminSystemStatus() {
                 تحكم كامل في إغلاق نسخة الويب مع رسالة مخصصة وخيار توجيه المستخدم للتطبيق.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-5">
                 <div>
                   <Label className="text-white">webMaintenanceMode</Label>
                   <p className="text-xs text-white/60 mt-1">تعطيل نسخة الويب مؤقتاً مع الإبقاء على وصول الأدمن.</p>
@@ -193,7 +196,7 @@ export default function AdminSystemStatus() {
                 <Switch checked={webMaintenanceMode} onCheckedChange={setWebMaintenanceMode} />
               </div>
 
-              <div className="space-y-2">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-2">
                 <Label className="text-white/80">webMaintenanceMessage</Label>
                 <Textarea
                   value={webMaintenanceMessage}
@@ -203,7 +206,7 @@ export default function AdminSystemStatus() {
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-5">
                 <div>
                   <Label className="text-white">webShowAppAlternative</Label>
                   <p className="text-xs text-white/60 mt-1">إظهار كارت بديل لتحميل التطبيق أثناء صيانة الويب.</p>
@@ -213,7 +216,7 @@ export default function AdminSystemStatus() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.35)]">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Smartphone className="w-5 h-5" />
@@ -223,8 +226,8 @@ export default function AdminSystemStatus() {
                 قفل التطبيق مؤقتاً مع رسالة واضحة وخيار توجيه المستخدم إلى نسخة الويب.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-5">
                 <div>
                   <Label className="text-white">appMaintenanceMode</Label>
                   <p className="text-xs text-white/60 mt-1">إظهار شاشة صيانة للتطبيق الأصلي.</p>
@@ -232,7 +235,7 @@ export default function AdminSystemStatus() {
                 <Switch checked={appMaintenanceMode} onCheckedChange={setAppMaintenanceMode} />
               </div>
 
-              <div className="space-y-2">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-2">
                 <Label className="text-white/80">appStatusMessage</Label>
                 <Textarea
                   value={appStatusMessage}
@@ -242,7 +245,7 @@ export default function AdminSystemStatus() {
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-5">
                 <div>
                   <Label className="text-white">appShowWebAlternative</Label>
                   <p className="text-xs text-white/60 mt-1">إظهار زر تحويل المستخدم إلى الويب أثناء إغلاق التطبيق.</p>
@@ -252,7 +255,7 @@ export default function AdminSystemStatus() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.35)]">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <RefreshCw className="w-5 h-5" />
@@ -262,8 +265,8 @@ export default function AdminSystemStatus() {
                 فعّل التحديث الإجباري وحدد رابط الـ APK الذي يظهر داخل الويب والتطبيق.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-5">
                 <div>
                   <Label className="text-white">appUpdateRequired</Label>
                   <p className="text-xs text-white/60 mt-1">إظهار شاشة تحديث إجباري مع زر تحميل بعد انتهاء المؤقت.</p>
@@ -271,7 +274,21 @@ export default function AdminSystemStatus() {
                 <Switch checked={appUpdateRequired} onCheckedChange={setAppUpdateRequired} />
               </div>
 
-              <div className="space-y-2">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-2">
+                <Label className="text-white/80">requiredAppVersion</Label>
+                <Input
+                  value={requiredAppVersion}
+                  onChange={(e) => setRequiredAppVersion(e.target.value)}
+                  placeholder="مثال: 1.2.3"
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/40"
+                  dir="ltr"
+                />
+                <p className="text-xs text-white/50">
+                  سيتم حجب المستخدم فقط إذا كانت نسخة جهازه أقل من هذه القيمة (مثال: 1.4.0). اتركها <span dir="ltr">0.0.0</span> لتعطيل شرط النسخة.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-2">
                 <Label className="text-white/80">appUpdateLink</Label>
                 <div className="relative">
                   <LinkIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
@@ -290,7 +307,7 @@ export default function AdminSystemStatus() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+          <Card className="bg-white/5 border-white/10 backdrop-blur-2xl rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.35)]">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Timer className="w-5 h-5" />
@@ -300,8 +317,8 @@ export default function AdminSystemStatus() {
                 اضبط وقت انتهاء صيانة الويب والتطبيق لعرض العدّ التنازلي بشكل حي للمستخدمين.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+            <CardContent className="space-y-6">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
                 <div className="flex items-center gap-2">
                   <LaptopMinimal className="w-4 h-4 text-cyan-300" />
                   <Label className="text-white/90" dir="ltr">
@@ -329,7 +346,7 @@ export default function AdminSystemStatus() {
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
                 <div className="flex items-center gap-2">
                   <Smartphone className="w-4 h-4 text-fuchsia-300" />
                   <Label className="text-white/90" dir="ltr">
@@ -359,7 +376,7 @@ export default function AdminSystemStatus() {
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                 <p className="text-sm font-semibold text-white">ملاحظات سريعة</p>
                 <ul className="mt-3 space-y-2 text-sm text-white/70">
                   <li>يظهر عدّاد الويب فقط عند ضبط وقت نهاية صيانة الويب.</li>
@@ -371,7 +388,7 @@ export default function AdminSystemStatus() {
           </Card>
 
           <div className="xl:col-span-2">
-            <Card className="bg-white/5 border-white/10 backdrop-blur-2xl">
+            <Card className="bg-white/5 border-white/10 backdrop-blur-2xl rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.35)]">
               <CardContent className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-white">جاهز لنشر التغييرات؟</p>

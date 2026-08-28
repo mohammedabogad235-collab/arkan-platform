@@ -1,4 +1,5 @@
-import type { PropsWithChildren } from "react";
+import { useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
+import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
@@ -39,17 +40,102 @@ function CountdownBoxes({ countdown }: { countdown: CountdownParts | null }) {
   );
 }
 
+function normalizeVersion(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim();
+  if (!v) return null;
+  return v;
+}
+
+function compareVersions(aRaw: string, bRaw: string): number {
+  // returns: -1 if a<b, 0 if a==b, 1 if a>b
+  const aParts = aRaw.split(".").map((p) => Number((p.match(/\d+/)?.[0] ?? "0")));
+  const bParts = bRaw.split(".").map((p) => Number((p.match(/\d+/)?.[0] ?? "0")));
+  const max = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < max; i += 1) {
+    const ai = aParts[i] ?? 0;
+    const bi = bParts[i] ?? 0;
+    if (ai > bi) return 1;
+    if (ai < bi) return -1;
+  }
+  return 0;
+}
+
 export function SystemGuard({ children }: PropsWithChildren) {
   const [location] = useLocation();
   const { data: status } = useSystemStatus();
   const platform = Capacitor.getPlatform();
   const isWeb = platform === "web";
+  const [currentAppVersion, setCurrentAppVersion] = useState<string | null>(null);
+  const lastCountdownMsRef = useRef<number | null>(null);
+  const reloadedRef = useRef(false);
+
+  const requiredAppVersion = useMemo(() => {
+    const v = normalizeVersion(status?.requiredAppVersion);
+    return v ?? "0.0.0";
+  }, [status?.requiredAppVersion]);
+
+  useEffect(() => {
+    if (isWeb) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const info = await CapacitorApp.getInfo();
+        const v = normalizeVersion(info?.version);
+        if (!cancelled) setCurrentAppVersion(v);
+      } catch {
+        if (!cancelled) setCurrentAppVersion(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isWeb]);
+
   const webBlocked = isWeb && !!status?.webMaintenanceMode;
   const appBlocked = !isWeb && !!status?.appMaintenanceMode;
-  const appUpdateBlocked = !isWeb && !!status?.appUpdateRequired;
-  const blocked = webBlocked || appBlocked || appUpdateBlocked;
+  const forceUpdateBlocked = useMemo(() => {
+    if (isWeb) return false;
+    if (!status?.appUpdateRequired) return false;
+
+    // if required version is not set properly, treat as no-block (0.0.0)
+    const required = requiredAppVersion;
+    if (!required || required === "0.0.0") return false;
+
+    // حسب المطلوب: لا نحجب إلا إذا كانت نسخة الجهاز أقل من النسخة المطلوبة
+    // إذا لم نتمكن من قراءة نسخة الجهاز، لا نُظهر الحجب لتجنب تعليق المستخدمين للأبد.
+    if (!currentAppVersion) return false;
+
+    return compareVersions(currentAppVersion, required) < 0;
+  }, [currentAppVersion, isWeb, requiredAppVersion, status?.appUpdateRequired]);
+
+  const blocked = webBlocked || appBlocked || forceUpdateBlocked;
   const endTimeIso = webBlocked ? status?.webMaintenanceEndTime : status?.appMaintenanceEndTime;
   const countdown = useCountdown(endTimeIso);
+
+  // ✅ Auto-refresh when countdown hits 00:00:00 (so the app can re-check the latest status)
+  useEffect(() => {
+    if (!blocked) {
+      lastCountdownMsRef.current = null;
+      reloadedRef.current = false;
+      return;
+    }
+
+    const ms = countdown?.totalMs;
+    if (typeof ms !== "number") return;
+
+    const prev = lastCountdownMsRef.current;
+    lastCountdownMsRef.current = ms;
+
+    if (reloadedRef.current) return;
+    // useCountdown() يَعمل clamping للزمن إلى >= 0، لذلك "وصوله للصفر" يعني ms === 0
+    if (typeof prev === "number" && prev > 0 && ms === 0) {
+      reloadedRef.current = true;
+      window.location.reload();
+    }
+  }, [blocked, countdown?.totalMs]);
 
   // ✅ Kill Switch Bypass: لوحة التحكم يجب ألا تُحجب أبداً
   if (location.startsWith("/admin")) return <>{children}</>;
@@ -57,17 +143,17 @@ export function SystemGuard({ children }: PropsWithChildren) {
   if (!status) return <>{children}</>;
 
   if (!blocked) return <>{children}</>;
-  const canShowDownload = !appUpdateBlocked || !countdown || countdown.isExpired;
+  const canShowDownload = !forceUpdateBlocked || !countdown || countdown.isExpired;
 
   const title = webBlocked
     ? "صيانة مؤقتة"
-    : appUpdateBlocked
+    : forceUpdateBlocked
       ? "تحديث إجباري"
       : "التطبيق تحت الصيانة";
 
   const message = webBlocked
     ? status.webMaintenanceMessage || "نقوم الآن بأعمال صيانة لتحسين تجربتك. نرجو العودة قريباً."
-    : status.appStatusMessage || (appUpdateBlocked ? "يوجد تحديث جديد للتطبيق يجب تثبيته للمتابعة." : "التطبيق تحت الصيانة حالياً.");
+    : status.appStatusMessage || (forceUpdateBlocked ? "يوجد تحديث جديد للتطبيق يجب تثبيته للمتابعة." : "التطبيق تحت الصيانة حالياً.");
 
   return (
     <div
@@ -125,7 +211,7 @@ export function SystemGuard({ children }: PropsWithChildren) {
             )}
 
             {/* App Cross-Routing */}
-            {!isWeb && (appBlocked || appUpdateBlocked) && status.appShowWebAlternative && (
+            {!isWeb && (appBlocked || forceUpdateBlocked) && status.appShowWebAlternative && (
               <div className="mt-6 flex flex-col sm:flex-row gap-3">
                 <a href={DEFAULT_PUBLIC_WEBSITE_URL} target="_blank" rel="noreferrer" className="w-full sm:w-auto">
                   <Button variant="secondary" className="w-full h-12 rounded-2xl bg-white/10 text-white hover:bg-white/15 border border-white/10">
@@ -137,7 +223,7 @@ export function SystemGuard({ children }: PropsWithChildren) {
             )}
 
             {/* App Force Update Button */}
-            {!isWeb && appUpdateBlocked && canShowDownload && (
+            {!isWeb && forceUpdateBlocked && canShowDownload && (
               <div className="mt-8">
                 <a href={status.appUpdateLink} target="_blank" rel="noreferrer">
                   <Button className="w-full h-14 text-lg rounded-2xl bg-gradient-to-l from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
@@ -149,7 +235,7 @@ export function SystemGuard({ children }: PropsWithChildren) {
             )}
 
             {/* App Force Update: hide download while timer runs */}
-            {!isWeb && appUpdateBlocked && !canShowDownload && (
+            {!isWeb && forceUpdateBlocked && !canShowDownload && (
               <div className="mt-6 text-center text-white/70 text-sm">
                 جاري تجهيز التحديث... يرجى الانتظار.
               </div>

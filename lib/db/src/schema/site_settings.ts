@@ -31,6 +31,8 @@ export const siteSettingsTable = pgTable("site_settings", {
   // App (Native)
   appMaintenanceMode: boolean("app_maintenance_mode").notNull().default(false),
   appUpdateRequired: boolean("app_update_required").notNull().default(false),
+  // Example: "1.2.3" - used to allow users in after they update
+  requiredAppVersion: text("required_app_version").notNull().default("0.0.0"),
   appStatusMessage: text("app_status_message").notNull().default(""),
   // ISO datetime string (varchar/text)
   appMaintenanceEndTime: text("app_maintenance_end_time"),

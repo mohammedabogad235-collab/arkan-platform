@@ -11,6 +11,7 @@ export type SystemStatus = {
   // App
   appMaintenanceMode: boolean;
   appUpdateRequired: boolean;
+  requiredAppVersion: string;
   appStatusMessage: string;
   appMaintenanceEndTime: string | null;
   appShowWebAlternative: boolean;
@@ -45,4 +46,3 @@ export function useUpdateSystemStatus() {
     mutationFn: postSystemStatus,
   });
 }
-

@@ -57,6 +57,7 @@ router.get("/system-status", async (_req, res): Promise<void> => {
 
     appMaintenanceMode: (settings as any).appMaintenanceMode ?? false,
     appUpdateRequired: (settings as any).appUpdateRequired ?? false,
+    requiredAppVersion: (settings as any).requiredAppVersion ?? "0.0.0",
     appStatusMessage: (settings as any).appStatusMessage ?? "",
     appMaintenanceEndTime: (settings as any).appMaintenanceEndTime ?? null,
     appShowWebAlternative: (settings as any).appShowWebAlternative ?? false,
@@ -87,6 +88,7 @@ router.post("/system-status", async (req, res): Promise<void> => {
   const appStatusMessage = normalizeText(body.appStatusMessage, { allowNull: false });
   const appMaintenanceEndTime = normalizeText(body.appMaintenanceEndTime, { allowNull: true });
   const appUpdateLink = normalizeText(body.appUpdateLink, { allowNull: false });
+  const requiredAppVersion = normalizeText(body.requiredAppVersion, { allowNull: false });
 
   if (webMaintenanceMode !== undefined) update.webMaintenanceMode = webMaintenanceMode;
   if (webShowAppAlternative !== undefined) update.webShowAppAlternative = webShowAppAlternative;
@@ -99,6 +101,7 @@ router.post("/system-status", async (req, res): Promise<void> => {
   if (appStatusMessage !== undefined) update.appStatusMessage = appStatusMessage;
   if (appMaintenanceEndTime !== undefined) update.appMaintenanceEndTime = appMaintenanceEndTime;
   if (appUpdateLink !== undefined) update.appUpdateLink = appUpdateLink;
+  if (requiredAppVersion !== undefined) update.requiredAppVersion = requiredAppVersion;
 
   if (Object.keys(update).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات صالحة للتحديث" });
@@ -115,4 +118,3 @@ router.post("/system-status", async (req, res): Promise<void> => {
 });
 
 export default router;
-
