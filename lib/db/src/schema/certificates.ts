@@ -36,6 +36,7 @@ export const certificateIssuesTable = pgTable("certificate_issues", {
   signatureTitle: text("signature_title"),
   issueDate: timestamp("issue_date", { withTimezone: true }).notNull().defaultNow(),
   status: text("status").notNull().default("issued"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   metadata: jsonb("metadata").notNull().default({}),
   qrCodeUrl: text("qr_code_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

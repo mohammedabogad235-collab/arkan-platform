@@ -3,6 +3,7 @@ import { runDatabaseMigrations, verifyDatabaseConnection, db } from "@workspace/
 import { sql } from "drizzle-orm"; // استيراد sql من drizzle
 import app from "./app";
 import { logger } from "./lib/logger";
+import { purgeExpiredCertificates } from "./routes/certificates";
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -72,6 +73,8 @@ async function bootstrap() {
         updated_at timestamp with time zone NOT NULL DEFAULT NOW()
       );
     `);
+    await db.execute(sql`ALTER TABLE "certificate_issues" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp with time zone`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS "certificate_issues_status_deleted_at_idx" ON "certificate_issues" ("status", "deleted_at")`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS "certificate_partners" (
@@ -103,9 +106,20 @@ async function bootstrap() {
 
     logger.info("Session and certificate tables verified/created successfully.");
   } catch (err) {
-    logger.warn({ err }, "Session/certificate tables might already exist or failed to create.");
+    logger.error({ err }, "Failed to create or verify session and certificate tables.");
+    throw err;
   }
   // ----------------------------------------------------------------------
+
+  const cleanupExpiredCertificates = () => {
+    void purgeExpiredCertificates()
+      .then((count) => {
+        if (count > 0) logger.info({ count }, "Permanently removed expired certificate trash items");
+      })
+      .catch((error) => logger.error({ err: error }, "Failed to purge expired certificate trash items"));
+  };
+  cleanupExpiredCertificates();
+  setInterval(cleanupExpiredCertificates, 24 * 60 * 60 * 1000).unref();
 
   app.listen(PORT, "0.0.0.0", () => {
     logger.info({ port: PORT }, "API server is running");

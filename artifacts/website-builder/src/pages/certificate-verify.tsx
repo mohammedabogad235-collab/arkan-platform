@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,11 @@ export default function CertificateVerify() {
   const [certificate, setCertificate] = useState<any>(null);
   const [error, setError] = useState("");
   const [searchValue, setSearchValue] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanFrameRef = useRef<number | null>(null);
 
   const params = useMemo(() => new URLSearchParams(location.split("?")[1] ?? ""), [location]);
   const serial = (params.get("serial") ?? "").trim();
@@ -83,6 +88,87 @@ export default function CertificateVerify() {
     setLocation(`/certificate/verify?serial=${encodeURIComponent(searchValue.trim())}`);
   };
 
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (scanFrameRef.current !== null) cancelAnimationFrame(scanFrameRef.current);
+    scanFrameRef.current = null;
+    setCameraOpen(false);
+  };
+
+  const startCamera = async () => {
+    setCameraError("");
+    const Detector = (window as Window & {
+      BarcodeDetector?: new (options: { formats: string[] }) => {
+        detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue: string }>>;
+      };
+    }).BarcodeDetector;
+    if (!Detector) {
+      setCameraError("هذا المتصفح لا يدعم قراءة QR بالكاميرا. أدخل رقم الشهادة يدوياً.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("يتطلب مسح QR اتصالاً آمناً (HTTPS) وإتاحة الكاميرا.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      streamRef.current = stream;
+      if (!videoRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        return;
+      }
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setCameraOpen(true);
+      const detector = new Detector({ formats: ["qr_code"] });
+      const scan = async () => {
+        const video = videoRef.current;
+        if (!video || !streamRef.current) return;
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+          scanFrameRef.current = requestAnimationFrame(() => void scan());
+          return;
+        }
+        try {
+          const codes = await detector.detect(video);
+          for (const code of codes) {
+            let scannedSerial = code.rawValue.trim();
+            try {
+              const scannedUrl = new URL(scannedSerial);
+              scannedSerial = scannedUrl.searchParams.get("serial") || scannedSerial;
+            } catch {
+              // QR content can be a serial number rather than a URL.
+            }
+            const match = scannedSerial.match(/AW-CERT-\d{4}-\d{6}/);
+            if (match) {
+              setSearchValue(match[0]);
+              stopCamera();
+              setLocation(`/certificate/verify?serial=${encodeURIComponent(match[0])}`);
+              return;
+            }
+          }
+        } catch {
+          setCameraError("تعذر قراءة رمز QR. تأكد من وضوح الرمز ثم حاول مجدداً.");
+          stopCamera();
+          return;
+        }
+        if (streamRef.current) scanFrameRef.current = requestAnimationFrame(() => void scan());
+      };
+      scanFrameRef.current = requestAnimationFrame(() => void scan());
+    } catch (error) {
+      setCameraError(error instanceof Error && error.name === "NotAllowedError"
+        ? "تم رفض إذن الكاميرا. يمكنك إدخال رقم الشهادة يدوياً."
+        : "تعذر تشغيل الكاميرا. تحقق من إعدادات المتصفح وحاول مجدداً.");
+      stopCamera();
+    }
+  };
+
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    if (scanFrameRef.current !== null) cancelAnimationFrame(scanFrameRef.current);
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-16" dir="rtl">
       <div className="mx-auto max-w-2xl">
@@ -105,6 +191,15 @@ export default function CertificateVerify() {
               />
               <Button type="submit" disabled={!searchValue.trim() || loading}>التحقق من الشهادة</Button>
             </form>
+            <div className="space-y-2">
+              {!cameraOpen ? (
+                <Button type="button" variant="outline" onClick={() => void startCamera()}>مسح رمز QR بالكاميرا</Button>
+              ) : (
+                <Button type="button" variant="outline" onClick={stopCamera}>إيقاف الكاميرا</Button>
+              )}
+              <video ref={videoRef} className={`${cameraOpen ? "" : "hidden"} max-h-72 w-full rounded-lg bg-black object-contain`} autoPlay playsInline muted aria-label="كاميرا مسح رمز QR" />
+              {cameraError && <p role="alert" className="text-sm text-amber-700">{cameraError}</p>}
+            </div>
             {loading ? (
               <p className="text-sm text-muted-foreground">جاري التحقق من الشهادة...</p>
             ) : valid ? (

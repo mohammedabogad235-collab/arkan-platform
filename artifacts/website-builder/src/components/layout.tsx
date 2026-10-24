@@ -266,6 +266,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
             )}
             <div className="flex gap-4 text-sm text-muted-foreground">
+              <Link href="/certificate/verify" className="hover:text-primary transition-colors">التحقق من الشهادات</Link>
               <Link href="/terms" className="hover:text-primary transition-colors">الشروط والأحكام</Link>
               <Link href="/privacy" className="hover:text-primary transition-colors">سياسة الخصوصية</Link>
             </div>
