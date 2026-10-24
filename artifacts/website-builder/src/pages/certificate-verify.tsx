@@ -38,6 +38,14 @@ export default function CertificateVerify() {
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok || !data?.valid) {
+          if (data?.cancelled) {
+            if (isMounted) {
+              setValid(false);
+              setError("تم إلغاء هذه الشهادة وهي غير صالحة للاستخدام.");
+              setCertificate(data.certificate ?? null);
+            }
+            return;
+          }
           throw new Error(data?.error || "الشهادة غير موجودة");
         }
 
