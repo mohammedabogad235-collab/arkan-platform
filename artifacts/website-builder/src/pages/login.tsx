@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, Fingerprint } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getApiErrorData, getApiErrorStatus } from "@/lib/api-error";
+import { apiFetchJson } from "@/lib/api-fetch";
 import { Capacitor } from "@capacitor/core";
 
 async function loadBiometricAuthModule(): Promise<any> {
@@ -72,6 +73,14 @@ export default function Login() {
   });
 
   useEffect(() => {
+    try {
+      localStorage.removeItem("biometric_login_v1");
+    } catch (error) {
+      console.warn("Could not remove legacy biometric credentials", error);
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     if (!isNative) {
       setBiometricAvailable(false);
@@ -100,7 +109,7 @@ export default function Login() {
   }, [isNative]);
 
   function onSubmit(values: z.infer<typeof loginSchema>) {
-    const loginPayload = { identifier: values.identifier, password: values.password, rememberMe: Boolean(values.rememberMe) } as any;
+    const loginPayload = { identifier: values.identifier, password: values.password, rememberMe: Boolean(values.rememberMe) };
 
     login.mutate(
       { data: loginPayload },
@@ -112,19 +121,6 @@ export default function Login() {
             description: `أهلاً بك ${data.user.fullName}`,
           });
 
-          // Enable biometric login on native platforms (stores the last successful credentials).
-          // This is only used after a successful biometric prompt on next login attempt.
-          try {
-            if (isNative && biometricAvailable) {
-              localStorage.setItem(
-                "biometric_login_v1",
-                JSON.stringify({ identifier: values.identifier, password: values.password }),
-              );
-            }
-          } catch {
-            // ignore
-          }
-          
           // التوجيه الصحيح للأدمن والمشرف الفرعي إلى لوحة التحكم
           if (data.user.role === "admin" || data.user.role === "subadmin") {
             setLocation("/admin");
@@ -175,17 +171,6 @@ export default function Login() {
 
     setBiometricLoading(true);
     try {
-      const storedRaw = localStorage.getItem("biometric_login_v1");
-      const stored = storedRaw ? (JSON.parse(storedRaw) as { identifier?: string; password?: string }) : null;
-      if (!stored?.identifier || !stored?.password) {
-        toast({
-          variant: "destructive",
-          title: "غير مُفعّل بعد",
-          description: "سجّل دخول مرة واحدة بكلمة المرور لتفعيل الدخول بالبصمة.",
-        });
-        return;
-      }
-
       const mod = await loadBiometricAuthModule();
       if (!mod?.BiometricAuth?.authenticate) {
         toast({
@@ -201,31 +186,21 @@ export default function Login() {
         cancelTitle: "إلغاء",
       });
 
-      const biometricPayload = { identifier: stored.identifier, password: stored.password, rememberMe: true } as any;
-
-      login.mutate(
-        { data: biometricPayload },
-        {
-          onSuccess: (data) => {
-            queryClient.setQueryData(getGetMeQueryKey(), data.user);
-            toast({ title: "تم تسجيل الدخول بنجاح" });
-            if (data.user.role === "admin" || data.user.role === "subadmin") {
-              setLocation("/admin");
-            } else {
-              setLocation("/order");
-            }
-          },
-          onError: () => {
-            toast({
-              variant: "destructive",
-              title: "فشل تسجيل الدخول",
-              description: "تحقق من بيانات الدخول أو أعد تسجيل الدخول يدوياً.",
-            });
-          },
-        },
-      );
-    } catch {
-      // user cancelled or auth failed
+      const authenticatedUser = await apiFetchJson<any>("/api/auth/me");
+      queryClient.setQueryData(getGetMeQueryKey(), authenticatedUser);
+      toast({ title: "تم تأكيد الهوية بالبصمة" });
+      if (authenticatedUser.role === "admin" || authenticatedUser.role === "subadmin") {
+        setLocation("/admin");
+      } else {
+        setLocation("/order");
+      }
+    } catch (error) {
+      const errData = getApiErrorData(error);
+      toast({
+        variant: "destructive",
+        title: "تعذر تسجيل الدخول بالبصمة",
+        description: errData?.error || "لا توجد جلسة محفوظة. سجّل الدخول مع اختيار «تذكرني» أولاً.",
+      });
     } finally {
       setBiometricLoading(false);
     }
@@ -260,22 +235,6 @@ export default function Login() {
 
               <FormField
                 control={form.control}
-                name="rememberMe"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-xl border bg-background/40 p-4">
-                    <div className="space-y-1 leading-none">
-                      <FormLabel className="text-sm">تذكرني</FormLabel>
-                      <p className="text-xs text-muted-foreground">لو غير مُفعّل، تنتهي الجلسة عند إغلاق المتصفح/التطبيق.</p>
-                    </div>
-                    <FormControl>
-                      <Checkbox checked={Boolean(field.value)} onCheckedChange={(v) => field.onChange(v === true)} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="password"
                 render={({ field }) => (
                   <FormItem>
@@ -300,6 +259,26 @@ export default function Login() {
                       </div>
                     </FormControl>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="rememberMe"
+                render={({ field }) => (
+                  <FormItem className="-mt-2 flex flex-row items-center justify-between rounded-xl border bg-background/40 p-4">
+                    <div className="space-y-1 leading-none">
+                      <FormLabel className="text-sm">تذكرني</FormLabel>
+                      <p className="text-xs text-muted-foreground">الاحتفاظ بتسجيل الدخول لمدة 30 يوماً على هذا الجهاز.</p>
+                    </div>
+                    <FormControl>
+                      <Checkbox
+                        checked={Boolean(field.value)}
+                        onCheckedChange={(value) => field.onChange(value === true)}
+                        aria-label="تذكرني"
+                      />
+                    </FormControl>
                   </FormItem>
                 )}
               />

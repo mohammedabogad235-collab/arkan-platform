@@ -73,6 +73,34 @@ async function bootstrap() {
       );
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "certificate_partners" (
+        id serial PRIMARY KEY,
+        name text NOT NULL,
+        logo_url text,
+        signature_url text,
+        signature_name text,
+        signature_title text,
+        sort_order integer NOT NULL DEFAULT 0,
+        created_at timestamp with time zone NOT NULL DEFAULT NOW(),
+        updated_at timestamp with time zone NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS "certificate_issue_serial_seq" START WITH 1 INCREMENT BY 1`);
+    await db.execute(sql`
+      SELECT setval(
+        'certificate_issue_serial_seq',
+        COALESCE((
+          SELECT MAX(CAST(REGEXP_REPLACE(serial_number, '^AW-CERT-[0-9]{4}-', '') AS BIGINT))
+          FROM certificate_issues
+          WHERE serial_number ~ '^AW-CERT-[0-9]{4}-[0-9]{6}$'
+        ), 0) + 1,
+        false
+      )
+      FROM certificate_issue_serial_seq
+      WHERE NOT is_called;
+    `);
+
     logger.info("Session and certificate tables verified/created successfully.");
   } catch (err) {
     logger.warn({ err }, "Session/certificate tables might already exist or failed to create.");

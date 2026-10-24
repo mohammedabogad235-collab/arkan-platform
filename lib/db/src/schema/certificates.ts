@@ -42,6 +42,18 @@ export const certificateIssuesTable = pgTable("certificate_issues", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const certificatePartnersTable = pgTable("certificate_partners", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  logoUrl: text("logo_url"),
+  signatureUrl: text("signature_url"),
+  signatureName: text("signature_name"),
+  signatureTitle: text("signature_title"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertCertificateTemplateSchema = createInsertSchema(certificateTemplatesTable).omit({
   id: true,
   createdAt: true,

@@ -7,14 +7,20 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 
 export default function CertificateVerify() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [loading, setLoading] = useState(true);
   const [valid, setValid] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
   const [certificate, setCertificate] = useState<any>(null);
   const [error, setError] = useState("");
+  const [searchValue, setSearchValue] = useState("");
 
   const params = useMemo(() => new URLSearchParams(location.split("?")[1] ?? ""), [location]);
   const serial = (params.get("serial") ?? "").trim();
+
+  useEffect(() => {
+    setSearchValue(serial);
+  }, [serial]);
 
   useEffect(() => {
     let isMounted = true;
@@ -23,9 +29,15 @@ export default function CertificateVerify() {
       setLoading(true);
       setError("");
       setValid(false);
+      setCancelled(false);
       setCertificate(null);
 
-      if (!serial || !/^AW-CERT-\d{4}-\d{6}$/.test(serial)) {
+      if (!serial) {
+        if (isMounted) setLoading(false);
+        return;
+      }
+
+      if (!/^AW-CERT-\d{4}-\d{6}$/.test(serial)) {
         if (isMounted) {
           setLoading(false);
           setError("رقم الشهادة غير صالح أو غير موجود.");
@@ -41,8 +53,8 @@ export default function CertificateVerify() {
           if (data?.cancelled) {
             if (isMounted) {
               setValid(false);
+              setCancelled(true);
               setError("تم إلغاء هذه الشهادة وهي غير صالحة للاستخدام.");
-              setCertificate(data.certificate ?? null);
             }
             return;
           }
@@ -66,6 +78,11 @@ export default function CertificateVerify() {
     };
   }, [serial]);
 
+  const handleLookup = (event: React.FormEvent) => {
+    event.preventDefault();
+    setLocation(`/certificate/verify?serial=${encodeURIComponent(searchValue.trim())}`);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-16" dir="rtl">
       <div className="mx-auto max-w-2xl">
@@ -77,6 +94,17 @@ export default function CertificateVerify() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <form onSubmit={handleLookup} className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+                placeholder="أدخل رقم الشهادة للتحقق"
+                className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2"
+                dir="ltr"
+                aria-label="رقم الشهادة"
+              />
+              <Button type="submit" disabled={!searchValue.trim() || loading}>التحقق من الشهادة</Button>
+            </form>
             {loading ? (
               <p className="text-sm text-muted-foreground">جاري التحقق من الشهادة...</p>
             ) : valid ? (
@@ -89,13 +117,16 @@ export default function CertificateVerify() {
                     <p><strong>المتدرب:</strong> {certificate.recipientName || "-"}</p>
                     <p><strong>البرنامج:</strong> {certificate.programTitle || "-"}</p>
                     <p><strong>الجهة المصدرة:</strong> {certificate.issuerName || "Arkan Web"}</p>
-                    <p><strong>الحالة:</strong> {certificate.status || "issued"}</p>
+                    <p><strong>تاريخ الإصدار:</strong> {certificate.issueDate ? new Date(certificate.issueDate).toLocaleDateString("ar-EG") : "-"}</p>
+                    <p><strong>الحالة:</strong> سارية</p>
                   </div>
                 )}
               </>
             ) : (
               <>
-                <Badge variant="outline" className="border-red-200 text-red-700 bg-red-50">الشهادة غير موجودة أو رقم غير صالح</Badge>
+                <Badge variant="outline" className={cancelled ? "border-amber-200 text-amber-800 bg-amber-50" : "border-red-200 text-red-700 bg-red-50"}>
+                  {cancelled ? "الشهادة ملغاة" : "الشهادة غير موجودة"}
+                </Badge>
                 <p className="text-sm text-muted-foreground">{error || "يرجى التحقق من الرابط أو رقم الشهادة."}</p>
               </>
             )}

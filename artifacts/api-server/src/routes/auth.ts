@@ -242,17 +242,12 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
   // - false => session cookie (expires when the browser/app closes)
   //
   // Note: we override the default `cookie.maxAge` configured in express-session.
-  try {
-    if (rememberMe) {
-      req.session.cookie.maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days
-      req.session.cookie.expires = undefined;
-    } else {
-      // "session cookie" => no explicit expiry
-      req.session.cookie.expires = undefined;
-      req.session.cookie.maxAge = undefined;
-    }
-  } catch {
-    // لا نكسر تسجيل الدخول لو حدثت أي مشكلة في إعداد الكوكي
+  if (rememberMe === true) {
+    req.session.cookie.maxAge = 30 * 24 * 60 * 60 * 1000;
+    req.session.cookie.expires = undefined;
+  } else {
+    req.session.cookie.expires = undefined;
+    req.session.cookie.maxAge = undefined;
   }
 
   res.json({ user: sanitizeUser(user), message: "تم تسجيل الدخول بنجاح" });

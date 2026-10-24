@@ -48,6 +48,7 @@ import { ar } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch, apiFetchJson } from "@/lib/api-fetch";
+import CertificateStudio from "@/pages/certificate-studio";
 
 function hasTransferDetails(order: any): boolean {
   return [order?.transferAccount, order?.accountName, order?.transferAmount].every(
@@ -85,7 +86,7 @@ const ALL_NAV = [
   { id: "payments",          label: "طرق الدفع",         icon: CreditCard,      adminOnly: false },
   { id: "reviews",           label: "الآراء",            icon: MessageSquare,   adminOnly: false },
   { id: "coupons",           label: "الكوبونات",         icon: Tag,             adminOnly: false },
-  { id: "certificate-studio", label: "Certificate Studio", icon: FileImage,      adminOnly: false },
+  { id: "certificate-studio", label: "إدارة الشهادات",    icon: FileImage,      adminOnly: false },
   { id: "settings",          label: "الإعدادات",         icon: Settings,        adminOnly: false },
   { id: "otp-settings",      label: "إعدادات البريد",    icon: Mail,            adminOnly: true  },
   { id: "subadmins",         label: "مشرفون فرعيون",     icon: Shield,          adminOnly: true  },
@@ -101,6 +102,7 @@ const PERMISSIONS_LIST = [
   { id: "payments",  label: "طرق الدفع" },
   { id: "reviews",   label: "الآراء" },
   { id: "coupons",   label: "الكوبونات" },
+  { id: "certificate-studio", label: "إدارة الشهادات" },
   { id: "settings",  label: "الإعدادات" },
   { id: "messages",  label: "رؤية الرسائل" }, 
   { id: "reply_messages", label: "الرد على الرسائل" },
@@ -111,7 +113,6 @@ function hasNavPermission(navId: string, permissions: string[] = []): boolean {
   const cleanPerms = (Array.isArray(permissions) ? permissions : []).map((p) => p.trim());
   if (navId === "messages") return cleanPerms.includes("messages") || cleanPerms.includes("view_messages");
   if (navId === "operations") return cleanPerms.includes("operations") || cleanPerms.includes("orders");
-  if (navId === "certificate-studio") return true;
   return cleanPerms.includes(navId);
 }
 
@@ -510,30 +511,6 @@ export default function Admin() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
-  const [certificateTemplates, setCertificateTemplates] = useState<any[]>([]);
-  const [certificateIssues, setCertificateIssues] = useState<any[]>([]);
-  const [certificateTemplateForm, setCertificateTemplateForm] = useState({
-    name: "",
-    description: "",
-    orientation: "landscape",
-    backgroundUrl: "",
-    logoUrl: "",
-    signatureUrl: "",
-    width: "1200",
-    height: "800",
-  });
-  const [certificateIssueForm, setCertificateIssueForm] = useState({
-    templateId: "",
-    recipientName: "",
-    recipientEmail: "",
-    recipientPhone: "",
-    programTitle: "",
-    issuerName: "Arkan Web",
-    description: "",
-  });
-  const [certificateSaving, setCertificateSaving] = useState(false);
-  const [certificateIssueSaving, setCertificateIssueSaving] = useState(false);
-
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({ phone: "", email: "", password: "", confirm: "" });
   const [profileSaving, setProfileSaving] = useState(false);
@@ -600,7 +577,6 @@ export default function Admin() {
     if (activeTab === "coupons") fetchCoupons();
     if (activeTab === "subadmins") fetchSubadmins();
     if (activeTab === "messages") fetchChatUsers();
-    if (activeTab === "certificate-studio") fetchCertificateStudioData();
   }, [activeTab]);
 
   const fetchNotifications = async () => {
@@ -991,100 +967,6 @@ export default function Admin() {
         setCoupons(Array.isArray(data) ? data : []);
       }
     } finally { setCouponsLoading(false); }
-  };
-
-  const fetchCertificateStudioData = async () => {
-    try {
-      const [templatesRes, issuesRes] = await Promise.all([
-        apiFetch("/api/certificates/templates"),
-        apiFetch("/api/certificates"),
-      ]);
-
-      if (templatesRes.ok) {
-        const templates = await templatesRes.json().catch(() => []);
-        setCertificateTemplates(Array.isArray(templates) ? templates : []);
-      }
-
-      if (issuesRes.ok) {
-        const issues = await issuesRes.json().catch(() => []);
-        setCertificateIssues(Array.isArray(issues) ? issues : []);
-      }
-    } catch (err) {
-      console.error("Failed to load certificate studio data:", err);
-    }
-  };
-
-  const handleCreateCertificateTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCertificateSaving(true);
-    try {
-      await apiFetchJson("/api/certificates/templates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: certificateTemplateForm.name,
-          description: certificateTemplateForm.description,
-          orientation: certificateTemplateForm.orientation,
-          width: Number(certificateTemplateForm.width || 1200),
-          height: Number(certificateTemplateForm.height || 800),
-          backgroundUrl: certificateTemplateForm.backgroundUrl || null,
-          logoUrl: certificateTemplateForm.logoUrl || null,
-          signatureUrl: certificateTemplateForm.signatureUrl || null,
-          isActive: true,
-        }),
-      });
-
-      setCertificateTemplateForm({ name: "", description: "", orientation: "landscape", backgroundUrl: "", logoUrl: "", signatureUrl: "", width: "1200", height: "800" });
-      await fetchCertificateStudioData();
-      toast({ title: "تم حفظ القالب", description: "تم إنشاء قالب الشهادة بنجاح" });
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر حفظ القالب" });
-    } finally {
-      setCertificateSaving(false);
-    }
-  };
-
-  const handleIssueCertificate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!certificateIssueForm.templateId) {
-      toast({ variant: "destructive", title: "خطأ", description: "اختر قالباً أولاً" });
-      return;
-    }
-
-    setCertificateIssueSaving(true);
-    try {
-      await apiFetchJson("/api/certificates/issue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          templateId: Number(certificateIssueForm.templateId),
-          recipientName: certificateIssueForm.recipientName,
-          recipientEmail: certificateIssueForm.recipientEmail,
-          recipientPhone: certificateIssueForm.recipientPhone,
-          programTitle: certificateIssueForm.programTitle,
-          issuerName: certificateIssueForm.issuerName,
-          description: certificateIssueForm.description,
-        }),
-      });
-
-      setCertificateIssueForm({ templateId: "", recipientName: "", recipientEmail: "", recipientPhone: "", programTitle: "", issuerName: "Arkan Web", description: "" });
-      await fetchCertificateStudioData();
-      toast({ title: "تم إصدار الشهادة", description: "تمت إضافة شهادة جديدة بنجاح" });
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر إصدار الشهادة" });
-    } finally {
-      setCertificateIssueSaving(false);
-    }
-  };
-
-  const handleCancelCertificate = async (certificateId: number) => {
-    try {
-      await apiFetchJson(`/api/certificates/${certificateId}/cancel`, { method: "PATCH" });
-      await fetchCertificateStudioData();
-      toast({ title: "تم إلغاء الشهادة" });
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "خطأ", description: err?.message || "تعذر إلغاء الشهادة" });
-    }
   };
 
   const handleOpenCouponDialog = (coupon?: any) => {
@@ -1945,149 +1827,7 @@ export default function Admin() {
             </div>
           )}
 
-          {activeTab === "certificate-studio" && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h1 className="text-2xl font-bold">Certificate Studio</h1>
-                  <p className="text-muted-foreground text-sm mt-1">إنشاء القوالب، إصدار الشهادات والمتابعة</p>
-                </div>
-                <Badge className="bg-primary/10 text-primary border-primary/20">Studio</Badge>
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <div className="bg-white rounded-2xl border shadow-sm p-5">
-                  <h2 className="text-lg font-bold mb-4">إنشاء قالب شهادة</h2>
-                  <form onSubmit={handleCreateCertificateTemplate} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label>اسم القالب</Label>
-                      <Input value={certificateTemplateForm.name} onChange={e => setCertificateTemplateForm(f => ({ ...f, name: e.target.value }))} placeholder="قالب شهادة تدريب" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>الوصف</Label>
-                      <Input value={certificateTemplateForm.description} onChange={e => setCertificateTemplateForm(f => ({ ...f, description: e.target.value }))} placeholder="وصف مختصر" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>الاتجاه</Label>
-                        <Select value={certificateTemplateForm.orientation} onValueChange={v => setCertificateTemplateForm(f => ({ ...f, orientation: v }))}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="landscape">Landscape</SelectItem>
-                            <SelectItem value="portrait">Portrait</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>الحجم</Label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input type="number" value={certificateTemplateForm.width} onChange={e => setCertificateTemplateForm(f => ({ ...f, width: e.target.value }))} placeholder="1200" />
-                          <Input type="number" value={certificateTemplateForm.height} onChange={e => setCertificateTemplateForm(f => ({ ...f, height: e.target.value }))} placeholder="800" />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>رابط الخلفية</Label>
-                      <Input value={certificateTemplateForm.backgroundUrl} onChange={e => setCertificateTemplateForm(f => ({ ...f, backgroundUrl: e.target.value }))} placeholder="https://..." dir="ltr" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>شعار المؤسسة</Label>
-                        <Input value={certificateTemplateForm.logoUrl} onChange={e => setCertificateTemplateForm(f => ({ ...f, logoUrl: e.target.value }))} placeholder="https://..." dir="ltr" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>توقيع</Label>
-                        <Input value={certificateTemplateForm.signatureUrl} onChange={e => setCertificateTemplateForm(f => ({ ...f, signatureUrl: e.target.value }))} placeholder="https://..." dir="ltr" />
-                      </div>
-                    </div>
-                    <Button type="submit" disabled={certificateSaving} className="w-full">
-                      {certificateSaving ? "جاري الحفظ..." : "حفظ القالب"}
-                    </Button>
-                  </form>
-                </div>
-
-                <div className="bg-white rounded-2xl border shadow-sm p-5">
-                  <h2 className="text-lg font-bold mb-4">إصدار شهادة</h2>
-                  <form onSubmit={handleIssueCertificate} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label>القالب</Label>
-                      <Select value={certificateIssueForm.templateId} onValueChange={v => setCertificateIssueForm(f => ({ ...f, templateId: v }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="اختر قالب الشهادة" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {certificateTemplates.map((template) => (
-                            <SelectItem key={template.id} value={String(template.id)}>{template.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>اسم المتدرب</Label>
-                      <Input value={certificateIssueForm.recipientName} onChange={e => setCertificateIssueForm(f => ({ ...f, recipientName: e.target.value }))} placeholder="مثال: محمد أحمد" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>البريد الإلكتروني</Label>
-                        <Input type="email" value={certificateIssueForm.recipientEmail} onChange={e => setCertificateIssueForm(f => ({ ...f, recipientEmail: e.target.value }))} placeholder="name@example.com" dir="ltr" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>رقم الهاتف</Label>
-                        <Input value={certificateIssueForm.recipientPhone} onChange={e => setCertificateIssueForm(f => ({ ...f, recipientPhone: e.target.value }))} placeholder="0500000000" dir="ltr" />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>اسم البرنامج</Label>
-                      <Input value={certificateIssueForm.programTitle} onChange={e => setCertificateIssueForm(f => ({ ...f, programTitle: e.target.value }))} placeholder="برنامج تطوير الأعمال" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>الجهة المصدرة</Label>
-                      <Input value={certificateIssueForm.issuerName} onChange={e => setCertificateIssueForm(f => ({ ...f, issuerName: e.target.value }))} placeholder="Arkan Web" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>الوصف</Label>
-                      <Input value={certificateIssueForm.description} onChange={e => setCertificateIssueForm(f => ({ ...f, description: e.target.value }))} placeholder="ملاحظات إضافية" />
-                    </div>
-                    <Button type="submit" disabled={certificateIssueSaving} className="w-full">
-                      {certificateIssueSaving ? "جاري الإصدار..." : "إصدار شهادة"}
-                    </Button>
-                  </form>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b">
-                  <h2 className="text-lg font-bold">الشهادات الصادرة</h2>
-                  <span className="text-sm text-muted-foreground">{certificateIssues.length} شهادة</span>
-                </div>
-                <div className="divide-y">
-                  {certificateIssues.length === 0 ? (
-                    <div className="p-8 text-center text-muted-foreground text-sm">لا توجد شهادات حتى الآن</div>
-                  ) : (
-                    certificateIssues.map((item) => (
-                      <div key={item.id} className="px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div className="space-y-1">
-                          <p className="font-bold">{item.recipientName}</p>
-                          <p className="text-sm text-muted-foreground">{item.programTitle} · {item.serialNumber}</p>
-                          <p className="text-xs text-muted-foreground">{item.status} · {new Date(item.issueDate || item.createdAt).toLocaleDateString("ar-EG")}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={() => navigator.clipboard?.writeText(item.serialNumber)}>
-                            نسخ الرقم
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleCancelCertificate(item.id)}>
-                            إلغاء
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          {activeTab === "certificate-studio" && <CertificateStudio />}
 
           {activeTab === "coupons" && (
             <div className="space-y-4">
