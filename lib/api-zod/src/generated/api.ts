@@ -30,6 +30,7 @@ export const RegisterBody = zod.object({
 export const LoginBody = zod.object({
   identifier: zod.string(),
   password: zod.string(),
+  rememberMe: zod.boolean().optional(),
 });
 
 export const LoginResponse = zod.object({

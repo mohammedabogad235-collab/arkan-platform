@@ -575,12 +575,14 @@ components:
     LoginBody:
       type: object
       properties:
-        username:
+        identifier:
           type: string
         password:
           type: string
+        rememberMe:
+          type: boolean
       required:
-        - username
+        - identifier
         - password
 
     AuthResponse:

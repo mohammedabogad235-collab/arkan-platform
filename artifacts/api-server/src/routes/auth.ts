@@ -199,7 +199,7 @@ router.post("/auth/verify-signup-otp", asyncHandler(async (req, res): Promise<vo
 
 // POST /auth/login
 router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
-  const { identifier, password } = req.body as { identifier?: string; password?: string };
+  const { identifier, password, rememberMe } = req.body as { identifier?: string; password?: string; rememberMe?: boolean };
 
   if (!identifier || !password) {
     res.status(400).json({ error: "رقم الهاتف أو البريد وكلمة المرور مطلوبان" });
@@ -236,6 +236,24 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
 
   (req.session as unknown as Record<string, unknown>).userId = user.id;
   (req.session as unknown as Record<string, unknown>).role = user.role;
+
+  // Remember Me:
+  // - true  => long-lived cookie
+  // - false => session cookie (expires when the browser/app closes)
+  //
+  // Note: we override the default `cookie.maxAge` configured in express-session.
+  try {
+    if (rememberMe) {
+      req.session.cookie.maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days
+      req.session.cookie.expires = undefined;
+    } else {
+      // "session cookie" => no explicit expiry
+      req.session.cookie.expires = undefined;
+      req.session.cookie.maxAge = undefined;
+    }
+  } catch {
+    // لا نكسر تسجيل الدخول لو حدثت أي مشكلة في إعداد الكوكي
+  }
 
   res.json({ user: sanitizeUser(user), message: "تم تسجيل الدخول بنجاح" });
 }));

@@ -7,3 +7,4 @@ export * from "./site_settings";
 export * from "./coupons";
 export * from "./messages";
 export * from "./notifications";
+export * from "./certificates";

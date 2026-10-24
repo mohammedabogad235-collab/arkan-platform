@@ -24,6 +24,7 @@ import Privacy from "@/pages/privacy";
 import ForgotPassword from "@/pages/forgot-password";
 import Chat from "@/pages/chat";
 import AdminSystemStatus from "@/pages/admin-system-status";
+import CertificateVerify from "@/pages/certificate-verify";
 
 const queryClient = new QueryClient();
 
@@ -94,6 +95,8 @@ function Router() {
           <Chat />
         </ProtectedRoute>
       </Route>
+
+      <Route path="/certificate/verify" component={CertificateVerify} />
 
       <Route path="/admin">
         <ProtectedRoute adminOnly>

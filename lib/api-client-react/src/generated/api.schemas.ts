@@ -27,6 +27,11 @@ export interface RegisterBody {
 export interface LoginBody {
   identifier: string;
   password: string;
+  /**
+   * If true, persist the session cookie longer (remember me).
+   * If false/undefined, the cookie becomes a session cookie (expires on close).
+   */
+  rememberMe?: boolean;
 }
 
 export interface User {

@@ -14,6 +14,7 @@ import subadminsRouter from "./subadmins";
 import profileRouter from "./profile";
 import otpRouter from "./otp";
 import systemStatusRouter from "./system-status";
+import certificatesRouter from "./certificates";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(subadminsRouter);
 router.use(profileRouter);
 router.use(otpRouter);
 router.use(systemStatusRouter);
+router.use(certificatesRouter);
 
 export default router;
