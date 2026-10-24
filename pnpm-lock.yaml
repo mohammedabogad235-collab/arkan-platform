@@ -215,6 +215,9 @@ importers:
       '@google-cloud/storage':
         specifier: ^7.19.0
         version: 7.19.0
+      '@swc/helpers':
+        specifier: ^0.5.23
+        version: 0.5.23
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
