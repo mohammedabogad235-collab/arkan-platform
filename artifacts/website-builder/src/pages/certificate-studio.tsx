@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, apiFetchJson, resolveApiUrl } from "@/lib/api-fetch";
 import { useToast } from "@/hooks/use-toast";
+import JSZip from "jszip";
 
 type Box = { x: number; y: number; width: number; height: number };
 type Signer = { name: string; title: string; role: string; signatureUrl: string; style: string; fontSize: number };
@@ -38,7 +39,52 @@ type CertificateIssue = {
   status: string;
   issueDate: string;
   deletedAt?: string | null;
-  metadata?: { signatures?: Signer[]; partnerIds?: number[]; layoutConfig?: Record<string, any> };
+  metadata?: {
+    signatures?: Signer[];
+    partnerIds?: number[];
+    layoutConfig?: Record<string, any>;
+    backgroundUrl?: string;
+    width?: number;
+    height?: number;
+    orientation?: string;
+    source?: string;
+  };
+};
+type VerifySettings = {
+  pageTitle: string;
+  pageSubtitle: string;
+  logoUrl: string;
+  successTitle: string;
+  successMessage: string;
+  cancelledTitle: string;
+  cancelledMessage: string;
+  notFoundMessage: string;
+  footerText: string;
+  visibleFields: {
+    recipientName: boolean;
+    programTitle: boolean;
+    issuerName: boolean;
+    issueDate: boolean;
+    partners: boolean;
+    serialNumber: boolean;
+  };
+  showCertificatePreview: boolean;
+  allowDownloadPdf: boolean;
+  allowDownloadImage: boolean;
+};
+type BulkNameRow = { id: string; name: string; email: string };
+type UploadedCertificate = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  recipientName: string;
+  programTitle: string;
+  issuerName: string;
+  recipientEmail: string;
+  issueDate: string;
+  width: number;
+  height: number;
+  orientation: "portrait" | "landscape";
 };
 
 const initialBoxes: Record<string, Box> = {
@@ -105,6 +151,115 @@ const emptyPartner = {
   sortOrder: "0",
 };
 
+const defaultVerifySettings: VerifySettings = {
+  pageTitle: "التحقق من الشهادات",
+  pageSubtitle: "تأكد من صحة الشهادة وحالتها بالبحث عن رقمها أو بمسح رمز QR المطبوع عليها.",
+  logoUrl: "",
+  successTitle: "الشهادة صحيحة وسارية",
+  successMessage: "هذه الشهادة موثقة وصادرة من Arkan Web.",
+  cancelledTitle: "الشهادة ملغاة",
+  cancelledMessage: "تم إلغاء هذه الشهادة وهي غير صالحة للاستخدام.",
+  notFoundMessage: "لم يتم العثور على شهادة بهذا الرقم.",
+  footerText: "",
+  visibleFields: {
+    recipientName: true,
+    programTitle: true,
+    issuerName: true,
+    issueDate: true,
+    partners: true,
+    serialNumber: true,
+  },
+  showCertificatePreview: true,
+  allowDownloadPdf: true,
+  allowDownloadImage: true,
+};
+
+function parseNameLines(value: string): Array<{ name: string; email: string }> {
+  return value.split(/\r?\n/).flatMap((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return [];
+    const separator = trimmed.indexOf(",");
+    const name = (separator < 0 ? trimmed : trimmed.slice(0, separator)).trim();
+    const email = separator < 0 ? "" : trimmed.slice(separator + 1).trim();
+    return name ? [{ name, email }] : [];
+  });
+}
+
+function parseCsv(text: string): Array<{ name: string; email: string }> {
+  const records: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '"' && quoted && text[index + 1] === '"') {
+      field += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(field.trim());
+      field = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && text[index + 1] === "\n") index += 1;
+      row.push(field.trim());
+      records.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+  if (field || row.length) {
+    row.push(field.trim());
+    records.push(row);
+  }
+  return records.flatMap(([name = "", email = ""], index) => {
+    const header = name.replace(/^\uFEFF/, "").trim().toLocaleLowerCase();
+    if (index === 0 && (["name", "اسم", "الاسم", "اسم المستفيد", "recipientname"].includes(header) || email.toLocaleLowerCase() === "email")) return [];
+    return name.trim() ? [{ name: name.trim(), email: email.trim() }] : [];
+  });
+}
+
+async function parseExcelFile(file: File): Promise<Array<{ name: string; email: string }>> {
+  const archive = await JSZip.loadAsync(await file.arrayBuffer());
+  const workbookFile = archive.file("xl/workbook.xml");
+  const relationshipsFile = archive.file("xl/_rels/workbook.xml.rels");
+  if (!workbookFile || !relationshipsFile) throw new Error("ملف Excel لا يحتوي على ورقة عمل قابلة للقراءة");
+  const [workbookXml, relationshipsXml] = await Promise.all([workbookFile.async("text"), relationshipsFile.async("text")]);
+  const workbook = new DOMParser().parseFromString(workbookXml, "application/xml");
+  const relationships = new DOMParser().parseFromString(relationshipsXml, "application/xml");
+  const firstSheet = workbook.querySelector("sheet");
+  const relationshipId = firstSheet?.getAttribute("r:id");
+  if (!relationshipId) throw new Error("تعذر تحديد ورقة العمل الأولى في ملف Excel");
+  const relationship = [...relationships.querySelectorAll("Relationship")].find((item) => item.getAttribute("Id") === relationshipId);
+  const target = relationship?.getAttribute("Target");
+  if (!target) throw new Error("مسار ورقة Excel غير صالح");
+  const sheetPath = target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\/+/, "")}`;
+  const sheetFile = archive.file(sheetPath);
+  if (!sheetFile) throw new Error("ورقة العمل الأولى غير موجودة في ملف Excel");
+  const sharedStringsFile = archive.file("xl/sharedStrings.xml");
+  const sharedStrings = sharedStringsFile
+    ? [...new DOMParser().parseFromString(await sharedStringsFile.async("text"), "application/xml").querySelectorAll("si")]
+      .map((item) => item.textContent ?? "")
+    : [];
+  const sheet = new DOMParser().parseFromString(await sheetFile.async("text"), "application/xml");
+  return [...sheet.querySelectorAll("sheetData row")].flatMap((row, rowIndex) => {
+    const values: string[] = [];
+    for (const cell of row.querySelectorAll("c")) {
+      const column = cell.getAttribute("r")?.match(/^[A-Z]+/)?.[0] ?? "";
+      const columnIndex = column.split("").reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0) - 1;
+      const value = cell.querySelector("v")?.textContent ?? cell.querySelector("is")?.textContent ?? "";
+      values[columnIndex] = cell.getAttribute("t") === "s" ? sharedStrings[Number(value)] ?? "" : value;
+    }
+    const name = (values[0] ?? "").trim();
+    const email = (values[1] ?? "").trim();
+    const header = name.toLocaleLowerCase();
+    if (rowIndex === 0 && (["name", "اسم", "الاسم", "اسم المستفيد", "recipientname"].includes(header) || email.toLocaleLowerCase() === "email")) return [];
+    return name ? [{ name, email }] : [];
+  });
+}
+
 function Field({
   label,
   value,
@@ -132,7 +287,17 @@ function Field({
   );
 }
 
-function ImageUploadField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function ImageUploadField({
+  label,
+  value,
+  onChange,
+  onDimensions,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onDimensions?: (dimensions: { width: number; height: number }) => void;
+}) {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
 
@@ -140,6 +305,21 @@ function ImageUploadField({ label, value, onChange }: { label: string; value: st
     if (!file) return;
     setUploading(true);
     try {
+      const dimensions = onDimensions
+        ? await new Promise<{ width: number; height: number }>((resolve, reject) => {
+            const objectUrl = URL.createObjectURL(file);
+            const image = new Image();
+            image.onload = () => {
+              URL.revokeObjectURL(objectUrl);
+              resolve({ width: image.naturalWidth, height: image.naturalHeight });
+            };
+            image.onerror = () => {
+              URL.revokeObjectURL(objectUrl);
+              reject(new Error("تعذرت قراءة أبعاد الصورة"));
+            };
+            image.src = objectUrl;
+          })
+        : undefined;
       const form = new FormData();
       form.append("file", file);
       const response = await apiFetch("/api/certificates/upload", { method: "POST", body: form });
@@ -148,6 +328,7 @@ function ImageUploadField({ label, value, onChange }: { label: string; value: st
         throw new Error(result.error || "تعذر رفع الصورة");
       }
       onChange(result.publicUrl);
+      if (dimensions) onDimensions?.(dimensions);
       toast({ title: "تم رفع الصورة بنجاح" });
     } catch (error) {
       toast({ variant: "destructive", title: "تعذر رفع الصورة", description: (error as Error).message });
@@ -209,6 +390,7 @@ export default function CertificateStudio() {
   const [layout, setLayout] = useState<Record<string, any>>(initialBoxes);
   const layoutRef = useRef(layout);
   const pendingIssueLayoutRef = useRef<Record<string, any> | null>(null);
+  const pendingIssueImageRef = useRef<{ backgroundUrl: string; width: number; height: number; orientation: string } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [layoutUndo, setLayoutUndo] = useState<Record<string, any>[]>([]);
   const [layoutRedo, setLayoutRedo] = useState<Record<string, any>[]>([]);
@@ -217,6 +399,7 @@ export default function CertificateStudio() {
   const [certificateForm, setCertificateForm] = useState(emptyCertificate);
   const [certificateId, setCertificateId] = useState<number | null>(null);
   const [editingStatus, setEditingStatus] = useState("");
+  const [editingUploadedImage, setEditingUploadedImage] = useState(false);
   const [signers, setSigners] = useState<Signer[]>([]);
   const [selectedPartners, setSelectedPartners] = useState<number[]>([]);
   const [verificationInput, setVerificationInput] = useState("");
@@ -226,11 +409,36 @@ export default function CertificateStudio() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedIssueIds, setSelectedIssueIds] = useState<number[]>([]);
+  const [emailSendingId, setEmailSendingId] = useState<number | null>(null);
+  const [uploadedCertificates, setUploadedCertificates] = useState<UploadedCertificate[]>([]);
+  const [bulkIssuing, setBulkIssuing] = useState(false);
+  const [verifySettings, setVerifySettings] = useState<VerifySettings>(defaultVerifySettings);
+  const [savingVerifySettings, setSavingVerifySettings] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkNameRows, setBulkNameRows] = useState<BulkNameRow[]>([]);
+  const [bulkTemplateId, setBulkTemplateId] = useState("");
+  const [bulkProgramTitle, setBulkProgramTitle] = useState("");
+  const [bulkIssuerName, setBulkIssuerName] = useState("Arkan Web");
+  const [bulkIssueDate, setBulkIssueDate] = useState(getLocalDateInputValue());
+  const [bulkPartnerIds, setBulkPartnerIds] = useState<number[]>([]);
+  const [bulkNameIssuing, setBulkNameIssuing] = useState(false);
+  const [imageExporting, setImageExporting] = useState<string | null>(null);
+  const uploadedCertificatesRef = useRef<UploadedCertificate[]>([]);
+  const [bulkLayout, setBulkLayout] = useState<Record<string, any>>({
+    ...initialBoxes,
+    hiddenElements: certificateElements
+      .map(([key]) => key)
+      .filter((key) => !["serialNumber", "qrCode"].includes(key)),
+  });
   const [page, setPage] = useState(1);
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => String(template.id) === templateId),
     [templates, templateId],
+  );
+  const bulkSelectedTemplate = useMemo(
+    () => templates.find((template) => String(template.id) === bulkTemplateId),
+    [templates, bulkTemplateId],
   );
   const selectedPartnerRecords = partners.filter((partner) => selectedPartners.includes(partner.id));
 
@@ -246,12 +454,123 @@ export default function CertificateStudio() {
     setPartners(partnerData);
     setStats(statsData);
     if (!templateId && templateData[0]) setTemplateId(String(templateData[0].id));
+    if (!bulkTemplateId && templateData[0]) setBulkTemplateId(String(templateData[0].id));
     return templateData;
   };
 
   const loadTrash = async () => {
     const items = await apiFetchJson<CertificateIssue[]>("/api/certificates/trash");
     setTrashIssues(items);
+  };
+
+  useEffect(() => {
+    apiFetchJson<VerifySettings>("/api/certificates/verify-settings")
+      .then((settings) => setVerifySettings({
+        ...defaultVerifySettings,
+        ...settings,
+        visibleFields: { ...defaultVerifySettings.visibleFields, ...settings.visibleFields },
+      }))
+      .catch((error: Error) => toast({ variant: "destructive", title: "تعذر تحميل إعدادات التحقق", description: error.message }));
+  }, []);
+
+  const saveVerificationSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingVerifySettings(true);
+    try {
+      const saved = await apiFetchJson<VerifySettings>("/api/certificates/verify-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(verifySettings),
+      });
+      setVerifySettings(saved);
+      toast({ title: "تم حفظ إعدادات صفحة التحقق" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر حفظ إعدادات التحقق", description: (error as Error).message });
+    } finally {
+      setSavingVerifySettings(false);
+    }
+  };
+
+  const updateBulkNameText = (value: string) => {
+    setBulkText(value);
+    setBulkNameRows(parseNameLines(value).map((row) => ({ ...row, id: crypto.randomUUID() })));
+  };
+
+  const importBulkNameFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      if (file.size > 5 * 1024 * 1024) throw new Error("حجم ملف الاستيراد يجب ألا يتجاوز 5 ميجابايت");
+      const rows = file.name.toLocaleLowerCase().endsWith(".csv")
+        ? parseCsv(await file.text())
+        : file.name.toLocaleLowerCase().endsWith(".xlsx")
+          ? await parseExcelFile(file)
+          : (() => { throw new Error("استخدم ملف CSV أو Excel بصيغة XLSX"); })();
+      if (!rows.length) throw new Error("لم يتم العثور على أسماء في الملف");
+      if (rows.length > 200) throw new Error("الحد الأقصى 200 اسم في الدفعة الواحدة");
+      setBulkNameRows(rows.map((row) => ({ ...row, id: crypto.randomUUID() })));
+      setBulkText(rows.map((row) => row.email ? `${row.name}, ${row.email}` : row.name).join("\n"));
+      toast({ title: `تم استيراد ${rows.length} اسم`, description: file.name });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر قراءة ملف الأسماء", description: error instanceof Error ? error.message : "تحقق من تنسيق الملف" });
+    }
+  };
+
+  const issueCertificatesFromNames = async () => {
+    if (!bulkTemplateId || !bulkProgramTitle.trim() || !bulkIssuerName.trim() || !bulkIssueDate) {
+      toast({ variant: "destructive", title: "أكمل القالب وبيانات الدورة أولاً" });
+      return;
+    }
+    if (!bulkNameRows.length || bulkNameRows.length > 200) {
+      toast({ variant: "destructive", title: "أدخل من اسم واحد إلى 200 اسم" });
+      return;
+    }
+    if (bulkNameRows.some((row) => !row.name.trim() || (row.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())))) {
+      toast({ variant: "destructive", title: "راجع الأسماء والبريد الإلكتروني قبل الإصدار" });
+      return;
+    }
+    if (!window.confirm(`سيتم إصدار ${bulkNameRows.length} شهادة بأرقام وروابط QR مستقلة. هل تريد المتابعة؟`)) return;
+
+    setBulkNameIssuing(true);
+    try {
+      const result = await apiFetchJson<{
+        count: number;
+        duplicateNames: string[];
+      }>("/api/certificates/bulk-from-names", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateId: Number(bulkTemplateId),
+          rows: bulkNameRows.map(({ name, email }) => ({ name: name.trim(), email: email.trim() || undefined })),
+          programTitle: bulkProgramTitle.trim(),
+          issuerName: bulkIssuerName.trim(),
+          issueDate: bulkIssueDate,
+          partnerIds: bulkPartnerIds,
+          signatures: [],
+          layoutConfig: bulkSelectedTemplate?.layoutConfig || {},
+        }),
+      });
+      setBulkNameRows([]);
+      setBulkText("");
+      toast({
+        title: `تم إصدار ${result.count} شهادة`,
+        description: result.duplicateNames.length
+          ? `أسماء مكررة أُصدرت لكل منها شهادة مستقلة: ${result.duplicateNames.join("، ")}`
+          : "تم إنشاء رقم تحقق مستقل لكل شهادة.",
+      });
+      try {
+        await refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "تم إصدار الشهادات لكن تعذر تحديث القائمة",
+          description: error instanceof Error ? error.message : "حدّث الصفحة لعرض الشهادات الجديدة",
+        });
+      }
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر إصدار شهادات القائمة", description: (error as Error).message });
+    } finally {
+      setBulkNameIssuing(false);
+    }
   };
 
   const filteredIssues = useMemo(() => {
@@ -350,13 +669,23 @@ export default function CertificateStudio() {
   }, []);
 
   useEffect(() => {
+    uploadedCertificatesRef.current = uploadedCertificates;
+  }, [uploadedCertificates]);
+
+  useEffect(() => () => {
+    uploadedCertificatesRef.current.forEach((certificate) => URL.revokeObjectURL(certificate.previewUrl));
+  }, []);
+
+  useEffect(() => {
     if (!selectedTemplate) return;
+    const issueImage = pendingIssueImageRef.current;
+    pendingIssueImageRef.current = null;
     setTemplateForm({
       name: selectedTemplate.name,
-      orientation: selectedTemplate.orientation || "landscape",
-      width: selectedTemplate.width || 1200,
-      height: selectedTemplate.height || 800,
-      backgroundUrl: selectedTemplate.backgroundUrl || "",
+      orientation: issueImage?.orientation || selectedTemplate.orientation || "landscape",
+      width: issueImage?.width || selectedTemplate.width || 1200,
+      height: issueImage?.height || selectedTemplate.height || 800,
+      backgroundUrl: issueImage?.backgroundUrl || selectedTemplate.backgroundUrl || "",
       logoUrl: selectedTemplate.logoUrl || "",
       signatureUrl: selectedTemplate.signatureUrl || "",
     });
@@ -375,6 +704,140 @@ export default function CertificateStudio() {
     }));
   };
 
+  const addUploadedCertificates = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const selectedFiles = Array.from(files);
+    if (uploadedCertificates.length + selectedFiles.length > 50) {
+      toast({ variant: "destructive", title: "الحد الأقصى 50 صورة في الدفعة الواحدة" });
+      return;
+    }
+    const prepared: UploadedCertificate[] = [];
+    try {
+      for (const file of selectedFiles) {
+        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+          throw new Error(`صيغة ${file.name} غير مدعومة؛ استخدم JPG أو PNG أو WebP.`);
+        }
+        if (file.size > 8 * 1024 * 1024) {
+          throw new Error(`حجم ${file.name} أكبر من 8 ميجابايت.`);
+        }
+        const previewUrl = URL.createObjectURL(file);
+        const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+          image.onerror = () => {
+            URL.revokeObjectURL(previewUrl);
+            reject(new Error(`تعذرت قراءة صورة ${file.name}.`));
+          };
+          image.src = previewUrl;
+        });
+        prepared.push({
+          id: crypto.randomUUID(),
+          file,
+          previewUrl,
+          recipientName: "",
+          programTitle: "",
+          issuerName: "",
+          recipientEmail: "",
+          issueDate: getLocalDateInputValue(),
+          width: dimensions.width,
+          height: dimensions.height,
+          orientation: dimensions.height > dimensions.width ? "portrait" : "landscape",
+        });
+      }
+      setUploadedCertificates((current) => [...current, ...prepared]);
+    } catch (error) {
+      prepared.forEach((certificate) => URL.revokeObjectURL(certificate.previewUrl));
+      toast({
+        variant: "destructive",
+        title: "تعذر إضافة الصور",
+        description: error instanceof Error ? error.message : "تحقق من الصور المختارة",
+      });
+    }
+  };
+
+  const updateUploadedCertificate = (id: string, field: keyof UploadedCertificate, value: string) => {
+    setUploadedCertificates((current) => current.map((certificate) =>
+      certificate.id === id ? { ...certificate, [field]: value } : certificate,
+    ));
+  };
+
+  const removeUploadedCertificate = (id: string) => {
+    setUploadedCertificates((current) => {
+      const certificate = current.find((item) => item.id === id);
+      if (certificate) URL.revokeObjectURL(certificate.previewUrl);
+      return current.filter((item) => item.id !== id);
+    });
+  };
+
+  const issueUploadedCertificates = async () => {
+    if (!uploadedCertificates.length) {
+      toast({ variant: "destructive", title: "أضف صور الشهادات أولاً" });
+      return;
+    }
+    if (uploadedCertificates.some((certificate) => !certificate.recipientName.trim())) {
+      toast({ variant: "destructive", title: "اكتب اسم صاحب كل شهادة قبل إصدار الدفعة" });
+      return;
+    }
+    if (uploadedCertificates.some((certificate) =>
+      certificate.recipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(certificate.recipientEmail.trim()),
+    )) {
+      toast({ variant: "destructive", title: "راجع البريد الإلكتروني؛ يوجد بريد غير صحيح ضمن الدفعة" });
+      return;
+    }
+    if (!window.confirm(`سيتم رفع وإصدار ${uploadedCertificates.length} شهادة مع أرقام وQR تحقق فريدة. متابعة؟`)) return;
+
+    setBulkIssuing(true);
+    try {
+      const certificatePayloads = [];
+      for (const certificate of uploadedCertificates) {
+        const formData = new FormData();
+        formData.append("file", certificate.file);
+        const uploadResponse = await apiFetch("/api/certificates/upload", { method: "POST", body: formData });
+        const uploadResult = await uploadResponse.json().catch(() => ({}));
+        if (!uploadResponse.ok || typeof uploadResult.publicUrl !== "string") {
+          throw new Error(uploadResult.error || `تعذر رفع صورة ${certificate.file.name}`);
+        }
+        certificatePayloads.push({
+          backgroundUrl: uploadResult.publicUrl,
+          recipientName: certificate.recipientName.trim(),
+          programTitle: certificate.programTitle.trim(),
+          issuerName: certificate.issuerName.trim(),
+          recipientEmail: certificate.recipientEmail.trim(),
+          issueDate: certificate.issueDate || getLocalDateInputValue(),
+          width: certificate.width,
+          height: certificate.height,
+          orientation: certificate.orientation,
+        });
+      }
+
+      const result = await apiFetchJson<{ count: number }>("/api/certificates/bulk-issue-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ certificates: certificatePayloads, layoutConfig: bulkLayout }),
+      });
+      uploadedCertificates.forEach((certificate) => URL.revokeObjectURL(certificate.previewUrl));
+      setUploadedCertificates([]);
+      toast({ title: `تم توثيق ${result.count} شهادة`, description: "أُنشئ رقم ورمز QR خاص بكل شهادة." });
+      try {
+        await refresh();
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "تم إصدار الشهادات لكن تعذر تحديث القائمة",
+          description: error instanceof Error ? error.message : "حدّث الصفحة لعرض الشهادات الجديدة",
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "تعذر إصدار دفعة الشهادات",
+        description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+      });
+    } finally {
+      setBulkIssuing(false);
+    }
+  };
+
   const updateBox = (key: string, field: keyof Box, value: string) => {
     const fallback = initialBoxes[key] || { x: 10, y: 10, width: 18, height: 12 };
     const current = boxFor(layoutRef.current, key, fallback);
@@ -387,6 +850,18 @@ export default function CertificateStudio() {
         [field]: safeValue,
       },
     });
+  };
+
+  const updateBulkBox = (key: string, field: keyof Box, value: string) => {
+    const current = boxFor(bulkLayout, key, initialBoxes[key]);
+    const number = Number(value);
+    setBulkLayout((currentLayout) => ({
+      ...currentLayout,
+      [key]: {
+        ...current,
+        [field]: Number.isFinite(number) ? Math.min(Math.max(number, 0), 100) : current[field],
+      },
+    }));
   };
 
   const updatePartnerBox = (group: "partnerLogoBoxes" | "partnerSignatureBoxes", partnerId: number, field: keyof Box, value: string, fallback: Box) => {
@@ -525,11 +1000,32 @@ export default function CertificateStudio() {
   const beginEditCertificate = (issue: CertificateIssue) => {
     setCertificateId(issue.id);
     setEditingStatus(issue.status);
+    setEditingUploadedImage(issue.metadata?.source === "uploaded-certificate-image");
     setTemplateId(String(issue.templateId));
     const issueLayout = issue.metadata?.layoutConfig;
     pendingIssueLayoutRef.current = issueLayout || null;
+    pendingIssueImageRef.current = issue.metadata?.backgroundUrl
+      ? {
+          backgroundUrl: issue.metadata.backgroundUrl,
+          width: issue.metadata.width || 1200,
+          height: issue.metadata.height || 800,
+          orientation: issue.metadata.orientation || "landscape",
+        }
+      : null;
     if (String(issue.templateId) === templateId) {
       const currentTemplate = templates.find((item) => item.id === issue.templateId);
+      if (pendingIssueImageRef.current) {
+        setTemplateForm({
+          name: currentTemplate?.name || "",
+          orientation: pendingIssueImageRef.current.orientation,
+          width: pendingIssueImageRef.current.width,
+          height: pendingIssueImageRef.current.height,
+          backgroundUrl: pendingIssueImageRef.current.backgroundUrl,
+          logoUrl: currentTemplate?.logoUrl || "",
+          signatureUrl: currentTemplate?.signatureUrl || "",
+        });
+        pendingIssueImageRef.current = null;
+      }
       const nextLayout = { ...initialBoxes, ...(issueLayout || currentTemplate?.layoutConfig || {}) };
       layoutRef.current = nextLayout;
       setLayout(nextLayout);
@@ -556,6 +1052,7 @@ export default function CertificateStudio() {
   const clearCertificateForm = () => {
     setCertificateId(null);
     setEditingStatus("");
+    setEditingUploadedImage(false);
     setCertificateForm(emptyCertificate);
     setSigners([]);
     setSelectedPartners([]);
@@ -576,7 +1073,17 @@ export default function CertificateStudio() {
     layoutConfig: layout,
     signatures: signers,
     partnerIds: selectedPartners,
-    metadata: { signatures: signers, partnerIds: selectedPartners, layoutConfig: layout },
+    metadata: {
+      signatures: signers,
+      partnerIds: selectedPartners,
+      layoutConfig: layout,
+      ...(editingUploadedImage ? {
+        backgroundUrl: templateForm.backgroundUrl,
+        width: Number(templateForm.width),
+        height: Number(templateForm.height),
+        orientation: templateForm.orientation,
+      } : {}),
+    },
   });
 
   const saveCertificate = async (event: React.FormEvent) => {
@@ -936,6 +1443,47 @@ export default function CertificateStudio() {
     }
   };
 
+  const downloadImagesZip = async (format: "png" | "jpg", includeSheet = false) => {
+    if (showTrash) return;
+    const key = `${format}-${includeSheet ? "sheet" : "images"}`;
+    setImageExporting(key);
+    try {
+      let ids = selectedIssueIds;
+      if (!ids.length) {
+        const query = new URLSearchParams();
+        if (search.trim()) query.set("search", search.trim());
+        if (statusFilter) query.set("status", statusFilter);
+        const filtered = await apiFetchJson<CertificateIssue[]>(`/api/certificates?${query.toString()}`);
+        ids = filtered.map((issue) => issue.id);
+      }
+      if (!ids.length) throw new Error("لا توجد شهادات مطابقة للتنزيل");
+      const response = await apiFetch(
+        `/api/certificates/export-images-zip?${new URLSearchParams({
+          ids: ids.join(","),
+          format,
+          ...(includeSheet ? { includeSheet: "true" } : {}),
+        }).toString()}`,
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `certificates-images-${format}${includeSheet ? "-excel" : ""}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      toast({ title: "بدأ تنزيل ملف الصور", description: `عدد الشهادات: ${ids.length}` });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر تنزيل صور الشهادات", description: (error as Error).message });
+    } finally {
+      setImageExporting(null);
+    }
+  };
+
   const openPdf = async (issue: CertificateIssue, preview: boolean) => {
     const target = preview ? window.open("", "_blank") : null;
     try {
@@ -952,7 +1500,13 @@ export default function CertificateStudio() {
       } else {
         const downloadLink = document.createElement("a");
         downloadLink.href = pdfUrl;
-        downloadLink.download = `certificate-${issue.serialNumber}.pdf`;
+        const personName = issue.recipientName
+          .normalize("NFC")
+          .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+          .replace(/\s+/g, "-")
+          .replace(/^[.\s-]+|[.\s-]+$/g, "")
+          .slice(0, 100) || `certificate-${issue.serialNumber}`;
+        downloadLink.download = `${personName}.pdf`;
         document.body.appendChild(downloadLink);
         downloadLink.click();
         downloadLink.remove();
@@ -961,6 +1515,30 @@ export default function CertificateStudio() {
     } catch (error) {
       target?.close();
       toast({ variant: "destructive", title: "تعذر فتح الشهادة", description: (error as Error).message });
+    }
+  };
+
+  const emailCertificate = async (issue: CertificateIssue) => {
+    const email = window.prompt("أدخل البريد الإلكتروني الذي تريد إرسال الشهادة إليه:", issue.recipientEmail || "");
+    if (email === null || !email.trim()) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast({ variant: "destructive", title: "البريد الإلكتروني غير صحيح" });
+      return;
+    }
+    if (!window.confirm(`سيتم إرسال PDF الخاص بشهادة ${issue.recipientName} إلى ${email.trim()}. متابعة؟`)) return;
+
+    setEmailSendingId(issue.id);
+    try {
+      await apiFetchJson(`/api/certificates/${issue.id}/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      toast({ title: "تم إرسال الشهادة بالبريد", description: email.trim() });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر إرسال الشهادة", description: (error as Error).message });
+    } finally {
+      setEmailSendingId(null);
     }
   };
 
@@ -1048,6 +1626,344 @@ export default function CertificateStudio() {
           تحديث البيانات
         </button>
       </header>
+
+      <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-bold">إعدادات صفحة التحقق</h2>
+          <p className="mt-1 text-sm text-muted-foreground">عدّل النصوص والحقول المتاحة للزائر، وشاهد معاينة مباشرة قبل الحفظ.</p>
+        </div>
+        <form onSubmit={saveVerificationSettings} className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="عنوان الصفحة" value={verifySettings.pageTitle} onChange={(value) => setVerifySettings({ ...verifySettings, pageTitle: value })} />
+            <ImageUploadField label="شعار صفحة التحقق" value={verifySettings.logoUrl} onChange={(value) => setVerifySettings({ ...verifySettings, logoUrl: value })} />
+            {([
+              ["pageSubtitle", "وصف الصفحة"],
+              ["successTitle", "عنوان الشهادة الصحيحة"],
+              ["successMessage", "رسالة الشهادة الصحيحة"],
+              ["cancelledTitle", "عنوان الشهادة الملغاة"],
+              ["cancelledMessage", "رسالة الشهادة الملغاة"],
+              ["notFoundMessage", "رسالة عدم العثور"],
+              ["footerText", "نص التذييل"],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="block space-y-1.5 text-sm">
+                <span className="font-medium">{label}</span>
+                <textarea
+                  className="min-h-20 w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  value={verifySettings[key]}
+                  onChange={(event) => setVerifySettings({ ...verifySettings, [key]: event.target.value })}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 rounded-lg bg-muted/30 p-3">
+              <p className="text-sm font-semibold">الحقول الظاهرة للزائر</p>
+              {([
+                ["recipientName", "اسم المستفيد"],
+                ["programTitle", "اسم الدورة / البرنامج"],
+                ["issuerName", "الجهة المصدرة"],
+                ["issueDate", "تاريخ الإصدار"],
+                ["partners", "المؤسسات الشريكة"],
+                ["serialNumber", "رقم الشهادة"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={verifySettings.visibleFields[key]}
+                    onChange={(event) => setVerifySettings({
+                      ...verifySettings,
+                      visibleFields: { ...verifySettings.visibleFields, [key]: event.target.checked },
+                    })}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div className="space-y-2 rounded-lg bg-muted/30 p-3">
+              <p className="text-sm font-semibold">المعاينة والتنزيل</p>
+              {([
+                ["showCertificatePreview", "عرض معاينة صورة الشهادة"],
+                ["allowDownloadPdf", "السماح بتنزيل PDF"],
+                ["allowDownloadImage", "السماح بتنزيل الصورة"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={verifySettings[key]}
+                    onChange={(event) => setVerifySettings({ ...verifySettings, [key]: event.target.checked })}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border bg-slate-50 p-4" dir="rtl">
+            <div className="mb-3 text-center">
+              {verifySettings.logoUrl && <img src={verifySettings.logoUrl} alt="" className="mx-auto mb-2 max-h-12 max-w-32 object-contain" />}
+              <h3 className="font-bold">{verifySettings.pageTitle || "عنوان صفحة التحقق"}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{verifySettings.pageSubtitle}</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
+              <p className="font-bold">{verifySettings.successTitle}</p>
+              <p className="mt-1 text-sm">{verifySettings.successMessage}</p>
+              <div className="mt-3 grid gap-2 rounded bg-white/80 p-3 text-xs sm:grid-cols-2">
+                {verifySettings.visibleFields.recipientName && <p>اسم المستفيد: مثال تجريبي</p>}
+                {verifySettings.visibleFields.programTitle && <p>البرنامج: مثال تجريبي</p>}
+                {verifySettings.visibleFields.issuerName && <p>الجهة: Arkan Web</p>}
+                {verifySettings.visibleFields.issueDate && <p>التاريخ: ١ / ١ / ٢٠٢٦</p>}
+                {verifySettings.visibleFields.partners && <p>الشركاء: مثال تجريبي</p>}
+                {verifySettings.visibleFields.serialNumber && <p dir="ltr">AW-CERT-2026-000001</p>}
+              </div>
+              {verifySettings.showCertificatePreview && <div className="mt-3 flex h-24 items-center justify-center rounded border border-dashed bg-white text-xs text-muted-foreground">معاينة صورة الشهادة</div>}
+              <div className="mt-2 flex gap-2 text-xs">
+                {verifySettings.allowDownloadPdf && <span className="rounded border bg-white px-2 py-1">تنزيل PDF</span>}
+                {verifySettings.allowDownloadImage && <span className="rounded border bg-white px-2 py-1">تنزيل الصورة</span>}
+              </div>
+            </div>
+            {verifySettings.footerText && <p className="mt-3 text-center text-xs text-muted-foreground">{verifySettings.footerText}</p>}
+          </div>
+          <button type="submit" disabled={savingVerifySettings} className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60">
+            {savingVerifySettings ? "جارٍ الحفظ..." : "حفظ إعدادات صفحة التحقق"}
+          </button>
+        </form>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-bold">توثيق شهادة أو أكثر</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            ارفع صورة شهادة واحدة أو أكثر، واكتب اسم صاحب كل شهادة وبيانات التحقق. سيحتفظ الموقع بالصورة كما هي ويضيف رقمًا فريدًا ورمز QR فوقها.
+          </p>
+        </div>
+        <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center hover:bg-muted/30">
+          <span className="font-semibold">{uploadedCertificates.length ? `إضافة صور أخرى (${uploadedCertificates.length}/50)` : "اختيار صورة واحدة أو أكثر"}</span>
+          <span className="text-xs text-muted-foreground">JPG أو PNG أو WebP — حتى 8 ميجابايت للصورة، وبحد أقصى 50 شهادة في الطلب</span>
+          <input
+            className="sr-only"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            disabled={bulkIssuing}
+            onChange={(event) => {
+              void addUploadedCertificates(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        </label>
+
+        <div className="space-y-2 rounded-lg bg-muted/30 p-3">
+          <p className="text-sm font-semibold">العناصر التي ستُضاف فوق الصور</p>
+          <p className="text-xs text-muted-foreground">افتراضيًا نضيف رقم التوثيق والـQR فقط؛ فعّل الاسم أو البيانات إذا لم تكن مطبوعة مسبقًا في صور الشهادات.</p>
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            {([
+              ["recipientName", "إضافة اسم المستفيد على الصورة"],
+              ["programTitle", "إضافة اسم الشهادة / البرنامج"],
+              ["issueDate", "إضافة تاريخ الإصدار"],
+              ["issuerName", "إضافة الجهة المصدرة"],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isCertificateElementVisible(bulkLayout, key)}
+                  onChange={(event) => {
+                    const hiddenElements: string[] = Array.isArray(bulkLayout.hiddenElements)
+                      ? [...bulkLayout.hiddenElements]
+                      : [];
+                    setBulkLayout({
+                      ...bulkLayout,
+                      hiddenElements: event.target.checked
+                        ? hiddenElements.filter((item) => item !== key)
+                        : [...hiddenElements, key],
+                    });
+                  }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(["serialNumber", "qrCode", ...(isCertificateElementVisible(bulkLayout, "recipientName") ? ["recipientName"] : [])] as string[]).map((key) => (
+              <div key={key} className="rounded-lg border bg-background p-2">
+                <p className="mb-2 text-xs font-semibold">{key === "serialNumber" ? "موضع رقم التوثيق (%)" : key === "qrCode" ? "موضع وحجم QR (%)" : "موضع اسم المستفيد (%)"}</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {(["x", "y", "width", "height"] as const).map((part) => (
+                    <Field
+                      key={part}
+                      label={{ x: "أفقي", y: "عمودي", width: "عرض", height: "ارتفاع" }[part]}
+                      type="number"
+                      value={boxFor(bulkLayout, key, initialBoxes[key])[part]}
+                      onChange={(value) => updateBulkBox(key, part, value)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {uploadedCertificates.length > 0 && (
+          <div className="space-y-3">
+            {uploadedCertificates.map((certificate, index) => (
+              <div key={certificate.id} className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[120px_1fr]">
+                <div className="space-y-2">
+                <div
+                  className="relative w-full overflow-hidden rounded-lg border bg-muted"
+                  style={{ aspectRatio: `${certificate.width} / ${certificate.height}` }}
+                >
+                  <img src={certificate.previewUrl} alt={`معاينة شهادة ${index + 1}`} className="absolute inset-0 h-full w-full object-fill" />
+                  {isCertificateElementVisible(bulkLayout, "serialNumber") && (
+                    <span
+                      className="absolute flex items-center justify-center overflow-hidden bg-white/75 text-center font-mono text-[clamp(5px,1.3vw,10px)]"
+                      style={{
+                        left: `${boxFor(bulkLayout, "serialNumber", initialBoxes.serialNumber).x}%`,
+                        top: `${boxFor(bulkLayout, "serialNumber", initialBoxes.serialNumber).y}%`,
+                        width: `${boxFor(bulkLayout, "serialNumber", initialBoxes.serialNumber).width}%`,
+                        height: `${boxFor(bulkLayout, "serialNumber", initialBoxes.serialNumber).height}%`,
+                      }}
+                    >
+                      رقم التوثيق
+                    </span>
+                  )}
+                  {isCertificateElementVisible(bulkLayout, "qrCode") && (
+                    <span
+                      className="absolute flex items-center justify-center border border-dashed border-slate-600 bg-white/80 text-center text-[clamp(5px,1.2vw,9px)]"
+                      style={{
+                        left: `${boxFor(bulkLayout, "qrCode", initialBoxes.qrCode).x}%`,
+                        top: `${boxFor(bulkLayout, "qrCode", initialBoxes.qrCode).y}%`,
+                        width: `${boxFor(bulkLayout, "qrCode", initialBoxes.qrCode).width}%`,
+                        height: `${boxFor(bulkLayout, "qrCode", initialBoxes.qrCode).height}%`,
+                      }}
+                    >
+                      QR بعد الإصدار
+                    </span>
+                  )}
+                  {isCertificateElementVisible(bulkLayout, "recipientName") && (
+                    <span
+                      className="absolute flex items-center justify-center overflow-hidden bg-white/75 text-center text-[clamp(5px,1.3vw,10px)] font-semibold"
+                      style={{
+                        left: `${boxFor(bulkLayout, "recipientName", initialBoxes.recipientName).x}%`,
+                        top: `${boxFor(bulkLayout, "recipientName", initialBoxes.recipientName).y}%`,
+                        width: `${boxFor(bulkLayout, "recipientName", initialBoxes.recipientName).width}%`,
+                        height: `${boxFor(bulkLayout, "recipientName", initialBoxes.recipientName).height}%`,
+                      }}
+                    >
+                      {certificate.recipientName || "اسم المستفيد"}
+                    </span>
+                  )}
+                </div>
+                  <p className="truncate text-xs text-muted-foreground" title={certificate.file.name}>{certificate.file.name}</p>
+                  <button type="button" className="text-xs text-destructive" disabled={bulkIssuing} onClick={() => removeUploadedCertificate(certificate.id)}>إزالة الصورة</button>
+                </div>
+                <div className="grid content-start gap-3 sm:grid-cols-2">
+                  <Field label="اسم صاحب الشهادة *" value={certificate.recipientName} onChange={(value) => updateUploadedCertificate(certificate.id, "recipientName", value)} />
+                  <Field label="اسم الشهادة / البرنامج (اختياري)" value={certificate.programTitle} onChange={(value) => updateUploadedCertificate(certificate.id, "programTitle", value)} />
+                  <Field label="الجهة المصدرة (اختياري)" value={certificate.issuerName} onChange={(value) => updateUploadedCertificate(certificate.id, "issuerName", value)} />
+                  <Field label="البريد (اختياري)" value={certificate.recipientEmail} dir="ltr" onChange={(value) => updateUploadedCertificate(certificate.id, "recipientEmail", value)} />
+                  <Field label="تاريخ الإصدار" type="date" value={certificate.issueDate} onChange={(value) => updateUploadedCertificate(certificate.id, "issueDate", value)} />
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground disabled:opacity-60"
+              disabled={bulkIssuing || uploadedCertificates.some((certificate) => !certificate.recipientName.trim())}
+              onClick={() => void issueUploadedCertificates()}
+            >
+              {bulkIssuing ? "جارٍ رفع الصور وإصدار الشهادات..." : `إصدار وتوثيق ${uploadedCertificates.length} شهادة`}
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-bold">إنشاء شهادات من قائمة أسماء</h2>
+          <p className="mt-1 text-sm text-muted-foreground">اختر قالباً وأدخل بيانات الدورة مرة واحدة، ثم راجع القائمة قبل إصدار حتى 200 شهادة.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block space-y-1.5 text-sm">
+            <span className="font-medium">قالب الشهادة</span>
+            <select className="w-full rounded-lg border bg-background px-3 py-2" value={bulkTemplateId} onChange={(event) => setBulkTemplateId(event.target.value)}>
+              <option value="">اختر قالباً</option>
+              {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+            </select>
+          </label>
+          <Field label="اسم الدورة / البرنامج" value={bulkProgramTitle} onChange={setBulkProgramTitle} />
+          <Field label="الجهة المصدرة" value={bulkIssuerName} onChange={setBulkIssuerName} />
+          <Field label="تاريخ الإصدار" type="date" value={bulkIssueDate} onChange={setBulkIssueDate} />
+        </div>
+        <div className="space-y-2 rounded-lg bg-muted/30 p-3">
+          <p className="text-sm font-semibold">المؤسسات الشريكة</p>
+          <div className="flex flex-wrap gap-4">
+            {partners.map((partner) => (
+              <label key={partner.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={bulkPartnerIds.includes(partner.id)}
+                  onChange={(event) => setBulkPartnerIds((selected) => event.target.checked
+                    ? [...selected, partner.id]
+                    : selected.filter((id) => id !== partner.id))}
+                />
+                {partner.name}
+              </label>
+            ))}
+            {!partners.length && <p className="text-sm text-muted-foreground">لا توجد مؤسسات مسجلة.</p>}
+          </div>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+          <label className="block space-y-1.5 text-sm">
+            <span className="font-medium">الأسماء — اسم في كل سطر، ويمكن إضافة البريد بعد فاصلة</span>
+            <textarea
+              className="min-h-36 w-full rounded-lg border bg-background px-3 py-2"
+              placeholder={"أحمد محمد\nسارة علي, sara@example.com"}
+              value={bulkText}
+              onChange={(event) => updateBulkNameText(event.target.value)}
+            />
+          </label>
+          <label className="inline-flex h-fit cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm hover:bg-muted">
+            استيراد CSV أو Excel
+            <input
+              className="sr-only"
+              type="file"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(event) => {
+                void importBulkNameFile(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className={`text-sm ${bulkNameRows.length > 200 ? "text-destructive" : "text-muted-foreground"}`}>
+            {bulkNameRows.length} من 200 اسم
+          </p>
+          <button
+            type="button"
+            className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60"
+            disabled={bulkNameIssuing || bulkNameRows.length < 1 || bulkNameRows.length > 200}
+            onClick={() => void issueCertificatesFromNames()}
+          >
+            {bulkNameIssuing ? "جارٍ إصدار الشهادات..." : "إصدار الكل"}
+          </button>
+        </div>
+        {bulkNameRows.length > 0 && (
+          <div className="overflow-x-auto rounded-xl border">
+            <table className="w-full min-w-[540px] text-sm">
+              <thead className="bg-muted/40 text-right"><tr><th className="p-2">#</th><th className="p-2">الاسم</th><th className="p-2">البريد الإلكتروني</th><th className="p-2">إجراء</th></tr></thead>
+              <tbody className="divide-y">
+                {bulkNameRows.map((row, index) => (
+                  <tr key={row.id}>
+                    <td className="p-2">{index + 1}</td>
+                    <td className="p-2"><input className="w-full rounded border px-2 py-1" value={row.name} onChange={(event) => setBulkNameRows((rows) => rows.map((item) => item.id === row.id ? { ...item, name: event.target.value } : item))} /></td>
+                    <td className="p-2"><input className="w-full rounded border px-2 py-1" dir="ltr" value={row.email} onChange={(event) => setBulkNameRows((rows) => rows.map((item) => item.id === row.id ? { ...item, email: event.target.value } : item))} /></td>
+                    <td className="p-2"><button type="button" className="text-destructive" onClick={() => setBulkNameRows((rows) => rows.filter((item) => item.id !== row.id))}>حذف</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
@@ -1343,17 +2259,30 @@ export default function CertificateStudio() {
           <form onSubmit={saveCertificate} className="space-y-3">
             <label className="block space-y-1.5 text-sm">
               <span className="font-medium">قالب الشهادة</span>
-              <select className="w-full rounded-lg border bg-background px-3 py-2" value={certificateForm.templateId} onChange={(event) => { setCertificateForm({ ...certificateForm, templateId: event.target.value }); setTemplateId(event.target.value); }}>
+              <select className="w-full rounded-lg border bg-background px-3 py-2" value={certificateForm.templateId} disabled={editingUploadedImage} onChange={(event) => { setCertificateForm({ ...certificateForm, templateId: event.target.value }); setTemplateId(event.target.value); }}>
                 <option value="">اختر قالباً</option>
                 {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
               </select>
             </label>
+            {editingUploadedImage && (
+              <ImageUploadField
+                label="استبدال صورة الشهادة"
+                value={templateForm.backgroundUrl}
+                onChange={(value) => updateTemplateField("backgroundUrl", value)}
+                onDimensions={({ width, height }) => setTemplateForm((form) => ({
+                  ...form,
+                  width,
+                  height,
+                  orientation: height > width ? "portrait" : "landscape",
+                }))}
+              />
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="اسم المستفيد" value={certificateForm.recipientName} onChange={(value) => setCertificateForm({ ...certificateForm, recipientName: value })} />
-              {isCertificateElementVisible(layout, "programTitle") && <Field label="اسم الشهادة / البرنامج" value={certificateForm.programTitle} onChange={(value) => setCertificateForm({ ...certificateForm, programTitle: value })} />}
-              {isCertificateElementVisible(layout, "issuerName") && <Field label="الجهة المصدرة" value={certificateForm.issuerName} onChange={(value) => setCertificateForm({ ...certificateForm, issuerName: value })} />}
-              <Field label="البريد (داخلي)" value={certificateForm.recipientEmail} dir="ltr" onChange={(value) => setCertificateForm({ ...certificateForm, recipientEmail: value })} />
-              {isCertificateElementVisible(layout, "issueDate") && <Field label="تاريخ الإصدار" type="date" value={certificateForm.issueDate} onChange={(value) => setCertificateForm({ ...certificateForm, issueDate: value })} />}
+              {(editingUploadedImage || isCertificateElementVisible(layout, "programTitle")) && <Field label="اسم الشهادة / البرنامج" value={certificateForm.programTitle} onChange={(value) => setCertificateForm({ ...certificateForm, programTitle: value })} />}
+              {(editingUploadedImage || isCertificateElementVisible(layout, "issuerName")) && <Field label="الجهة المصدرة" value={certificateForm.issuerName} onChange={(value) => setCertificateForm({ ...certificateForm, issuerName: value })} />}
+              <Field label="بريد المستفيد (اختياري للإرسال)" value={certificateForm.recipientEmail} dir="ltr" onChange={(value) => setCertificateForm({ ...certificateForm, recipientEmail: value })} />
+              {(editingUploadedImage || isCertificateElementVisible(layout, "issueDate")) && <Field label="تاريخ الإصدار" type="date" value={certificateForm.issueDate} onChange={(value) => setCertificateForm({ ...certificateForm, issueDate: value })} />}
             </div>
             <Field label="وصف / ملاحظات داخلية" value={certificateForm.description} onChange={(value) => setCertificateForm({ ...certificateForm, description: value })} />
             <div className="space-y-2 border-t pt-3">
@@ -1491,7 +2420,10 @@ export default function CertificateStudio() {
               <option value="draft">مسودات</option>
             </select>
           </label>
-          <button type="button" className="rounded-lg border px-3 py-2 text-sm" disabled={!filteredIssues.length || showTrash} onClick={() => void downloadCollection("zip", selectedIssueIds)}>تنزيل PDF بصيغة ZIP</button>
+          <button type="button" className="rounded-lg border px-3 py-2 text-sm" disabled={!filteredIssues.length || showTrash} onClick={() => void downloadCollection("zip", selectedIssueIds)}>تنزيل الشهادات PDF بصيغة ZIP (بأسماء المستفيدين)</button>
+          <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={!filteredIssues.length || showTrash || Boolean(imageExporting)} onClick={() => void downloadImagesZip("png")}>{imageExporting === "png-images" ? "جارٍ تجهيز الصور..." : "تنزيل صور ZIP (PNG)"}</button>
+          <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={!filteredIssues.length || showTrash || Boolean(imageExporting)} onClick={() => void downloadImagesZip("jpg")}>{imageExporting === "jpg-images" ? "جارٍ تجهيز الصور..." : "تنزيل صور ZIP (JPG)"}</button>
+          <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={!filteredIssues.length || showTrash || Boolean(imageExporting)} onClick={() => void downloadImagesZip("png", true)}>{imageExporting === "png-sheet" ? "جارٍ تجهيز الصور وExcel..." : "ZIP + Excel"}</button>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm" disabled={!filteredIssues.length} onClick={() => void downloadCollection("xlsx", selectedIssueIds)}>تصدير Excel</button>
         </div>
         {selectedIssueIds.length > 0 && (
@@ -1535,6 +2467,7 @@ export default function CertificateStudio() {
                 <button className="text-sm text-primary" onClick={() => beginEditCertificate(issue)}>تعديل</button>
                 <button className="text-sm text-primary" onClick={() => openPdf(issue, true)}>معاينة</button>
                 {issue.status !== "draft" && <button className="text-sm text-primary" onClick={() => openPdf(issue, false)}>تنزيل PDF</button>}
+                {issue.status === "issued" && <button className="text-sm text-primary disabled:opacity-50" disabled={emailSendingId === issue.id} onClick={() => void emailCertificate(issue)}>{emailSendingId === issue.id ? "جارٍ الإرسال..." : "إرسال بالبريد"}</button>}
                 {issue.status === "draft" && <button className="text-sm text-emerald-700" onClick={() => void issueDraft(issue)}>إصدار</button>}
                 {issue.status === "issued" && <button className="text-sm text-amber-700" onClick={() => void cancelCertificate(issue)}>إلغاء الشهادة</button>}
                 <button className="text-sm text-destructive" onClick={() => void moveToTrash(issue)}>نقل إلى السلة</button>

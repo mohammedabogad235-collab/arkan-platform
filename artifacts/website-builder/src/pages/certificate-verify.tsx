@@ -39,14 +39,15 @@ type VerificationStatus =
   | "error";
 
 type PublicCertificate = {
-  serialNumber: string;
-  recipientName: string;
-  programTitle: string;
-  issuerName: string;
-  issueDate: string | null;
+  serialNumber?: string;
+  recipientName?: string;
+  programTitle?: string;
+  issuerName?: string;
+  issueDate?: string | null;
   status: string;
   partners?: string[];
   pdfUrl?: string;
+  imageUrl?: string;
 };
 
 type VerificationResponse = {
@@ -54,6 +55,52 @@ type VerificationResponse = {
   cancelled?: boolean;
   error?: string;
   certificate?: PublicCertificate;
+};
+
+type VerifySettings = {
+  pageTitle: string;
+  pageSubtitle: string;
+  logoUrl: string;
+  successTitle: string;
+  successMessage: string;
+  cancelledTitle: string;
+  cancelledMessage: string;
+  notFoundMessage: string;
+  footerText: string;
+  visibleFields: {
+    recipientName: boolean;
+    programTitle: boolean;
+    issuerName: boolean;
+    issueDate: boolean;
+    partners: boolean;
+    serialNumber: boolean;
+  };
+  showCertificatePreview: boolean;
+  allowDownloadPdf: boolean;
+  allowDownloadImage: boolean;
+};
+
+const DEFAULT_VERIFY_SETTINGS: VerifySettings = {
+  pageTitle: "التحقق من الشهادات",
+  pageSubtitle: "تأكد من صحة الشهادة وحالتها بالبحث عن رقمها أو بمسح رمز QR المطبوع عليها.",
+  logoUrl: "",
+  successTitle: "الشهادة صحيحة وسارية",
+  successMessage: "هذه الشهادة موثقة وصادرة من Arkan Web.",
+  cancelledTitle: "الشهادة ملغاة",
+  cancelledMessage: "تم إلغاء هذه الشهادة وهي غير صالحة للاستخدام.",
+  notFoundMessage: "لم يتم العثور على شهادة بهذا الرقم.",
+  footerText: "",
+  visibleFields: {
+    recipientName: true,
+    programTitle: true,
+    issuerName: true,
+    issueDate: true,
+    partners: true,
+    serialNumber: true,
+  },
+  showCertificatePreview: true,
+  allowDownloadPdf: true,
+  allowDownloadImage: true,
 };
 
 const SERIAL_PATTERN = /^AW-CERT-\d{4}-\d{6}$/;
@@ -83,6 +130,9 @@ export default function CertificateVerify() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [settings, setSettings] = useState<VerifySettings>(DEFAULT_VERIFY_SETTINGS);
+  const [settingsLoadError, setSettingsLoadError] = useState("");
+  const [imageZoomOpen, setImageZoomOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanFrameRef = useRef<number | null>(null);
@@ -90,6 +140,20 @@ export default function CertificateVerify() {
   const skipUrlVerificationRef = useRef<string | null>(null);
   const params = new URLSearchParams(search);
   const serial = (params.get("serial") ?? "").trim();
+
+  useEffect(() => {
+    let active = true;
+    apiFetch("/api/certificates/verify-settings")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("تعذر تحميل إعدادات صفحة التحقق");
+        const data = await response.json() as VerifySettings;
+        if (active) setSettings({ ...DEFAULT_VERIFY_SETTINGS, ...data, visibleFields: { ...DEFAULT_VERIFY_SETTINGS.visibleFields, ...data.visibleFields } });
+      })
+      .catch((error: Error) => {
+        if (active) setSettingsLoadError(error.message);
+      });
+    return () => { active = false; };
+  }, []);
 
   const verifyCertificate = async (rawSerial: string) => {
     const value = rawSerial.trim();
@@ -118,13 +182,13 @@ export default function CertificateVerify() {
       if (response.status === 410 || data.cancelled) {
         setStatus("cancelled");
         setCertificate(data.certificate ?? null);
-        setMessage(data.error || "تم إلغاء هذه الشهادة وهي غير صالحة للاستخدام.");
+        setMessage(data.error || settings.cancelledMessage);
         return;
       }
 
       if (response.status === 404) {
         setStatus("not-found");
-        setMessage(data.error || "لم يتم العثور على شهادة بهذا الرقم.");
+        setMessage(data.error || settings.notFoundMessage);
         return;
       }
 
@@ -298,7 +362,9 @@ export default function CertificateVerify() {
 
   const handleCopyLink = async () => {
     if (!certificate) return;
-    const link = `${window.location.origin}/certificate/verify?serial=${encodeURIComponent(certificate.serialNumber)}`;
+    const certificateSerial = certificate.serialNumber || serial || searchValue.trim();
+    if (!certificateSerial) return;
+    const link = `${window.location.origin}/certificate/verify?serial=${encodeURIComponent(certificateSerial)}`;
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
@@ -339,9 +405,9 @@ export default function CertificateVerify() {
         : "border-red-200 bg-red-50 text-red-800";
     const ResultIcon = isValid ? CheckCircle2 : isCancelled ? AlertCircle : XCircle;
     const title = isValid
-      ? "الشهادة صحيحة وسارية"
+      ? settings.successTitle
       : isCancelled
-        ? "الشهادة ملغاة"
+        ? settings.cancelledTitle
         : isNotFound
           ? "الشهادة غير موجودة"
           : isInvalid
@@ -357,32 +423,33 @@ export default function CertificateVerify() {
             {message && <p className="mt-1 text-sm leading-6">{message}</p>}
             {certificate && (
               <>
+                {isValid && <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-bold text-emerald-800"><ShieldCheck className="h-4 w-4" />موثقة</div>}
+                {isValid && settings.successMessage && <p className="mt-2 text-sm leading-6">{settings.successMessage}</p>}
+                {certificate.imageUrl && settings.showCertificatePreview && (
+                  <div className="relative mt-4 overflow-hidden rounded-xl border bg-white">
+                    <button type="button" onClick={() => setImageZoomOpen(true)} className="block w-full" aria-label="تكبير معاينة الشهادة">
+                      <img src={certificate.imageUrl} alt="معاينة صورة الشهادة" className="max-h-96 w-full object-contain" loading="lazy" />
+                    </button>
+                    {isCancelled && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/10"><span className="rotate-[-14deg] rounded-lg border-4 border-red-700 bg-white/80 px-8 py-3 text-3xl font-black text-red-700">ملغاة</span></div>}
+                    <button type="button" onClick={() => setImageZoomOpen(true)} className="absolute bottom-2 left-2 rounded-md bg-white/90 px-3 py-1.5 text-xs font-semibold shadow">تكبير الصورة</button>
+                  </div>
+                )}
                 <div className="mt-4 grid gap-3 rounded-xl border border-black/5 bg-white/80 p-4 text-sm sm:grid-cols-2">
-                  <p><span className="text-muted-foreground">اسم المستفيد:</span><br /><strong>{certificate.recipientName || "-"}</strong></p>
-                  <p><span className="text-muted-foreground">اسم الشهادة:</span><br /><strong>{certificate.programTitle || "-"}</strong></p>
-                  <p><span className="text-muted-foreground">الجهة المصدرة:</span><br /><strong>{certificate.issuerName || "Arkan Web"}</strong></p>
-                  <p><span className="text-muted-foreground">تاريخ الإصدار:</span><br /><strong>{certificate.issueDate ? new Date(certificate.issueDate).toLocaleDateString("ar-EG") : "-"}</strong></p>
-                  <p><span className="text-muted-foreground">المؤسسات الشريكة:</span><br /><strong>{certificate.partners?.length ? certificate.partners.join("، ") : "لا توجد مؤسسات شريكة مسجلة"}</strong></p>
-                  <p className="sm:col-span-2"><span className="text-muted-foreground">رقم الشهادة:</span><br /><strong dir="ltr">{certificate.serialNumber}</strong></p>
+                  {settings.visibleFields.recipientName && certificate.recipientName !== undefined && <p><span className="text-muted-foreground">اسم المستفيد:</span><br /><strong>{certificate.recipientName || "-"}</strong></p>}
+                  {settings.visibleFields.programTitle && certificate.programTitle !== undefined && <p><span className="text-muted-foreground">اسم الشهادة:</span><br /><strong>{certificate.programTitle || "-"}</strong></p>}
+                  {settings.visibleFields.issuerName && certificate.issuerName !== undefined && <p><span className="text-muted-foreground">الجهة المصدرة:</span><br /><strong>{certificate.issuerName || "Arkan Web"}</strong></p>}
+                  {settings.visibleFields.issueDate && certificate.issueDate !== undefined && <p><span className="text-muted-foreground">تاريخ الإصدار:</span><br /><strong>{certificate.issueDate ? new Date(certificate.issueDate).toLocaleDateString("ar-EG") : "-"}</strong></p>}
+                  {settings.visibleFields.partners && certificate.partners !== undefined && <p><span className="text-muted-foreground">المؤسسات الشريكة:</span><br /><strong>{certificate.partners?.length ? certificate.partners.join("، ") : "لا توجد مؤسسات شريكة مسجلة"}</strong></p>}
+                  {settings.visibleFields.serialNumber && certificate.serialNumber !== undefined && <p className="sm:col-span-2"><span className="text-muted-foreground">رقم الشهادة:</span><br /><strong dir="ltr">{certificate.serialNumber}</strong></p>}
                 </div>
-                {isValid && (
+                {(isValid || isCancelled) && (
                   <>
-                    {certificate.pdfUrl && (
-                      <div className="mt-4 overflow-hidden rounded-xl border bg-white">
-                        <iframe
-                          src={certificate.pdfUrl}
-                          title="معاينة الشهادة المصدرة"
-                          className="h-64 w-full sm:h-80"
-                          loading="lazy"
-                        />
-                      </div>
-                    )}
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button type="button" size="sm" variant="outline" onClick={() => void handleCopyLink()}>
                       <Copy className="ms-2 h-4 w-4" />
                       {copied ? "تم نسخ رابط التحقق" : "نسخ رابط التحقق"}
                     </Button>
-                    {certificate.pdfUrl && (
+                    {isValid && settings.allowDownloadPdf && certificate.pdfUrl && (
                       <Button asChild type="button" size="sm" variant="outline">
                         <a href={certificate.pdfUrl} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="ms-2 h-4 w-4" />
@@ -390,11 +457,19 @@ export default function CertificateVerify() {
                         </a>
                       </Button>
                     )}
-                    {certificate.pdfUrl && (
+                    {isValid && settings.allowDownloadPdf && certificate.pdfUrl && (
                       <Button asChild type="button" size="sm" variant="outline">
                         <a href={`${certificate.pdfUrl}?download=1`} rel="noopener noreferrer">
                           <FileCheck2 className="ms-2 h-4 w-4" />
                           تنزيل PDF
+                        </a>
+                      </Button>
+                    )}
+                    {isValid && settings.allowDownloadImage && certificate.imageUrl && (
+                      <Button asChild type="button" size="sm" variant="outline">
+                        <a href={`${certificate.imageUrl}${certificate.imageUrl.includes("?") ? "&" : "?"}download=1`} rel="noopener noreferrer">
+                          <FileCheck2 className="ms-2 h-4 w-4" />
+                          تنزيل الصورة
                         </a>
                       </Button>
                     )}
@@ -404,10 +479,25 @@ export default function CertificateVerify() {
               </>
             )}
           </div>
+          {settings.footerText && <footer className="mt-8 text-center text-sm leading-6 text-muted-foreground">{settings.footerText}</footer>}
         </div>
+        <Dialog open={imageZoomOpen} onOpenChange={setImageZoomOpen}>
+          <DialogContent className="max-w-6xl">
+            <DialogHeader>
+              <DialogTitle>معاينة الشهادة</DialogTitle>
+              <DialogDescription>صورة الشهادة كما تظهر في ملف PDF.</DialogDescription>
+            </DialogHeader>
+            {certificate?.imageUrl && (
+              <div className="relative overflow-auto rounded-lg bg-muted">
+                <img src={certificate.imageUrl} alt="صورة الشهادة مكبرة" className="mx-auto max-h-[75vh] w-auto object-contain" />
+                {status === "cancelled" && <div className="pointer-events-none absolute inset-0 flex items-center justify-center"><span className="rotate-[-14deg] rounded-lg border-4 border-red-700 bg-white/80 px-8 py-3 text-3xl font-black text-red-700">ملغاة</span></div>}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     );
-  };
+  }
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-b from-primary/[0.06] via-background to-slate-50 px-4 py-10 sm:py-14" dir="rtl">
@@ -417,11 +507,13 @@ export default function CertificateVerify() {
             <FileCheck2 className="h-4 w-4" />
             خدمة عامة وآمنة
           </Badge>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">التحقق من الشهادات</h1>
+          {settings.logoUrl && <img src={settings.logoUrl} alt="" className="mx-auto mb-3 max-h-16 max-w-40 object-contain" />}
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{settings.pageTitle}</h1>
           <p className="mx-auto mt-3 max-w-2xl leading-7 text-muted-foreground">
-            تأكد من صحة الشهادة وحالتها بالبحث عن رقمها أو بمسح رمز QR المطبوع عليها.
+            {settings.pageSubtitle}
           </p>
         </header>
+        {settingsLoadError && <p role="alert" className="mx-auto mb-4 max-w-3xl rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">تعذر تحميل إعدادات صفحة التحقق، يتم عرض النصوص الافتراضية. {settingsLoadError}</p>}
 
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <Card className="h-fit border-slate-200 shadow-sm">

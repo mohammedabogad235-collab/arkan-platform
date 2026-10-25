@@ -55,6 +55,12 @@ export const certificatePartnersTable = pgTable("certificate_partners", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const certificateVerifySettingsTable = pgTable("certificate_verify_settings", {
+  id: integer("id").primaryKey().default(1),
+  settings: jsonb("settings").notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertCertificateTemplateSchema = createInsertSchema(certificateTemplatesTable).omit({
   id: true,
   createdAt: true,

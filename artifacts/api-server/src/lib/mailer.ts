@@ -155,6 +155,49 @@ async function sendEmail(options: { to: string; subject: string; html: string; }
   }
 }
 
+export async function sendCertificateEmail(options: {
+  to: string;
+  recipientName: string;
+  certificateName: string;
+  serialNumber: string;
+  validationUrl: string;
+  fileName: string;
+  pdf: Buffer;
+}): Promise<void> {
+  const { transporter, fromEmail } = await getMailTransport();
+  const recipientName = escapeHtml(options.recipientName);
+  const certificateName = escapeHtml(options.certificateName);
+  const serialNumber = escapeHtml(options.serialNumber);
+  const validationUrl = escapeHtml(options.validationUrl);
+  const subject = `شهادتك من أركان ويب - ${options.certificateName}`;
+
+  try {
+    await withTimeout(
+      transporter.sendMail({
+        from: `"أركان-ويب " <${fromEmail}>`,
+        to: options.to,
+        subject,
+        html: `
+          <div dir="rtl" lang="ar" style="font-family:Arial,sans-serif;line-height:1.8;color:#0f172a">
+            <h2>مرحباً ${recipientName}</h2>
+            <p>مرفق شهادتك «${certificateName}» بصيغة PDF.</p>
+            <p>رقم الشهادة: <strong>${serialNumber}</strong></p>
+            <p><a href="${validationUrl}">التحقق من الشهادة</a></p>
+          </div>
+        `,
+        attachments: [{ filename: options.fileName, content: options.pdf, contentType: "application/pdf" }],
+      }),
+      SMTP_SEND_TIMEOUT_MS,
+      () => closeTransporter(transporter),
+    );
+  } catch (error) {
+    logger.error({ err: error, subject, to: options.to }, "Certificate email delivery failed");
+    throw toMailError(error);
+  } finally {
+    closeTransporter(transporter);
+  }
+}
+
 // ==========================================
 // قوالب التصميم الفخمة (Ultra-Premium HTML)
 // ==========================================
