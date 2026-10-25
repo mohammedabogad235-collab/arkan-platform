@@ -48,6 +48,8 @@ type PublicCertificate = {
   partners?: string[];
   pdfUrl?: string;
   imageUrl?: string;
+  source?: string;
+  verifiedAt?: string;
 };
 
 type VerificationResponse = {
@@ -78,6 +80,7 @@ type VerifySettings = {
   showCertificatePreview: boolean;
   allowDownloadPdf: boolean;
   allowDownloadImage: boolean;
+  showLegacyNote: boolean;
 };
 
 const DEFAULT_VERIFY_SETTINGS: VerifySettings = {
@@ -101,6 +104,7 @@ const DEFAULT_VERIFY_SETTINGS: VerifySettings = {
   showCertificatePreview: true,
   allowDownloadPdf: true,
   allowDownloadImage: true,
+  showLegacyNote: true,
 };
 
 const SERIAL_PATTERN = /^AW-CERT-\d{4}-\d{6}$/;
@@ -425,6 +429,11 @@ export default function CertificateVerify() {
               <>
                 {isValid && <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-bold text-emerald-800"><ShieldCheck className="h-4 w-4" />موثقة</div>}
                 {isValid && settings.successMessage && <p className="mt-2 text-sm leading-6">{settings.successMessage}</p>}
+                {settings.showLegacyNote && certificate.source === "legacy-certificate-image" && settings.visibleFields.issueDate && certificate.issueDate && certificate.verifiedAt && (
+                  <p className="mt-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs leading-5 text-slate-600">
+                    تم توثيق هذه الشهادة إلكترونياً بتاريخ {new Date(certificate.verifiedAt).toLocaleDateString("ar-EG")} وصدرت أصلاً بتاريخ {new Date(certificate.issueDate).toLocaleDateString("ar-EG")}.
+                  </p>
+                )}
                 {certificate.imageUrl && settings.showCertificatePreview && (
                   <div className="relative mt-4 overflow-hidden rounded-xl border bg-white">
                     <button type="button" onClick={() => setImageZoomOpen(true)} className="block w-full" aria-label="تكبير معاينة الشهادة">

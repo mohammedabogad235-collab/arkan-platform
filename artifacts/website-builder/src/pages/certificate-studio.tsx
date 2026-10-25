@@ -71,8 +71,18 @@ type VerifySettings = {
   showCertificatePreview: boolean;
   allowDownloadPdf: boolean;
   allowDownloadImage: boolean;
+  showLegacyNote: boolean;
 };
 type BulkNameRow = { id: string; name: string; email: string };
+type LegacyImportRow = {
+  id: string;
+  fileName: string;
+  name: string;
+  issueDate: string;
+  programTitle: string;
+  issuerName: string;
+  email: string;
+};
 type UploadedCertificate = {
   id: string;
   file: File;
@@ -184,7 +194,76 @@ const defaultVerifySettings: VerifySettings = {
   showCertificatePreview: true,
   allowDownloadPdf: true,
   allowDownloadImage: true,
+  showLegacyNote: true,
 };
+
+function parseDelimitedRows(text: string): string[][] {
+  const records: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  const delimiter = text.includes("\t") && !text.includes(",") ? "\t" : ",";
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '"' && quoted && text[index + 1] === '"') {
+      field += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      row.push(field.trim());
+      field = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && text[index + 1] === "\n") index += 1;
+      row.push(field.trim());
+      records.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+  if (field || row.length) {
+    row.push(field.trim());
+    records.push(row);
+  }
+  return records;
+}
+
+function normalizeLegacyImportRows(records: string[][]): Omit<LegacyImportRow, "id">[] {
+  if (!records.length) return [];
+  const normalizeHeader = (value: string) => value.replace(/^\uFEFF/, "").trim().toLocaleLowerCase().replace(/[\s_-]+/g, "");
+  const headers = records[0].map(normalizeHeader);
+  const headerAliases: Record<keyof Omit<LegacyImportRow, "id">, string[]> = {
+    fileName: ["filename", "اسم الملف", "اسم الملف الأصلي", "اسم الصورة"],
+    name: ["name", "الاسم", "اسم المستفيد"],
+    issueDate: ["date", "issuedate", "التاريخ", "تاريخ الإصدار", "تاريخ الاصدار"],
+    programTitle: ["course", "program", "الدورة", "اسم الدورة", "البرنامج"],
+    issuerName: ["issuer", "organization", "الجهة", "الجهة المصدرة"],
+    email: ["email", "البريد", "البريد الإلكتروني"],
+  };
+  const fieldIndexes = Object.fromEntries(
+    Object.entries(headerAliases).map(([key, aliases]) => [
+      key,
+      headers.findIndex((header) => aliases.some((alias) => normalizeHeader(alias) === header)),
+    ]),
+  ) as Record<keyof Omit<LegacyImportRow, "id">, number>;
+  const hasHeader = Object.values(fieldIndexes).some((index) => index >= 0);
+  const dataRows = hasHeader ? records.slice(1) : records;
+  return dataRows.flatMap((row) => {
+    const get = (key: keyof Omit<LegacyImportRow, "id">, fallback: number) =>
+      row[fieldIndexes[key] >= 0 ? fieldIndexes[key] : fallback]?.trim() ?? "";
+    const value = {
+      fileName: get("fileName", 0),
+      name: get("name", 1),
+      issueDate: get("issueDate", 2),
+      programTitle: get("programTitle", 3),
+      issuerName: get("issuerName", 4),
+      email: get("email", 5),
+    };
+    return value.fileName || value.name ? [value] : [];
+  });
+}
 
 function parseNameLines(value: string): Array<{ name: string; email: string }> {
   return value.split(/\r?\n/).flatMap((line) => {
@@ -272,18 +351,79 @@ async function parseExcelFile(file: File): Promise<Array<{ name: string; email: 
   });
 }
 
+async function parseLegacyExcelFile(file: File): Promise<string[][]> {
+  const archive = await JSZip.loadAsync(await file.arrayBuffer());
+  const workbookFile = archive.file("xl/workbook.xml");
+  const relationshipsFile = archive.file("xl/_rels/workbook.xml.rels");
+  if (!workbookFile || !relationshipsFile) throw new Error("ملف Excel لا يحتوي على ورقة عمل قابلة للقراءة");
+  const [workbookXml, relationshipsXml] = await Promise.all([workbookFile.async("text"), relationshipsFile.async("text")]);
+  const workbook = new DOMParser().parseFromString(workbookXml, "application/xml");
+  const relationships = new DOMParser().parseFromString(relationshipsXml, "application/xml");
+  const relationshipId = workbook.querySelector("sheet")?.getAttribute("r:id");
+  const target = relationshipId
+    ? [...relationships.querySelectorAll("Relationship")].find((item) => item.getAttribute("Id") === relationshipId)?.getAttribute("Target")
+    : "";
+  if (!target) throw new Error("تعذر تحديد ورقة العمل الأولى في ملف Excel");
+  const sheetPath = target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\/+/, "")}`;
+  const sheetFile = archive.file(sheetPath);
+  if (!sheetFile) throw new Error("ورقة العمل الأولى غير موجودة في ملف Excel");
+  const sharedStringsFile = archive.file("xl/sharedStrings.xml");
+  const sharedStrings = sharedStringsFile
+    ? [...new DOMParser().parseFromString(await sharedStringsFile.async("text"), "application/xml").querySelectorAll("si")]
+      .map((item) => item.textContent ?? "")
+    : [];
+  const sheet = new DOMParser().parseFromString(await sheetFile.async("text"), "application/xml");
+  return [...sheet.querySelectorAll("sheetData row")].map((row) => {
+    const values: string[] = [];
+    for (const cell of row.querySelectorAll("c")) {
+      const column = cell.getAttribute("r")?.match(/^[A-Z]+/)?.[0] ?? "";
+      const columnIndex = column.split("").reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0) - 1;
+      const value = cell.querySelector("v")?.textContent ?? cell.querySelector("is")?.textContent ?? "";
+      values[columnIndex] = cell.getAttribute("t") === "s" ? sharedStrings[Number(value)] ?? "" : value;
+    }
+    return values;
+  });
+}
+
+function normalizeLegacyDate(value: string): string {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const excelDate = new Date(Date.UTC(1899, 11, 30) + Number(trimmed) * 86_400_000);
+    return Number.isNaN(excelDate.getTime()) ? trimmed : excelDate.toISOString().slice(0, 10);
+  }
+  const match = trimmed.match(/^(\d{1,2})[/. -](\d{1,2})[/. -](\d{4})$/);
+  if (match) {
+    const first = Number(match[1]);
+    const second = Number(match[2]);
+    const year = Number(match[3]);
+    const month = second;
+    const day = first;
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  return trimmed;
+}
+
+function normalizeLegacyFileName(value: string): string {
+  return value.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "").normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase() ?? "";
+}
+
 function Field({
   label,
   value,
   onChange,
   type = "text",
   dir,
+  min,
+  max,
 }: {
   label: string;
   value: string | number;
   onChange: (value: string) => void;
   type?: string;
   dir?: "ltr" | "rtl";
+  min?: string;
+  max?: string;
 }) {
   return (
     <label className="block space-y-1.5 text-sm">
@@ -293,6 +433,8 @@ function Field({
         type={type}
         value={value}
         dir={dir}
+        min={min}
+        max={max}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
@@ -404,6 +546,7 @@ export default function CertificateStudio() {
   const pendingIssueLayoutRef = useRef<Record<string, any> | null>(null);
   const pendingIssueImageRef = useRef<{ backgroundUrl: string; width: number; height: number; orientation: string } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const legacyPreviewRef = useRef<HTMLDivElement>(null);
   const [layoutUndo, setLayoutUndo] = useState<Record<string, any>[]>([]);
   const [layoutRedo, setLayoutRedo] = useState<Record<string, any>[]>([]);
   const [partnerForm, setPartnerForm] = useState(emptyPartner);
@@ -420,10 +563,18 @@ export default function CertificateStudio() {
   const [showTrash, setShowTrash] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   const [selectedIssueIds, setSelectedIssueIds] = useState<number[]>([]);
   const [emailSendingId, setEmailSendingId] = useState<number | null>(null);
   const [uploadedCertificates, setUploadedCertificates] = useState<UploadedCertificate[]>([]);
   const [bulkIssuing, setBulkIssuing] = useState(false);
+  const [imageIssueMode, setImageIssueMode] = useState<"standard" | "legacy">("standard");
+  const [legacyDefaultDate, setLegacyDefaultDate] = useState("");
+  const [legacyMetadataRows, setLegacyMetadataRows] = useState<LegacyImportRow[]>([]);
+  const [legacyTextImport, setLegacyTextImport] = useState("");
+  const [legacyWhiteBackground, setLegacyWhiteBackground] = useState(true);
+  const [legacyPreviewOpen, setLegacyPreviewOpen] = useState(false);
+  const [legacyQrPreviewUrl, setLegacyQrPreviewUrl] = useState("");
   const [verifySettings, setVerifySettings] = useState<VerifySettings>(defaultVerifySettings);
   const [savingVerifySettings, setSavingVerifySettings] = useState(false);
   const [bulkText, setBulkText] = useState("");
@@ -815,9 +966,15 @@ export default function CertificateStudio() {
         issue.programTitle,
         issue.issuerName,
       ].some((value) => value?.toLocaleLowerCase().includes(normalizedSearch));
-      return matchesSearch && (!statusFilter || issue.status === statusFilter);
+      const source = issue.metadata?.source;
+      const matchesSource = !sourceFilter ||
+        (sourceFilter === "legacy" && source === "legacy-certificate-image") ||
+        (sourceFilter === "uploaded-images" && (source === "uploaded-certificate-image" || source === "attached-certificate-image")) ||
+        (sourceFilter === "reserved" && issue.status === "reserved") ||
+        (sourceFilter === "normal" && !["uploaded-certificate-image", "attached-certificate-image", "legacy-certificate-image", "reserved-code"].includes(source || ""));
+      return matchesSearch && (!statusFilter || issue.status === statusFilter) && matchesSource;
     });
-  }, [issues, trashIssues, showTrash, search, statusFilter]);
+  }, [issues, trashIssues, showTrash, search, statusFilter, sourceFilter]);
 
   const pageSize = 10;
   const pageCount = Math.max(1, Math.ceil(filteredIssues.length / pageSize));
@@ -971,15 +1128,18 @@ export default function CertificateStudio() {
           };
           image.src = previewUrl;
         });
+        const imported = legacyMetadataRows.find((row) =>
+          normalizeLegacyFileName(row.fileName) === normalizeLegacyFileName(file.name),
+        );
         prepared.push({
           id: crypto.randomUUID(),
           file,
           previewUrl,
-          recipientName: "",
-          programTitle: "",
-          issuerName: "",
-          recipientEmail: "",
-          issueDate: getLocalDateInputValue(),
+          recipientName: imported?.name || "",
+          programTitle: imported?.programTitle || "",
+          issuerName: imported?.issuerName || "",
+          recipientEmail: imported?.email || "",
+          issueDate: imported?.issueDate || (imageIssueMode === "legacy" ? legacyDefaultDate : getLocalDateInputValue()),
           width: dimensions.width,
           height: dimensions.height,
           orientation: dimensions.height > dimensions.width ? "portrait" : "landscape",
@@ -993,6 +1153,70 @@ export default function CertificateStudio() {
         title: "تعذر إضافة الصور",
         description: error instanceof Error ? error.message : "تحقق من الصور المختارة",
       });
+    }
+  };
+
+  const applyLegacyMetadataRows = (rows: Omit<LegacyImportRow, "id">[]) => {
+    const normalizedRows: LegacyImportRow[] = rows.map((row) => ({
+      ...row,
+      id: crypto.randomUUID(),
+      issueDate: normalizeLegacyDate(row.issueDate),
+    }));
+    setLegacyMetadataRows(normalizedRows);
+    setUploadedCertificates((current) => current.map((certificate) => {
+      const imported = normalizedRows.find((row) =>
+        normalizeLegacyFileName(row.fileName) === normalizeLegacyFileName(certificate.file.name),
+      );
+      return imported ? {
+        ...certificate,
+        recipientName: imported.name || certificate.recipientName,
+        issueDate: imported.issueDate || certificate.issueDate,
+        programTitle: imported.programTitle || certificate.programTitle,
+        issuerName: imported.issuerName || certificate.issuerName,
+        recipientEmail: imported.email || certificate.recipientEmail,
+      } : certificate;
+    }));
+  };
+
+  const applyLegacyTextImport = () => {
+    const rows = normalizeLegacyImportRows(parseDelimitedRows(legacyTextImport));
+    if (!rows.length) {
+      toast({ variant: "destructive", title: "لم يتم العثور على صفوف استيراد صالحة" });
+      return;
+    }
+    applyLegacyMetadataRows(rows);
+    toast({ title: `تم استيراد بيانات ${rows.length} صف` });
+  };
+
+  const importLegacyMetadataFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      if (file.size > 5 * 1024 * 1024) throw new Error("حجم ملف البيانات يجب ألا يتجاوز 5 ميجابايت");
+      const lowerName = file.name.toLocaleLowerCase();
+      const records = lowerName.endsWith(".csv")
+        ? parseDelimitedRows(await file.text())
+        : lowerName.endsWith(".xlsx")
+          ? await parseLegacyExcelFile(file)
+          : (() => { throw new Error("استخدم ملف CSV أو Excel بصيغة XLSX"); })();
+      const rows = normalizeLegacyImportRows(records);
+      if (!rows.length) throw new Error("لم يتم العثور على بيانات شهادات في الملف");
+      if (rows.length > 200) throw new Error("الحد الأقصى 200 صف بيانات في الملف");
+      applyLegacyMetadataRows(rows);
+      setLegacyTextImport("");
+      toast({ title: `تم استيراد ${rows.length} صف`, description: file.name });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "تعذر قراءة ملف البيانات",
+        description: error instanceof Error ? error.message : "تحقق من تنسيق الملف",
+      });
+    }
+  };
+
+  const applyLegacyDefaultDate = (value: string) => {
+    setLegacyDefaultDate(value);
+    if (value) {
+      setUploadedCertificates((current) => current.map((certificate) => ({ ...certificate, issueDate: value })));
     }
   };
 
@@ -1019,17 +1243,45 @@ export default function CertificateStudio() {
       toast({ variant: "destructive", title: "اكتب اسم صاحب كل شهادة قبل إصدار الدفعة" });
       return;
     }
+    if (imageIssueMode === "legacy" && uploadedCertificates.some((certificate) => !certificate.issueDate)) {
+      toast({ variant: "destructive", title: "أدخل تاريخ الإصدار الأصلي لكل شهادة قديمة" });
+      return;
+    }
+    if (imageIssueMode === "legacy") {
+      const today = getLocalDateInputValue();
+      if (uploadedCertificates.some((certificate) =>
+        certificate.issueDate < "1990-01-01" || certificate.issueDate > today,
+      )) {
+        toast({ variant: "destructive", title: "تاريخ الشهادة القديمة يجب أن يكون من 1990 وحتى اليوم" });
+        return;
+      }
+    }
     if (uploadedCertificates.some((certificate) =>
       certificate.recipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(certificate.recipientEmail.trim()),
     )) {
       toast({ variant: "destructive", title: "راجع البريد الإلكتروني؛ يوجد بريد غير صحيح ضمن الدفعة" });
       return;
     }
-    if (!window.confirm(`سيتم رفع وإصدار ${uploadedCertificates.length} شهادة مع أرقام وQR تحقق فريدة. متابعة؟`)) return;
+    const isLegacyBatch = imageIssueMode === "legacy";
+    if (!window.confirm(
+      isLegacyBatch
+        ? `سيتم توثيق ${uploadedCertificates.length} شهادة قديمة. رقم التوثيق يتولد الآن بتاريخ السنة الحالية، ويظل تاريخ الإصدار الأصلي منفصلاً في صفحة التحقق. متابعة؟`
+        : `سيتم رفع وإصدار ${uploadedCertificates.length} شهادة مع أرقام وQR تحقق فريدة. متابعة؟`,
+    )) return;
 
     setBulkIssuing(true);
     try {
-      const certificatePayloads = [];
+      const certificatePayloads: {
+        backgroundUrl: string;
+        recipientName: string;
+        programTitle: string;
+        issuerName: string;
+        recipientEmail: string;
+        issueDate: string;
+        width: number;
+        height: number;
+        orientation: "portrait" | "landscape";
+      }[] = [];
       for (const certificate of uploadedCertificates) {
         const formData = new FormData();
         formData.append("file", certificate.file);
@@ -1051,14 +1303,42 @@ export default function CertificateStudio() {
         });
       }
 
-      const result = await apiFetchJson<{ count: number }>("/api/certificates/bulk-issue-images", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ certificates: certificatePayloads, layoutConfig: bulkLayout }),
-      });
+      const issueBatch = async (confirmDuplicates: boolean) => {
+        const response = await apiFetch("/api/certificates/bulk-issue-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            certificates: certificatePayloads,
+            layoutConfig: isLegacyBatch
+              ? { ...bulkLayout, whiteBackgroundBehindQr: legacyWhiteBackground }
+              : bulkLayout,
+            ...(isLegacyBatch ? {
+              source: "legacy-certificate-image",
+              confirmDuplicates,
+            } : {}),
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        return payload as { count?: number; confirmationRequired?: boolean; duplicates?: { recipientName: string; issueDate: string; programTitle: string }[] };
+      };
+      let result = await issueBatch(false);
+      if (result.confirmationRequired) {
+        const duplicateNames = [...new Set((result.duplicates ?? []).map((duplicate) => `${duplicate.recipientName} — ${duplicate.issueDate}`))];
+        if (!window.confirm(`توجد شهادات قديمة بنفس الاسم والتاريخ والدورة:\n${duplicateNames.join("\n")}\n\nهل تريد الإصدار رغم ذلك؟`)) return;
+        result = await issueBatch(true);
+      }
+      if (!result.count) throw new Error("لم يتم إصدار أي شهادة");
       uploadedCertificates.forEach((certificate) => URL.revokeObjectURL(certificate.previewUrl));
       setUploadedCertificates([]);
-      toast({ title: `تم توثيق ${result.count} شهادة`, description: "أُنشئ رقم ورمز QR خاص بكل شهادة." });
+      setLegacyMetadataRows([]);
+      setLegacyTextImport("");
+      toast({
+        title: `تم توثيق ${result.count} شهادة`,
+        description: isLegacyBatch
+          ? "أُنشئ لكل شهادة رقم توثيق جديد بتاريخ السنة الحالية، مع الاحتفاظ بتاريخ إصدارها الأصلي."
+          : "أُنشئ رقم ورمز QR خاص بكل شهادة.",
+      });
       try {
         await refresh();
       } catch (error) {
@@ -1103,6 +1383,46 @@ export default function CertificateStudio() {
         [field]: Number.isFinite(number) ? Math.min(Math.max(number, 0), 100) : current[field],
       },
     }));
+  };
+
+  const startLegacyDrag = (event: React.PointerEvent, key: "serialNumber" | "qrCode") => {
+    if (!legacyPreviewRef.current || event.button !== 0) return;
+    event.preventDefault();
+    const bounds = legacyPreviewRef.current.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const originalLayout = bulkLayout;
+    const originalBox = boxFor(originalLayout, key, initialBoxes[key]);
+    let currentBox = originalBox;
+    const move = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== event.pointerId) return;
+      currentBox = {
+        ...originalBox,
+        x: Math.min(Math.max(originalBox.x + ((pointerEvent.clientX - startX) / bounds.width) * 100, 0), 100 - originalBox.width),
+        y: Math.min(Math.max(originalBox.y + ((pointerEvent.clientY - startY) / bounds.height) * 100, 0), 100 - originalBox.height),
+      };
+      setBulkLayout((current) => ({ ...current, [key]: currentBox }));
+    };
+    const finish = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== event.pointerId) return;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      if (currentBox !== originalBox) {
+        setBulkLayout((current) => ({ ...current, [key]: currentBox }));
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+  };
+
+  const openLegacyPreview = () => {
+    if (!uploadedCertificates.length) {
+      toast({ variant: "destructive", title: "ارفع صورة شهادة لمعاينتها أولاً" });
+      return;
+    }
+    const sampleSerial = `AW-CERT-${new Date().getFullYear()}-000001`;
+    setLegacyQrPreviewUrl(resolveApiUrl(`/api/certificates/qr?serial=${encodeURIComponent(sampleSerial)}`));
+    setLegacyPreviewOpen(true);
   };
 
   const updatePartnerBox = (group: "partnerLogoBoxes" | "partnerSignatureBoxes", partnerId: number, field: keyof Box, value: string, fallback: Box) => {
@@ -1665,6 +1985,7 @@ export default function CertificateStudio() {
       if (ids.length) query.set("ids", ids.join(","));
       if (!ids.length && search.trim()) query.set("search", search.trim());
       if (!ids.length && statusFilter) query.set("status", statusFilter);
+      if (!ids.length && sourceFilter) query.set("source", sourceFilter);
       if (showTrash) query.set("trash", "true");
       const response = await apiFetch(`/api/certificates/${format === "zip" ? "export-zip" : "export.xlsx"}?${query.toString()}`);
       if (!response.ok) {
@@ -1694,6 +2015,7 @@ export default function CertificateStudio() {
         const query = new URLSearchParams();
         if (search.trim()) query.set("search", search.trim());
         if (statusFilter) query.set("status", statusFilter);
+        if (sourceFilter) query.set("source", sourceFilter);
         const filtered = await apiFetchJson<CertificateIssue[]>(`/api/certificates?${query.toString()}`);
         ids = filtered.map((issue) => issue.id);
       }
@@ -1926,6 +2248,7 @@ export default function CertificateStudio() {
                 ["showCertificatePreview", "عرض معاينة صورة الشهادة"],
                 ["allowDownloadPdf", "السماح بتنزيل PDF"],
                 ["allowDownloadImage", "السماح بتنزيل الصورة"],
+                ["showLegacyNote", "عرض ملاحظة الشهادات القديمة"],
               ] as const).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 text-sm">
                   <input
@@ -1951,10 +2274,11 @@ export default function CertificateStudio() {
                 {verifySettings.visibleFields.recipientName && <p>اسم المستفيد: مثال تجريبي</p>}
                 {verifySettings.visibleFields.programTitle && <p>البرنامج: مثال تجريبي</p>}
                 {verifySettings.visibleFields.issuerName && <p>الجهة: Arkan Web</p>}
-                {verifySettings.visibleFields.issueDate && <p>التاريخ: ١ / ١ / ٢٠٢٦</p>}
+                {verifySettings.visibleFields.issueDate && <p>تاريخ الإصدار: مثال تجريبي</p>}
                 {verifySettings.visibleFields.partners && <p>الشركاء: مثال تجريبي</p>}
                 {verifySettings.visibleFields.serialNumber && <p dir="ltr">AW-CERT-2026-000001</p>}
               </div>
+              {verifySettings.showLegacyNote && <p className="mt-2 rounded bg-white/80 p-2 text-xs text-muted-foreground">معاينة ملاحظة الشهادات القديمة: تاريخ التوثيق وتاريخ الإصدار الأصلي.</p>}
               {verifySettings.showCertificatePreview && <div className="mt-3 flex h-24 items-center justify-center rounded border border-dashed bg-white text-xs text-muted-foreground">معاينة صورة الشهادة</div>}
               <div className="mt-2 flex gap-2 text-xs">
                 {verifySettings.allowDownloadPdf && <span className="rounded border bg-white px-2 py-1">تنزيل PDF</span>}
@@ -2105,14 +2429,70 @@ export default function CertificateStudio() {
       </section>
 
       <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
-        <div>
-          <h2 className="text-lg font-bold">توثيق شهادة أو أكثر</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+          <h2 className="text-lg font-bold">{imageIssueMode === "legacy" ? "توثيق شهادات قديمة" : "توثيق شهادة أو أكثر"}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            ارفع صورة شهادة واحدة أو أكثر، واكتب اسم صاحب كل شهادة وبيانات التحقق. سيحتفظ الموقع بالصورة كما هي ويضيف رقمًا فريدًا ورمز QR فوقها.
+            {imageIssueMode === "legacy"
+              ? "ارفع شهادات صدرت سابقاً بدون QR. سيُضاف رقم التوثيق ورمز QR فوق الصورة، مع حفظ تاريخ الإصدار الأصلي."
+              : "ارفع صورة شهادة واحدة أو أكثر، واكتب اسم صاحب كل شهادة وبيانات التحقق. سيحتفظ الموقع بالصورة كما هي ويضيف رقمًا فريدًا ورمز QR فوقها."}
           </p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className={`rounded-lg border px-3 py-2 text-sm ${imageIssueMode === "standard" ? "border-primary bg-primary/5 font-semibold text-primary" : ""}`} onClick={() => setImageIssueMode("standard")}>شهادات عادية</button>
+            <button type="button" className={`rounded-lg border px-3 py-2 text-sm ${imageIssueMode === "legacy" ? "border-primary bg-primary/5 font-semibold text-primary" : ""}`} onClick={() => setImageIssueMode("legacy")}>شهادات قديمة</button>
+          </div>
         </div>
+        {imageIssueMode === "legacy" && (
+          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+            <p className="text-sm font-semibold text-amber-900">
+              رقم التوثيق يتولد وقت التوثيق بسنة الإصدار الحالية، بينما يظهر تاريخ الإصدار الأصلي منفصلاً في صفحة التحقق.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label="تاريخ افتراضي لكل الصور"
+                type="date"
+                value={legacyDefaultDate}
+                min="1990-01-01"
+                max={getLocalDateInputValue()}
+                onChange={applyLegacyDefaultDate}
+              />
+              <label className="block space-y-1.5 text-sm">
+                <span className="font-medium">استيراد بيانات من Excel أو CSV</span>
+                <input
+                  className="block w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                  type="file"
+                  accept=".csv,.xlsx"
+                  onChange={(event) => {
+                    void importLegacyMetadataFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">لصق صفوف البيانات (اسم الملف، الاسم، التاريخ، الدورة، الجهة، البريد)</span>
+              <textarea
+                className="min-h-24 w-full rounded-lg border bg-white px-3 py-2"
+                value={legacyTextImport}
+                onChange={(event) => setLegacyTextImport(event.target.value)}
+                placeholder={"اسم الملف,الاسم,التاريخ,الدورة,الجهة,البريد\ncertificate-1.png,محمد أحمد,2020-05-20,دورة تدريبية,أركان,mail@example.com"}
+              />
+            </label>
+            <button type="button" className="rounded-lg border bg-white px-3 py-2 text-sm" onClick={applyLegacyTextImport}>مطابقة بيانات الصفوف مع الصور</button>
+            {legacyMetadataRows.filter((row) =>
+              !uploadedCertificates.some((certificate) =>
+                normalizeLegacyFileName(certificate.file.name) === normalizeLegacyFileName(row.fileName),
+              ),
+            ).map((row) => (
+              <p key={row.id} className="text-sm text-red-700">
+                لم يتم العثور على صورة باسم الملف: {row.fileName || "اسم ملف غير محدد"}
+              </p>
+            ))}
+          </div>
+        )}
         <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center hover:bg-muted/30">
-          <span className="font-semibold">{uploadedCertificates.length ? `إضافة صور أخرى (${uploadedCertificates.length}/50)` : "اختيار صورة واحدة أو أكثر"}</span>
+          <span className="font-semibold">{uploadedCertificates.length ? `إضافة صور أخرى (${uploadedCertificates.length}/50)` : imageIssueMode === "legacy" ? "اختيار صور الشهادات القديمة" : "اختيار صورة واحدة أو أكثر"}</span>
           <span className="text-xs text-muted-foreground">JPG أو PNG أو WebP — حتى 8 ميجابايت للصورة، وبحد أقصى 50 شهادة في الطلب</span>
           <input
             className="sr-only"
@@ -2134,7 +2514,7 @@ export default function CertificateStudio() {
             {([
               ["recipientName", "إضافة اسم المستفيد على الصورة"],
               ["programTitle", "إضافة اسم الشهادة / البرنامج"],
-              ["issueDate", "إضافة تاريخ الإصدار"],
+              ["issueDate", imageIssueMode === "legacy" ? "إضافة تاريخ الإصدار الأصلي" : "إضافة تاريخ الإصدار"],
               ["issuerName", "إضافة الجهة المصدرة"],
             ] as const).map(([key, label]) => (
               <label key={key} className="flex items-center gap-2 text-sm">
@@ -2156,10 +2536,19 @@ export default function CertificateStudio() {
                 {label}
               </label>
             ))}
+            {imageIssueMode === "legacy" && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={legacyWhiteBackground} onChange={(event) => setLegacyWhiteBackground(event.target.checked)} />
+              خلفية بيضاء خلف الـ QR لتحسين وضوحه
+            </label>
+            )}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {(["serialNumber", "qrCode", ...(isCertificateElementVisible(bulkLayout, "recipientName") ? ["recipientName"] : [])] as string[]).map((key) => (
-              <div key={key} className="rounded-lg border bg-background p-2">
+            {(imageIssueMode === "legacy"
+            ? ["serialNumber", "qrCode"]
+            : ["serialNumber", "qrCode", ...(isCertificateElementVisible(bulkLayout, "recipientName") ? ["recipientName"] : [])]
+            ).map((key) => (
+            <div key={key} className="rounded-lg border bg-background p-2">
                 <p className="mb-2 text-xs font-semibold">{key === "serialNumber" ? "موضع رقم التوثيق (%)" : key === "qrCode" ? "موضع وحجم QR (%)" : "موضع اسم المستفيد (%)"}</p>
                 <div className="grid grid-cols-4 gap-2">
                   {(["x", "y", "width", "height"] as const).map((part) => (
@@ -2175,7 +2564,62 @@ export default function CertificateStudio() {
               </div>
             ))}
           </div>
+          {imageIssueMode === "legacy" && (
+            <button type="button" className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white" onClick={openLegacyPreview}>معاينة أول صورة بالـ QR</button>
+          )}
         </div>
+
+        {imageIssueMode === "legacy" && legacyPreviewOpen && uploadedCertificates[0] && (
+          <div className="space-y-3 rounded-xl border bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="font-semibold">معاينة الصورة الأولى</h3>
+                <p className="text-xs text-muted-foreground">اسحب مربع QR أو رقم التوثيق لضبط موضعهما؛ الإعدادات ستُطبق على كل الصور.</p>
+              </div>
+              <button type="button" className="text-sm text-primary underline" onClick={() => setLegacyPreviewOpen(false)}>إغلاق المعاينة</button>
+            </div>
+            <div
+              ref={legacyPreviewRef}
+              className="relative mx-auto w-full max-w-5xl overflow-hidden rounded-lg border bg-white"
+              style={{ aspectRatio: `${uploadedCertificates[0].width} / ${uploadedCertificates[0].height}` }}
+            >
+              <img src={uploadedCertificates[0].previewUrl} alt="معاينة الشهادة القديمة" className="absolute inset-0 h-full w-full object-fill" />
+              {isCertificateElementVisible(bulkLayout, "qrCode") && (
+                <div
+                  className={`absolute cursor-move touch-none ${legacyWhiteBackground ? "bg-white p-1.5" : "bg-white/20"}`}
+                  style={{
+                    left: `${boxFor(bulkLayout, "qrCode", initialBoxes.qrCode).x}%`,
+                    top: `${boxFor(bulkLayout, "qrCode", initialBoxes.qrCode).y}%`,
+                    width: `${boxFor(bulkLayout, "qrCode", initialBoxes.qrCode).width}%`,
+                    height: `${boxFor(bulkLayout, "qrCode", initialBoxes.qrCode).height}%`,
+                  }}
+                  onPointerDown={(event) => startLegacyDrag(event, "qrCode")}
+                >
+                  <img src={legacyQrPreviewUrl} alt="رمز QR تجريبي" className="h-full w-full object-fill" draggable={false} />
+                </div>
+              )}
+              {isCertificateElementVisible(bulkLayout, "serialNumber") && (
+                <div
+                  className="absolute flex cursor-move touch-none items-center justify-center overflow-hidden bg-white/90 px-1 text-center font-mono text-[clamp(8px,1.5vw,18px)]"
+                  style={{
+                    left: `${boxFor(bulkLayout, "serialNumber", initialBoxes.serialNumber).x}%`,
+                    top: `${boxFor(bulkLayout, "serialNumber", initialBoxes.serialNumber).y}%`,
+                    width: `${boxFor(bulkLayout, "serialNumber", initialBoxes.serialNumber).width}%`,
+                    height: `${boxFor(bulkLayout, "serialNumber", initialBoxes.serialNumber).height}%`,
+                  }}
+                  onPointerDown={(event) => startLegacyDrag(event, "serialNumber")}
+                >
+                  AW-CERT-{new Date().getFullYear()}-000001
+                </div>
+              )}
+              {isCertificateElementVisible(bulkLayout, "recipientName") && <span className="absolute inset-x-0 top-1/3 text-center font-bold">{uploadedCertificates[0].recipientName || "اسم المستفيد"}</span>}
+              {isCertificateElementVisible(bulkLayout, "issueDate") && <span className="absolute inset-x-0 top-[42%] text-center text-sm">{uploadedCertificates[0].issueDate || "تاريخ الإصدار الأصلي"}</span>}
+              {isCertificateElementVisible(bulkLayout, "programTitle") && uploadedCertificates[0].programTitle && <span className="absolute inset-x-0 top-[48%] text-center text-sm">{uploadedCertificates[0].programTitle}</span>}
+              {isCertificateElementVisible(bulkLayout, "issuerName") && uploadedCertificates[0].issuerName && <span className="absolute inset-x-0 bottom-[12%] text-center text-sm">{uploadedCertificates[0].issuerName}</span>}
+            </div>
+            <p className="text-center text-xs text-muted-foreground">رمز QR المعروض حقيقي للمعاينة؛ يُنشأ رمز كل شهادة برقمها الفعلي عند الإصدار.</p>
+          </div>
+        )}
 
         {uploadedCertificates.length > 0 && (
           <div className="space-y-3">
@@ -2235,14 +2679,23 @@ export default function CertificateStudio() {
                   <Field label="اسم الشهادة / البرنامج (اختياري)" value={certificate.programTitle} onChange={(value) => updateUploadedCertificate(certificate.id, "programTitle", value)} />
                   <Field label="الجهة المصدرة (اختياري)" value={certificate.issuerName} onChange={(value) => updateUploadedCertificate(certificate.id, "issuerName", value)} />
                   <Field label="البريد (اختياري)" value={certificate.recipientEmail} dir="ltr" onChange={(value) => updateUploadedCertificate(certificate.id, "recipientEmail", value)} />
-                  <Field label="تاريخ الإصدار" type="date" value={certificate.issueDate} onChange={(value) => updateUploadedCertificate(certificate.id, "issueDate", value)} />
+                  <Field
+                    label={imageIssueMode === "legacy" ? "تاريخ الإصدار الأصلي *" : "تاريخ الإصدار"}
+                    type="date"
+                    value={certificate.issueDate}
+                    min={imageIssueMode === "legacy" ? "1990-01-01" : undefined}
+                    max={imageIssueMode === "legacy" ? getLocalDateInputValue() : undefined}
+                    onChange={(value) => updateUploadedCertificate(certificate.id, "issueDate", value)}
+                  />
                 </div>
               </div>
             ))}
             <button
               type="button"
               className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground disabled:opacity-60"
-              disabled={bulkIssuing || uploadedCertificates.some((certificate) => !certificate.recipientName.trim())}
+              disabled={bulkIssuing || uploadedCertificates.some((certificate) =>
+                !certificate.recipientName.trim() || (imageIssueMode === "legacy" && !certificate.issueDate),
+              )}
               onClick={() => void issueUploadedCertificates()}
             >
               {bulkIssuing ? "جارٍ رفع الصور وإصدار الشهادات..." : `إصدار وتوثيق ${uploadedCertificates.length} شهادة`}
@@ -2798,6 +3251,16 @@ export default function CertificateStudio() {
               <option value="reserved">محجوزة</option>
             </select>
           </label>
+          <label className="space-y-1 text-sm">
+            <span>المصدر</span>
+            <select className="block rounded-lg border bg-background px-3 py-2" value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setPage(1); }}>
+              <option value="">كل المصادر</option>
+              <option value="normal">عادية</option>
+              <option value="uploaded-images">صور جاهزة</option>
+              <option value="legacy">قديمة</option>
+              <option value="reserved">محجوزة</option>
+            </select>
+          </label>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm" disabled={!filteredIssues.length || showTrash} onClick={() => void downloadCollection("zip", selectedIssueIds)}>تنزيل الشهادات PDF بصيغة ZIP (بأسماء المستفيدين)</button>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={!filteredIssues.length || showTrash || Boolean(imageExporting)} onClick={() => void downloadImagesZip("png")}>{imageExporting === "png-images" ? "جارٍ تجهيز الصور..." : "تنزيل صور ZIP (PNG)"}</button>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={!filteredIssues.length || showTrash || Boolean(imageExporting)} onClick={() => void downloadImagesZip("jpg")}>{imageExporting === "jpg-images" ? "جارٍ تجهيز الصور..." : "تنزيل صور ZIP (JPG)"}</button>
@@ -2833,7 +3296,11 @@ export default function CertificateStudio() {
             <div key={issue.id} className="flex flex-wrap items-center gap-3 p-3">
               <input type="checkbox" aria-label={`تحديد ${issue.recipientName}`} checked={selectedIssueIds.includes(issue.id)} onChange={(event) => setSelectedIssueIds((selected) => event.target.checked ? [...selected, issue.id] : selected.filter((id) => id !== issue.id))} />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold">{issue.recipientName} <span className="text-xs text-muted-foreground">· {issue.status === "issued" ? "صادرة" : issue.status === "draft" ? "مسودة" : issue.status === "reserved" ? "محجوزة" : "ملغاة"}</span></p>
+                <p className="font-semibold">
+                  {issue.recipientName}{" "}
+                  <span className="text-xs text-muted-foreground">· {issue.status === "issued" ? "صادرة" : issue.status === "draft" ? "مسودة" : issue.status === "reserved" ? "محجوزة" : "ملغاة"}</span>
+                  {issue.metadata?.source === "legacy-certificate-image" && <span className="ms-2 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800">قديمة</span>}
+                </p>
                 <p className="text-sm text-muted-foreground">{issue.programTitle} · {issue.serialNumber}</p>
                 {showTrash && issue.deletedAt && <p className="text-xs text-muted-foreground">تاريخ الحذف: {new Date(issue.deletedAt).toLocaleDateString("ar-EG")}</p>}
               </div>

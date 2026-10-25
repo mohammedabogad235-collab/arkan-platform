@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, inArray, sql, isNull, isNotNull, and, lt, ilike, gte, lte } from "drizzle-orm";
+import { eq, desc, inArray, sql, isNull, isNotNull, and, or, lt, ilike, gte, lte } from "drizzle-orm";
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 import JSZip from "jszip";
@@ -53,6 +53,7 @@ const DEFAULT_VERIFY_SETTINGS = {
   showCertificatePreview: true,
   allowDownloadPdf: true,
   allowDownloadImage: true,
+  showLegacyNote: true,
 };
 const require = createRequire(import.meta.url);
 const arabicShaper = (require("arabic-persian-reshaper") as {
@@ -204,6 +205,7 @@ function validateVerifySettings(value: unknown): CertificateVerifySettings | nul
   for (const key of ["showCertificatePreview", "allowDownloadPdf", "allowDownloadImage"] as const) {
     if (typeof value[key] !== "boolean") return null;
   }
+  if (value.showLegacyNote !== undefined && typeof value.showLegacyNote !== "boolean") return null;
 
   return {
     pageTitle: normalized.pageTitle,
@@ -226,6 +228,7 @@ function validateVerifySettings(value: unknown): CertificateVerifySettings | nul
     showCertificatePreview: value.showCertificatePreview as boolean,
     allowDownloadPdf: value.allowDownloadPdf as boolean,
     allowDownloadImage: value.allowDownloadImage as boolean,
+    showLegacyNote: typeof value.showLegacyNote === "boolean" ? value.showLegacyNote : true,
   };
 }
 
@@ -481,6 +484,16 @@ function certificateFilter(req: any, trash = false) {
   const filters: any[] = [trash ? isNotNull(certificateIssuesTable.deletedAt) : isNull(certificateIssuesTable.deletedAt)];
   const status = typeof req.query.status === "string" ? req.query.status : "";
   if (status && ["issued", "cancelled", "draft", "reserved"].includes(status)) filters.push(eq(certificateIssuesTable.status, status));
+  const source = typeof req.query.source === "string" ? req.query.source : "";
+  if (source === "legacy") {
+    filters.push(sql`${certificateIssuesTable.metadata}->>'source' = 'legacy-certificate-image'`);
+  } else if (source === "uploaded-images") {
+    filters.push(sql`${certificateIssuesTable.metadata}->>'source' IN ('uploaded-certificate-image', 'attached-certificate-image')`);
+  } else if (source === "reserved") {
+    filters.push(eq(certificateIssuesTable.status, "reserved"));
+  } else if (source === "normal") {
+    filters.push(sql`coalesce(${certificateIssuesTable.metadata}->>'source', '') NOT IN ('uploaded-certificate-image', 'attached-certificate-image', 'legacy-certificate-image', 'reserved-code')`);
+  }
   const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
   if (search) {
     const pattern = `%${search.replace(/[%_]/g, "\\$&")}%`;
@@ -598,6 +611,12 @@ export async function generateCertificatePdfBuffer(issue: any, template: any, pa
 
   const qrBox = getBox(layout, "qrCode", width, height);
   if (isLayoutElementVisible(layout, "qrCode") && issue.status === "issued" && issue.validationUrl) {
+    if (layout.whiteBackgroundBehindQr === true) {
+      const padding = Math.max(Math.min(qrBox.width, qrBox.height) * 0.06, 4);
+      doc.save().fillColor("#ffffff")
+        .rect(qrBox.x - padding, qrBox.y - padding, qrBox.width + padding * 2, qrBox.height + padding * 2)
+        .fill().restore();
+    }
     const qrDataUrl = await QRCode.toDataURL(issue.validationUrl, { width: 320, margin: 1 });
     const qrBuffer = Buffer.from(qrDataUrl.split(",")[1], "base64");
     doc.image(qrBuffer, qrBox.x, qrBox.y, { fit: [qrBox.width, qrBox.height] });
@@ -1251,6 +1270,10 @@ router.get("/certificates/verify", async (req, res): Promise<void> => {
       status: issue.status,
       imageUrl: publicCertificateImageUrl(issue, true),
     };
+    if (isRecord(issue.metadata) && issue.metadata.source === "legacy-certificate-image") {
+      certificate.source = "legacy-certificate-image";
+      certificate.verifiedAt = issue.createdAt;
+    }
     if (settings.visibleFields.serialNumber) certificate.serialNumber = issue.serialNumber;
     if (settings.visibleFields.recipientName) certificate.recipientName = issue.recipientName;
     if (settings.visibleFields.programTitle) certificate.programTitle = issue.programTitle;
@@ -1272,6 +1295,10 @@ router.get("/certificates/verify", async (req, res): Promise<void> => {
     status: "issued",
   };
   certificate.imageUrl = publicCertificateImageUrl(issue);
+  if (isRecord(issue.metadata) && issue.metadata.source === "legacy-certificate-image") {
+    certificate.source = "legacy-certificate-image";
+    certificate.verifiedAt = issue.createdAt;
+  }
   if (settings.allowDownloadPdf) {
     certificate.pdfUrl = `${buildValidationUrl(issue.serialNumber).split("/certificate/verify")[0]}/api/certificates/public/${encodeURIComponent(issue.serialNumber)}/pdf`;
   }
@@ -1756,6 +1783,7 @@ router.post("/certificates/bulk-issue-images", async (req, res): Promise<void> =
 
   const body = req.body ?? {};
   const inputCertificates = Array.isArray(body.certificates) ? body.certificates : [];
+  const isLegacyCertificateBatch = body.source === "legacy-certificate-image";
   if (inputCertificates.length < 1 || inputCertificates.length > 50) {
     res.status(400).json({ error: "ارفع شهادة واحدة على الأقل، وبحد أقصى 50 شهادة في الدفعة" });
     return;
@@ -1785,6 +1813,16 @@ router.post("/certificates/bulk-issue-images", async (req, res): Promise<void> =
     if (!issueDate) {
       res.status(400).json({ error: "يوجد تاريخ إصدار غير صالح ضمن الشهادات" });
       return;
+    }
+    if (isLegacyCertificateBatch) {
+      const today = new Date().toISOString().slice(0, 10);
+      const issueDateValue = typeof item.issueDate === "string" ? item.issueDate : "";
+      if (!parseCertificateDate(issueDateValue) ||
+          issueDateValue < "1990-01-01" ||
+          issueDateValue > today) {
+        res.status(400).json({ error: "تاريخ الشهادة القديمة يجب أن يكون من 1990 وحتى اليوم، وبصيغة YYYY-MM-DD" });
+        return;
+      }
     }
     const recipientEmail = typeof item.recipientEmail === "string" && item.recipientEmail.trim()
       ? item.recipientEmail.trim().slice(0, 320)
@@ -1817,6 +1855,51 @@ router.post("/certificates/bulk-issue-images", async (req, res): Promise<void> =
       recipientEmail,
       layoutConfig: { ...layoutConfig, hiddenElements: [...hiddenElements] },
     });
+  }
+
+  if (isLegacyCertificateBatch && body.confirmDuplicates !== true) {
+    const duplicateConditions = readyRecords.map((record) => and(
+      sql`lower(${certificateIssuesTable.recipientName}) = lower(${record.recipientName})`,
+      eq(certificateIssuesTable.issueDate, record.issueDate),
+      sql`lower(${certificateIssuesTable.programTitle}) = lower(${record.programTitle})`,
+      isNull(certificateIssuesTable.deletedAt),
+    )).filter((condition): condition is NonNullable<typeof condition> => Boolean(condition));
+    const existingDuplicates = duplicateConditions.length
+      ? await db.select({
+        id: certificateIssuesTable.id,
+        serialNumber: certificateIssuesTable.serialNumber,
+        recipientName: certificateIssuesTable.recipientName,
+        programTitle: certificateIssuesTable.programTitle,
+        issueDate: certificateIssuesTable.issueDate,
+      }).from(certificateIssuesTable).where(or(...duplicateConditions))
+      : [];
+    const existingByKey = new Map<string, typeof existingDuplicates>();
+    const duplicateKey = (record: { recipientName: string; issueDate: Date; programTitle: string }) =>
+      `${record.recipientName.trim().toLocaleLowerCase()}|${record.issueDate.toISOString().slice(0, 10)}|${record.programTitle.trim().toLocaleLowerCase()}`;
+    for (const existing of existingDuplicates) {
+      const key = duplicateKey(existing);
+      existingByKey.set(key, [...(existingByKey.get(key) ?? []), existing]);
+    }
+    const seenInputs = new Map<string, number>();
+    const duplicates = readyRecords.flatMap((record) => {
+      const key = duplicateKey(record);
+      const count = (seenInputs.get(key) ?? 0) + 1;
+      seenInputs.set(key, count);
+      const matches = existingByKey.get(key) ?? [];
+      return matches.length || count > 1
+        ? [{
+          recipientName: record.recipientName,
+          programTitle: record.programTitle,
+          issueDate: record.issueDate.toISOString().slice(0, 10),
+          existingSerialNumbers: matches.map((match) => match.serialNumber),
+          repeatedInBatch: count > 1,
+        }]
+        : [];
+    });
+    if (duplicates.length) {
+      res.status(200).json({ confirmationRequired: true, duplicates });
+      return;
+    }
   }
 
   for (const record of readyRecords) {
@@ -1864,7 +1947,8 @@ router.post("/certificates/bulk-issue-images", async (req, res): Promise<void> =
           width: record.width,
           height: record.height,
           orientation: record.orientation,
-          source: "uploaded-certificate-image",
+          source: isLegacyCertificateBatch ? "legacy-certificate-image" : "uploaded-certificate-image",
+          ...(isLegacyCertificateBatch ? { originalIssueYear: record.issueDate.getUTCFullYear() } : {}),
         },
       }).returning();
       created.push(issue);
@@ -1872,7 +1956,7 @@ router.post("/certificates/bulk-issue-images", async (req, res): Promise<void> =
     return created;
   });
 
-  res.status(201).json({ count: certificates.length, certificates });
+  res.status(201).json({ count: certificates.length, certificates, duplicates: [] });
 });
 
 router.post("/certificates/reserve", async (req, res): Promise<void> => {
@@ -2475,7 +2559,20 @@ router.patch("/certificates/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: "تاريخ الإصدار غير صالح" });
       return;
     }
+    if (currentMetadata.source === "legacy-certificate-image") {
+      const today = new Date().toISOString().slice(0, 10);
+      if (body.issueDate < "1990-01-01" || body.issueDate > today) {
+        res.status(400).json({ error: "تاريخ الشهادة القديمة يجب أن يكون من 1990 وحتى اليوم" });
+        return;
+      }
+    }
     update.issueDate = issueDate;
+    if (currentMetadata.source === "legacy-certificate-image") {
+      update.metadata = {
+        ...(isRecord(update.metadata) ? update.metadata : currentMetadata),
+        originalIssueYear: issueDate.getUTCFullYear(),
+      };
+    }
   }
   if (body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)) {
     const metadata = body.metadata as Record<string, unknown>;
