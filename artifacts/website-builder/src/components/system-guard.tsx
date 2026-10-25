@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type PropsWithChildren } from "re
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { useLocation } from "wouter";
-import { motion } from "framer-motion";
-import { ShieldAlert, Smartphone, Globe, DownloadCloud } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { ShieldAlert, Smartphone, Globe, DownloadCloud, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCountdown, type CountdownParts } from "@/hooks/use-countdown";
@@ -64,6 +64,7 @@ function compareVersions(aRaw: string, bRaw: string): number {
 export function SystemGuard({ children }: PropsWithChildren) {
   const [location] = useLocation();
   const { data: status } = useSystemStatus();
+  const prefersReducedMotion = useReducedMotion();
   const platform = Capacitor.getPlatform();
   const isWeb = platform === "web";
   const [currentAppVersion, setCurrentAppVersion] = useState<string | null>(null);
@@ -157,26 +158,48 @@ export function SystemGuard({ children }: PropsWithChildren) {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center px-4 py-10"
+      className="fixed inset-0 z-[9999] flex items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 sm:items-center sm:py-10"
       dir="rtl"
     >
-      <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-2xl" />
-      <div className="absolute -top-40 -left-40 w-[520px] h-[520px] rounded-full bg-fuchsia-600/15 blur-3xl" />
-      <div className="absolute -bottom-40 -right-40 w-[520px] h-[520px] rounded-full bg-cyan-500/15 blur-3xl" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#1e3a8a_0%,_#0b1224_45%,_#070b16_100%)]" />
+      <motion.div
+        aria-hidden="true"
+        animate={prefersReducedMotion ? undefined : { x: [0, 24, 0], y: [0, -18, 0], scale: [1, 1.08, 1] }}
+        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-blue-500/20 blur-3xl"
+      />
+      <motion.div
+        aria-hidden="true"
+        animate={prefersReducedMotion ? undefined : { x: [0, -18, 0], y: [0, 20, 0], scale: [1, 1.12, 1] }}
+        transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute -bottom-40 -right-40 h-[520px] w-[520px] rounded-full bg-amber-400/15 blur-3xl"
+      />
+      <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
 
       <motion.div
-        initial={{ opacity: 0, scale: 0.98, y: 10 }}
+        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.98, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
+        transition={{ duration: prefersReducedMotion ? 0 : 0.35 }}
         className="relative w-full max-w-2xl"
       >
-        <Card className="border-white/10 bg-white/5 backdrop-blur-2xl shadow-[0_0_60px_rgba(0,0,0,0.45)]">
+        <Card className="overflow-hidden border-white/15 bg-slate-950/55 text-white shadow-[0_24px_100px_rgba(2,6,23,0.55)] backdrop-blur-2xl">
+          <div className="h-1.5 bg-gradient-to-l from-amber-300 via-blue-400 to-blue-600" />
           <CardContent className="p-6 sm:p-10 text-white">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center shrink-0">
-                <ShieldAlert className="w-6 h-6 text-white" />
+              <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-blue-300/30 bg-gradient-to-br from-blue-500/30 to-amber-400/15 shadow-[0_0_32px_rgba(59,130,246,0.2)]">
+                <motion.div
+                  aria-hidden="true"
+                  animate={prefersReducedMotion ? undefined : { rotate: 360 }}
+                  transition={{ duration: 24, repeat: Infinity, ease: "linear" }}
+                  className="absolute -inset-2 rounded-[1.35rem] border border-dashed border-amber-300/35"
+                />
+                <ShieldAlert className="h-6 w-6 text-amber-200" />
               </div>
               <div className="min-w-0">
+                <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-blue-300/20 bg-blue-400/10 px-3 py-1 text-xs font-bold tracking-wide text-blue-100">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                  أركان — نعمل على تحسين تجربتك
+                </div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{title}</h1>
                 <p className="mt-2 text-white/75 leading-relaxed">{message}</p>
               </div>
@@ -200,7 +223,7 @@ export function SystemGuard({ children }: PropsWithChildren) {
                   </p>
                   <div className="mt-4">
                     <a href={status.appUpdateLink} target="_blank" rel="noreferrer">
-                      <Button className="h-12 px-6 rounded-2xl bg-gradient-to-l from-cyan-500 to-fuchsia-600 hover:from-cyan-400 hover:to-fuchsia-500 shadow-[0_0_30px_rgba(217,70,239,0.25)]">
+                      <Button className="h-12 rounded-2xl bg-gradient-to-l from-blue-500 to-blue-700 px-6 shadow-[0_0_30px_rgba(59,130,246,0.24)] hover:from-blue-400 hover:to-blue-600">
                         <DownloadCloud className="w-5 h-5 ms-2" />
                         تحميل تطبيق الأندرويد
                       </Button>
@@ -212,11 +235,11 @@ export function SystemGuard({ children }: PropsWithChildren) {
 
             {/* App Cross-Routing */}
             {!isWeb && (appBlocked || forceUpdateBlocked) && status.appShowWebAlternative && (
-              <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <a href={DEFAULT_PUBLIC_WEBSITE_URL} target="_blank" rel="noreferrer" className="w-full sm:w-auto">
-                  <Button variant="secondary" className="w-full h-12 rounded-2xl bg-white/10 text-white hover:bg-white/15 border border-white/10">
+                  <Button variant="secondary" className="h-12 w-full rounded-2xl border border-white/15 bg-white/10 text-white hover:bg-white/15 sm:w-auto">
                     <Globe className="w-5 h-5 ms-2" />
-                    Use our Website instead
+                    افتح موقع أركان
                   </Button>
                 </a>
               </div>
@@ -226,9 +249,9 @@ export function SystemGuard({ children }: PropsWithChildren) {
             {!isWeb && forceUpdateBlocked && canShowDownload && (
               <div className="mt-8">
                 <a href={status.appUpdateLink} target="_blank" rel="noreferrer">
-                  <Button className="w-full h-14 text-lg rounded-2xl bg-gradient-to-l from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
+                  <Button className="h-14 w-full rounded-2xl bg-gradient-to-l from-amber-400 to-amber-600 text-slate-950 shadow-[0_0_40px_rgba(251,191,36,0.2)] hover:from-amber-300 hover:to-amber-500">
                     <DownloadCloud className="w-6 h-6 ms-2" />
-                    Download Update 🚀
+                    تحميل التحديث
                   </Button>
                 </a>
               </div>
@@ -239,6 +262,16 @@ export function SystemGuard({ children }: PropsWithChildren) {
               <div className="mt-6 text-center text-white/70 text-sm">
                 جاري تجهيز التحديث... يرجى الانتظار.
               </div>
+            )}
+            {(webBlocked || appBlocked) && (
+              <Button
+                variant="outline"
+                onClick={() => window.location.reload()}
+                className="mt-6 h-11 rounded-xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              >
+                <RefreshCw className="ms-2 h-4 w-4" />
+                تحقق من عودة الموقع
+              </Button>
             )}
           </CardContent>
         </Card>

@@ -14,7 +14,6 @@ This project has been restructured from a monolith to a separated architecture w
 Web-Creation-Hub/
 ├── artifacts/
 │   ├── website-builder/     # Frontend (React/Vite)
-│   │   ├── firebase.json    # Firebase hosting configuration
 │   │   ├── .env.example     # Frontend environment variables
 │   │   └── src/
 │   │       └── main.tsx     # API base URL configuration
@@ -46,6 +45,8 @@ Web-Creation-Hub/
    VITE_API_URL=https://your-backend-api.com
    ```
 
+   For a same-origin deployment where the website and API share one host, set `VITE_API_URL=/api` instead. This value is embedded in the frontend at build time.
+
 2. **Build the frontend:**
    ```bash
    pnpm run build
@@ -60,10 +61,7 @@ Web-Creation-Hub/
 
 ### Firebase Configuration
 
-The `firebase.json` file is pre-configured with:
-- Public directory: `dist/public`
-- SPA rewrites for client-side routing
-- Cache headers for static assets
+The website builder outputs static files to `artifacts/website-builder/dist`. Configure the Firebase Hosting public directory to this `dist` directory and add SPA rewrites if you deploy the frontend separately. No Firebase hosting configuration file is currently present in the repository.
 
 ## Backend & Full-Stack Deployment (Render Web Service)
 
@@ -78,11 +76,11 @@ When creating a **Web Service** on Render:
 1. **Environment**: `Node`
 2. **Build Command**:
    ```bash
-   pnpm install && pnpm run build
+   pnpm install --frozen-lockfile && pnpm run build
    ```
 3. **Start Command**:
    ```bash
-   pnpm run start
+   node artifacts/api-server/dist/index.mjs
    ```
 4. **Environment Variables**:
    ```env
@@ -95,12 +93,34 @@ When creating a **Web Service** on Render:
    ALLOWED_ORIGINS=https://your-frontend-domain.com,https://your-custom-domain.com
    ```
 
-   `ALLOWED_ORIGINS` is a comma-separated list of exact frontend origins (scheme and hostname, without paths). Add every production frontend domain here. The backend also allows `PUBLIC_APP_URL` and `FRONTEND_URL`. In production the server refuses to start if `SESSION_SECRET` is missing or shorter than 32 characters; generate a unique random value and keep it only in the hosting provider's secret settings.
+   `ALLOWED_ORIGINS` is a comma-separated list of exact frontend origins (scheme and hostname, without paths). Add every production frontend domain here. The backend also allows `PUBLIC_APP_URL` and `FRONTEND_URL`. In production the server refuses to start if `SESSION_SECRET` is missing or shorter than 32 characters; generate a unique random value and keep it only in the hosting provider's secret settings. Configure `NODE_VERSION=24` in Render.
+
+   **Render's build command must not run `pnpm run db:push` or `drizzle-kit push --force`.** The API applies checked-in Drizzle migrations during startup. The repository has no Render service manifest, so verify and replace the command in the Render dashboard itself.
 
 ### How Full-Stack Single Deployment Works
 - `pnpm run build` compiles both the React frontend (Vite + Tailwind CSS v4) into `artifacts/website-builder/dist` and the Express backend into `artifacts/api-server/dist`.
 - `pnpm run start` launches the Express backend which serves all API endpoints on `/api/*` and static frontend assets + single-page app fallback for all other routes.
 - `pnpm run start:standalone` is retained as a compatibility alias for the same secure API server. The legacy `server.js` entry point is disabled because it used a hard-coded administrator password.
+- The root `pnpm run db:push` is a non-forced, development-only schema tool; it can still prompt for data-loss choices and must not be used as a production deployment step.
+
+### Certificate serial-number constraint
+
+The production startup migration checks for duplicate serial numbers before adding the unique index. It never truncates, edits, or deletes certificate rows. If duplicates exist, the migration stops with an explicit error and preserves all rows; do not bypass it with `--force`.
+
+Before deploying this migration, take a database backup and run this read-only check against the intended staging/production database:
+
+```sql
+SELECT serial_number, COUNT(*) AS duplicate_count
+FROM public.certificate_issues
+GROUP BY serial_number
+HAVING COUNT(*) > 1;
+
+SELECT COUNT(*) AS null_serial_count
+FROM public.certificate_issues
+WHERE serial_number IS NULL;
+```
+
+If duplicates or null serials are found, stop deployment and resolve them with the certificate owner using a verified backup and an explicit mapping for old serials/QR verification. Never truncate the table or automatically rewrite serial numbers.
 
 ## Local Development
 
@@ -108,7 +128,7 @@ When creating a **Web Service** on Render:
 ```bash
 cd artifacts/website-builder
 cp .env.example .env
-# Edit .env to set VITE_API_URL=https://arkan-platform.onrender.com
+# Edit .env to set VITE_API_URL=/api for same-origin development or the API origin for a separate backend.
 pnpm run dev
 ```
 
@@ -123,18 +143,11 @@ pnpm run start
 
 ## Files Modified/Created
 
-### Modified Files:
-1. `artifacts/api-server/src/app.ts` - Removed frontend serving, added CORS configuration
-2. `artifacts/api-server/package.json` - Added @types/connect-pg-simple
-3. `artifacts/website-builder/src/main.tsx` - Added API base URL configuration
-4. `artifacts/website-builder/vite.config.ts` - Removed proxy configuration
-5. `artifacts/website-builder/package.json` - Added optional dependencies for Windows
-
-### Created Files:
-1. `artifacts/website-builder/firebase.json` - Firebase hosting configuration
-2. `artifacts/website-builder/.env.example` - Frontend environment variables template
-3. `artifacts/api-server/.env.example` - Backend environment variables template
-4. `DEPLOYMENT.md` - This deployment guide
+### Runtime paths
+- API: `artifacts/api-server/src/app.ts` and `artifacts/api-server/src/index.ts`
+- Website: `artifacts/website-builder/src` (Vite output: `artifacts/website-builder/dist`)
+- Database schema and migrations: `lib/db/src/schema` and `lib/db/drizzle`
+- API URL configuration: `VITE_API_URL` in the frontend build environment
 
 ## Important Notes
 
@@ -149,7 +162,7 @@ pnpm run start
 5. **Database**: The backend expects a PostgreSQL database. Supabase is recommended for easy setup.
 
 6. **Build Outputs**:
-   - Frontend builds to `artifacts/website-builder/dist/public`
+   - Frontend builds to `artifacts/website-builder/dist`
    - Backend builds to `artifacts/api-server/dist`
 
 ## Troubleshooting

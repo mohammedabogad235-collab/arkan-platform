@@ -43,6 +43,13 @@
       "when": 1792894200000,
       "tag": "0005_certificate_verify_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792934664045,
+      "tag": "0006_certificate_serial_unique_guarded",
+      "breakpoints": true
     }
   ]
 }

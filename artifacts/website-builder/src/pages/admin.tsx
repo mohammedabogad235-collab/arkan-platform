@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useSettings, useUpdateSettings, SETTINGS_KEY } from "@/lib/use-settings";
@@ -48,7 +48,7 @@ import { ar } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch, apiFetchJson } from "@/lib/api-fetch";
-import CertificateStudio from "@/pages/certificate-studio";
+const CertificateStudio = lazy(() => import("@/pages/certificate-studio"));
 
 function hasTransferDetails(order: any): boolean {
   return [order?.transferAccount, order?.accountName, order?.transferAmount].every(
@@ -1844,7 +1844,11 @@ export default function Admin() {
             </div>
           )}
 
-          {activeTab === "certificate-studio" && <CertificateStudio />}
+          {activeTab === "certificate-studio" && (
+            <Suspense fallback={<div className="min-h-64 animate-pulse rounded-2xl bg-muted/50" aria-label="جاري تحميل إدارة الشهادات" />}>
+              <CertificateStudio />
+            </Suspense>
+          )}
 
           {activeTab === "coupons" && (
             <div className="space-y-4">

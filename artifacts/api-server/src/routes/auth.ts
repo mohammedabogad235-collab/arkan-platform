@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { Api } from "@workspace/api-zod";
@@ -9,6 +9,20 @@ import { issueOtp, normalizeEmail, validateOtp } from "../lib/otp";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+async function establishUserSession(req: Request, user: Pick<typeof usersTable.$inferSelect, "id" | "role">): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(new ApiError(500, "تعذر إنشاء جلسة آمنة", { code: "SESSION_REGENERATE_FAILED", cause: error }));
+        return;
+      }
+      req.session.userId = user.id;
+      req.session.role = user.role;
+      resolve();
+    });
+  });
+}
 
 function sanitizeUser(user: typeof usersTable.$inferSelect) {
   return {
@@ -190,9 +204,7 @@ router.post("/auth/verify-signup-otp", asyncHandler(async (req, res): Promise<vo
     return;
   }
 
-  // Create session
-  (req.session as unknown as Record<string, unknown>).userId = user.id;
-  (req.session as unknown as Record<string, unknown>).role = user.role;
+  await establishUserSession(req, user);
 
   res.json({ user: sanitizeUser(user), message: "تم تأكيد الحساب بنجاح" });
 }));
@@ -234,8 +246,7 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
     return;
   }
 
-  (req.session as unknown as Record<string, unknown>).userId = user.id;
-  (req.session as unknown as Record<string, unknown>).role = user.role;
+  await establishUserSession(req, user);
 
   // Remember Me:
   // - true  => long-lived cookie

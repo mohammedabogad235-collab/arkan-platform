@@ -5,6 +5,7 @@ import { hashPassword } from "../lib/crypto";
 import { asyncHandler, getErrorMessage } from "../lib/http";
 import { normalizeEmail } from "../lib/otp";
 import { logger } from "../lib/logger"; // إضافة الـ logger لتتبع الأخطاء
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -19,16 +20,8 @@ function safeParsePermissions(value: string | null): string[] {
   }
 }
 
-// تحديث قوي للتحقق من الأدمن (يدعم الـ Session والـ JWT/Tokens)
-async function isAdmin(req: any): Promise<boolean> {
-  const role = req.session?.role || req.user?.role;
-  const userId = req.session?.userId || req.user?.id || req.user?.userId;
-  
-  if (role === "admin") return true;
-  if (!userId) return false;
-  
-  const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
-  return user?.role === "admin";
+async function isAdmin(req: Parameters<typeof hasAdminPermission>[0]): Promise<boolean> {
+  return hasAdminPermission(req);
 }
 
 function normalizeText(value: unknown): string {

@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, testimonialsTable } from "@workspace/db";
 import { Api } from "@workspace/api-zod";
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -15,6 +16,11 @@ router.get("/testimonials", async (_req, res): Promise<void> => {
 });
 
 router.post("/testimonials", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["reviews"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const parsed = Api.CreateTestimonialBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -30,6 +36,11 @@ router.post("/testimonials", async (req, res): Promise<void> => {
 });
 
 router.patch("/testimonials/:id", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["reviews"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = Api.UpdateTestimonialParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -60,6 +71,11 @@ router.patch("/testimonials/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/testimonials/:id", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["reviews"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = Api.DeleteTestimonialParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {

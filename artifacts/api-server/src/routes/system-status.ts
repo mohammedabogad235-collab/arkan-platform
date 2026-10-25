@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, siteSettingsTable, usersTable } from "@workspace/db";
+import { db, siteSettingsTable } from "@workspace/db";
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -9,28 +10,6 @@ async function getOrCreateSettings() {
   if (rows.length > 0) return rows[0];
   const [row] = await db.insert(siteSettingsTable).values({}).returning();
   return row;
-}
-
-function getSession(req: any): { userId?: number; role?: string } {
-  const sessionRole = req.session?.role || req.user?.role;
-  const sessionUserId = req.session?.userId || req.user?.id || req.user?.userId;
-  return {
-    userId: sessionUserId as number | undefined,
-    role: sessionRole as string | undefined,
-  };
-}
-
-async function isAdmin(req: any): Promise<boolean> {
-  const { userId, role } = getSession(req);
-  if (!userId) return false;
-  if (role === "admin" || role === "subadmin") return true;
-
-  const [user] = await db
-    .select({ role: usersTable.role })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId));
-
-  return user?.role === "admin" || user?.role === "subadmin";
 }
 
 function normalizeText(raw: unknown, { allowNull }: { allowNull: boolean }): string | null | undefined {
@@ -67,7 +46,7 @@ router.get("/system-status", async (_req, res): Promise<void> => {
 
 // POST /system-status (Admin only)
 router.post("/system-status", async (req, res): Promise<void> => {
-  if (!(await isAdmin(req))) {
+  if (!(await hasAdminPermission(req))) {
     res.status(403).json({ error: "غير مصرح" });
     return;
   }

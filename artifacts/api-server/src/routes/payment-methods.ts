@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, paymentMethodsTable } from "@workspace/db";
 import { Api } from "@workspace/api-zod";
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -15,6 +16,11 @@ router.get("/payment-methods", async (_req, res): Promise<void> => {
 });
 
 router.post("/payment-methods", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["payments"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const parsed = Api.CreatePaymentMethodBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -30,6 +36,11 @@ router.post("/payment-methods", async (req, res): Promise<void> => {
 });
 
 router.patch("/payment-methods/:id", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["payments"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = Api.UpdatePaymentMethodParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -59,6 +70,11 @@ router.patch("/payment-methods/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/payment-methods/:id", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["payments"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = Api.DeletePaymentMethodParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {

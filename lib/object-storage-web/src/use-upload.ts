@@ -1,11 +1,14 @@
 import { useState, useCallback } from "react";
 import type { UppyFile } from "@uppy/core";
 
-const FORCED_API_ORIGIN = "https://arkan-platform.onrender.com";
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim() ?? "";
+const API_BASE_URL = /^https?:\/\//i.test(configuredApiUrl)
+  ? configuredApiUrl.replace(/\/+$/, "")
+  : "";
 
 function resolveApiBasePath(path: string): string {
   if (!path.startsWith("/api")) return path;
-  return `${FORCED_API_ORIGIN}${path}`;
+  return `${API_BASE_URL}${path}`;
 }
 
 interface UploadMetadata {
@@ -71,6 +74,7 @@ export function useUpload(options: UseUploadOptions = {}) {
     async (file: File): Promise<UploadResponse> => {
       const response = await fetch(`${resolvedBasePath}/uploads/request-url`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -146,6 +150,7 @@ export function useUpload(options: UseUploadOptions = {}) {
     }> => {
       const response = await fetch(`${resolvedBasePath}/uploads/request-url`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },

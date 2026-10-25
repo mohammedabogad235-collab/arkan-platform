@@ -7,24 +7,25 @@ import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { Layout } from "@/components/layout";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { apiFetchJson } from "@/lib/api-fetch";
-import { useCallback } from "react";
+import { lazy, Suspense, useCallback } from "react";
 import { SystemGuard } from "@/components/system-guard";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-import Home from "@/pages/home";
-import Login from "@/pages/login";
-import Register from "@/pages/register";
-import VerifyEmail from "@/pages/verify-email";
-import Order from "@/pages/order";
-import MyOrders from "@/pages/my-orders";
-import Testimonials from "@/pages/testimonials";
-import Admin from "@/pages/admin";
-import AdminLogin from "@/pages/admin-login";
-import Terms from "@/pages/terms";
-import Privacy from "@/pages/privacy";
-import ForgotPassword from "@/pages/forgot-password";
-import Chat from "@/pages/chat";
-import AdminSystemStatus from "@/pages/admin-system-status";
-import CertificateVerify from "@/pages/certificate-verify";
+const Home = lazy(() => import("@/pages/home"));
+const Login = lazy(() => import("@/pages/login"));
+const Register = lazy(() => import("@/pages/register"));
+const VerifyEmail = lazy(() => import("@/pages/verify-email"));
+const Order = lazy(() => import("@/pages/order"));
+const MyOrders = lazy(() => import("@/pages/my-orders"));
+const Testimonials = lazy(() => import("@/pages/testimonials"));
+const Admin = lazy(() => import("@/pages/admin"));
+const AdminLogin = lazy(() => import("@/pages/admin-login"));
+const Terms = lazy(() => import("@/pages/terms"));
+const Privacy = lazy(() => import("@/pages/privacy"));
+const ForgotPassword = lazy(() => import("@/pages/forgot-password"));
+const Chat = lazy(() => import("@/pages/chat"));
+const AdminSystemStatus = lazy(() => import("@/pages/admin-system-status"));
+const CertificateVerify = lazy(() => import("@/pages/certificate-verify"));
 
 const queryClient = new QueryClient();
 
@@ -59,6 +60,7 @@ function PushNotificationsBridge() {
 
 function Router() {
   const [location] = useLocation();
+  const prefersReducedMotion = useReducedMotion();
   const isStandalone = ADMIN_STANDALONE_PATHS.some((p) => location === p || location.startsWith(p + "?"));
 
   const routes = (
@@ -108,8 +110,24 @@ function Router() {
     </Switch>
   );
 
-  if (isStandalone) return routes;
-  return <Layout>{routes}</Layout>;
+  const page = isStandalone ? routes : <Layout>{routes}</Layout>;
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={location}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 12, filter: "blur(4px)" }}
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, y: -8, filter: "blur(3px)" }}
+        transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] }}
+        className="min-w-0 flex-1"
+      >
+        <Suspense fallback={<div className="min-h-[60vh] animate-pulse bg-muted/30" aria-label="جاري تحميل الصفحة" />}>
+          {page}
+        </Suspense>
+      </motion.div>
+    </AnimatePresence>
+  );
 }
 
 function App() {

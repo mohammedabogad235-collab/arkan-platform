@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, packagesTable } from "@workspace/db";
 import { Api } from "@workspace/api-zod";
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -15,6 +16,11 @@ router.get("/packages", async (_req, res): Promise<void> => {
 });
 
 router.post("/packages", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["packages"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const parsed = Api.CreatePackageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -30,6 +36,11 @@ router.post("/packages", async (req, res): Promise<void> => {
 });
 
 router.patch("/packages/:id", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["packages"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = Api.UpdatePackageParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -61,6 +72,11 @@ router.patch("/packages/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/packages/:id", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["packages"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = Api.DeletePackageParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {

@@ -5,24 +5,16 @@ import {
   db,
   couponsTable,
   updateCouponInputSchema,
-  usersTable,
   validateCouponInputSchema,
 } from "@workspace/db";
 import { asyncHandler } from "../lib/http";
 import { logger } from "../lib/logger"; // إضافة التتبع لمعرفة أي خطأ صامت
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
-// تحديث شامل لدالة التحقق لتدعم الـ Token والـ Session وتسمح للمشرفين الفرعيين
-async function isAdmin(req: any): Promise<boolean> {
-  const role = req.session?.role || req.user?.role;
-  const userId = req.session?.userId || req.user?.id || req.user?.userId;
-
-  if (role === "admin" || role === "subadmin") return true;
-  if (!userId) return false;
-  
-  const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
-  return user?.role === "admin" || user?.role === "subadmin";
+async function canManageCoupons(req: Parameters<typeof hasAdminPermission>[0]): Promise<boolean> {
+  return hasAdminPermission(req, ["coupons"]);
 }
 
 function normalizeCouponCode(code: string): string {
@@ -74,7 +66,7 @@ function validateCouponAvailability(
 }
 
 router.get("/coupons", asyncHandler(async (req, res): Promise<void> => {
-  if (!await isAdmin(req)) {
+  if (!await canManageCoupons(req)) {
     res.status(403).json({ error: "غير مصرح لك بعرض الكوبونات" });
     return;
   }
@@ -83,7 +75,7 @@ router.get("/coupons", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.post("/coupons", asyncHandler(async (req, res): Promise<void> => {
-  if (!await isAdmin(req)) {
+  if (!await canManageCoupons(req)) {
     res.status(403).json({ error: "غير مصرح لك بإنشاء كوبونات" });
     return;
   }
@@ -120,7 +112,7 @@ router.post("/coupons", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.put("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
-  if (!await isAdmin(req)) {
+  if (!await canManageCoupons(req)) {
     res.status(403).json({ error: "غير مصرح لك بتعديل الكوبونات" });
     return;
   }
@@ -189,7 +181,7 @@ router.put("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.delete("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
-  if (!await isAdmin(req)) {
+  if (!await canManageCoupons(req)) {
     res.status(403).json({ error: "غير مصرح لك بحذف الكوبونات" });
     return;
   }

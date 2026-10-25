@@ -15,8 +15,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 // Module-level configuration
 // ---------------------------------------------------------------------------
 
-const FORCED_API_ORIGIN = "https://arkan-platform.onrender.com";
-let _baseUrl: string | null = FORCED_API_ORIGIN;
+let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
 
 function shouldIncludeCredentials(url: string): boolean {
@@ -32,9 +31,8 @@ function shouldIncludeCredentials(url: string): boolean {
  * Useful for Expo bundles that need to call a remote API server.
  * Pass `null` to clear the base URL.
  */
-export function setBaseUrl(_url: string | null): void {
-  // Forced: keep a single stable API origin across all runtimes.
-  _baseUrl = FORCED_API_ORIGIN;
+export function setBaseUrl(url: string | null): void {
+  _baseUrl = url?.replace(/\/+$/, "") || null;
 }
 
 /**

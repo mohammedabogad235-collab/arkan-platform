@@ -1,22 +1,16 @@
-/**
- * API Fetch Wrapper
- * - يحل مشكلة "Failed to fetch" في الإنتاج عندما تكون طلبات الفرونت `/api/...` نسبية
- * - يجبر الـ Base URL على الإنتاج دائماً
- * - يضيفه تلقائياً فقط قبل أي مسار يبدأ بـ `/api`
- */
+/** Resolves API requests against the configured remote API, or same-origin `/api`. */
 
-const API_BASE_URL = "https://arkan-platform.onrender.com";
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim() ?? "";
+const API_BASE_URL = /^https?:\/\//i.test(configuredApiUrl)
+  ? configuredApiUrl.replace(/\/+$/, "")
+  : "";
 
 export function resolveApiUrl(url: string): string {
   if (!url.startsWith("/api")) return url;
   return `${API_BASE_URL}${url}`;
 }
 
-/**
- * نفس `fetch` لكن:
- * - يحول `/api/...` إلى عنوان مطلق على سيرفر الإنتاج
- * - يضع `credentials: "include"` افتراضياً (مهم للجلسات والكوكيز)
- */
+/** Uses cookie-based authentication for both same-origin and cross-origin deployments. */
 export function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   if (typeof input === "string") {
     input = resolveApiUrl(input);
@@ -28,9 +22,7 @@ export function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   });
 }
 
-/**
- * نسخة JSON جاهزة: ترجع body كـ JSON وتعمل throw مع رسالة مفهومة عند الخطأ.
- */
+/** Parses JSON and surfaces API errors with their server-provided messages. */
 export async function apiFetchJson<T = any>(
   url: string,
   init: RequestInit = {},

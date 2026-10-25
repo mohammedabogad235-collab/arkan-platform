@@ -26,6 +26,7 @@ import {
 import { sendPushNotification } from "../lib/push";
 import { asyncHandler } from "../lib/http";
 import { logger } from "../lib/logger";
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -124,51 +125,12 @@ export function getSession(req: any): { userId?: number; role?: string } {
 }
 
 async function isAdmin(req: any): Promise<boolean> {
-  const { userId, role } = getSession(req);
-  if (!userId) return false;
-  if (role === "admin" || role === "subadmin") return true;
-  const [user] = await db
-    .select({ role: usersTable.role })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId));
-  return user?.role === "admin" || user?.role === "subadmin";
-}
-
-function parseStoredPermissions(value: unknown): string[] {
-  if (!value) return [];
-
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-  }
-
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed)
-        ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-        : [];
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
+  return hasAdminPermission(req, ["orders", "operations"]);
 }
 
 async function checkPermission(req: any, permission: "canViewMessages" | "canReplyMessages"): Promise<boolean> {
-  const { userId, role } = getSession(req);
-  if (!userId) return false;
-  if (role === "admin") return true; 
-  if (role === "subadmin") {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-    const storedPermissions = parseStoredPermissions((user as any)?.permissions);
-    const permissionAliases = permission === "canViewMessages"
-      ? ["view_messages", "messages"]
-      : ["reply_messages"];
-
-    return Boolean((user as any)?.[permission]) || permissionAliases.some((alias) => storedPermissions.includes(alias));
-  }
-  return false;
+  const permissions = permission === "canViewMessages" ? ["messages", "view_messages"] : ["reply_messages"];
+  return hasAdminPermission(req, permissions);
 }
 
 function formatUser(u: typeof usersTable.$inferSelect) {
@@ -853,14 +815,13 @@ router.get("/messages/unread-count", asyncHandler(async (req, res): Promise<void
 
 // 🚀 جلب الرسائل مع ربطها بجدول المستخدمين لكي يظهر دور المُرسِل (senderRole) بدقة
 router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Promise<void> => {
-  const { userId: sessionUserId, role } = getSession(req);
+  const { userId: sessionUserId } = getSession(req);
   if (!sessionUserId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
   let targetUserId = sessionUserId; 
+  const canViewMessages = await checkPermission(req, "canViewMessages");
 
-  if (role === "admin" || role === "subadmin") {
-    const hasAccess = await checkPermission(req, "canViewMessages");
-    if (!hasAccess) { res.status(403).json({ error: "غير مصرح لك برؤية الرسائل" }); return; }
+  if (canViewMessages) {
     if (req.params.userId) {
       targetUserId = parseInt(req.params.userId as string, 10);
     }
@@ -887,7 +848,7 @@ router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Pr
   )
   .orderBy(messagesTable.createdAt);
 
-  if (role === "admin" || role === "subadmin") {
+  if (canViewMessages) {
     await db.update(messagesTable)
       .set({ isRead: true })
       .where(and(eq(messagesTable.senderId, targetUserId), eq(messagesTable.isRead, false)));
@@ -901,17 +862,22 @@ router.get(["/messages", "/messages/:userId"], asyncHandler(async (req, res): Pr
 }));
 
 router.post("/messages", asyncHandler(async (req, res): Promise<void> => {
-  const { userId: senderId, role } = getSession(req);
+  const { userId: senderId } = getSession(req);
   if (!senderId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
   const { receiverId, content } = req.body;
   if (!content) { res.status(400).json({ error: "محتوى الرسالة مطلوب" }); return; }
 
-  const isAdminUser = role === "admin" || role === "subadmin";
-  
-  if (isAdminUser) {
-    const hasAccess = await checkPermission(req, "canReplyMessages");
-    if (!hasAccess) { res.status(403).json({ error: "ليس لديك صلاحية للرد على الرسائل" }); return; }
+  const [sender] = await db.select({ role: usersTable.role, isActive: usersTable.isActive })
+    .from(usersTable)
+    .where(eq(usersTable.id, senderId));
+  if (!sender?.isActive) { res.status(401).json({ error: "الحساب غير نشط" }); return; }
+
+  const canReplyMessages = await checkPermission(req, "canReplyMessages");
+  const isAdminUser = sender.role === "admin" || sender.role === "subadmin";
+  if (isAdminUser && !canReplyMessages) {
+    res.status(403).json({ error: "ليس لديك صلاحية للرد على الرسائل" });
+    return;
   }
 
   let actualReceiverId = receiverId ? Number(receiverId) : null;
@@ -990,11 +956,14 @@ router.patch("/notifications/:id/read", asyncHandler(async (req, res): Promise<v
 // ==========================================
 
 async function canUserModifyMessage(req: any, msg: any): Promise<boolean> {
-  const { userId, role } = getSession(req);
+  const { userId } = getSession(req);
   if (!userId) return false;
 
-  const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-  if (!currentUser) return false;
+  const [currentUser] = await db.select({
+    role: usersTable.role,
+    isActive: usersTable.isActive,
+  }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!currentUser?.isActive) return false;
 
   // جلب معلومات مُرسِل الرسالة الأصلي
   const [senderUser] = await db.select().from(usersTable).where(eq(usersTable.id, msg.senderId));
@@ -1011,8 +980,7 @@ async function canUserModifyMessage(req: any, msg: any): Promise<boolean> {
 
   // 2. المشرف الفرعي (Subadmin)
   if (isSubadmin) {
-    const storedPermissions = parseStoredPermissions((currentUser as any)?.permissions);
-    const hasPermission = storedPermissions.includes("modify_messages");
+    const hasPermission = await hasAdminPermission(req, ["modify_messages"]);
     if (!hasPermission) return false;
 
     // المشرف الفرعي ممنوع تماماً من تعديل أو حذف رسائل المدير الرئيسي (Admin)
