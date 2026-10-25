@@ -173,6 +173,10 @@ const emptyPartner = {
   sortOrder: "0",
 };
 
+function isValidCertificateSerial(value: string): boolean {
+  return value.length > 0 && value.length <= 100 && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value);
+}
+
 const defaultVerifySettings: VerifySettings = {
   pageTitle: "التحقق من الشهادات",
   pageSubtitle: "تأكد من صحة الشهادة وحالتها بالبحث عن رقمها أو بمسح رمز QR المطبوع عليها.",
@@ -196,6 +200,23 @@ const defaultVerifySettings: VerifySettings = {
   allowDownloadImage: true,
   showLegacyNote: true,
 };
+
+type CertificateStudioSection =
+  | "issue"
+  | "codes"
+  | "templates"
+  | "partners"
+  | "manage"
+  | "verification";
+
+const certificateStudioSections: { id: CertificateStudioSection; label: string; description: string }[] = [
+  { id: "issue", label: "إصدار الشهادات", description: "إصدار شهادة منفردة أو دفعة من صور وأسماء." },
+  { id: "codes", label: "حجز الأكواد", description: "إنشاء أكواد QR مسبقاً أو ربط الأكواد المحجوزة بصور الشهادات." },
+  { id: "templates", label: "القوالب والتصميم", description: "إنشاء القوالب وضبط أماكن النصوص والشعارات والتوقيعات." },
+  { id: "partners", label: "الجهات الشريكة", description: "إدارة الجهات التي يمكن إضافتها إلى الشهادات." },
+  { id: "manage", label: "إدارة الشهادات", description: "البحث والتحقق والتنزيل وإدارة الحالات وسلة المحذوفات." },
+  { id: "verification", label: "إعدادات التحقق", description: "تخصيص صفحة التحقق العامة والبيانات التي تظهر للزائر." },
+];
 
 function parseDelimitedRows(text: string): string[][] {
   const records: string[][] = [];
@@ -531,6 +552,7 @@ function alignmentFor(layout: Record<string, any>, key: string): "left" | "cente
 
 export default function CertificateStudio() {
   const { toast } = useToast();
+  const [activeSection, setActiveSection] = useState<CertificateStudioSection>("issue");
   const [templates, setTemplates] = useState<CertificateTemplate[]>([]);
   const [issues, setIssues] = useState<CertificateIssue[]>([]);
   const [trashIssues, setTrashIssues] = useState<CertificateIssue[]>([]);
@@ -586,9 +608,10 @@ export default function CertificateStudio() {
   const [bulkPartnerIds, setBulkPartnerIds] = useState<number[]>([]);
   const [bulkNameIssuing, setBulkNameIssuing] = useState(false);
   const [imageExporting, setImageExporting] = useState<string | null>(null);
-  const [reservationMode, setReservationMode] = useState<"count" | "names">("count");
+  const [reservationMode, setReservationMode] = useState<"count" | "names" | "codes">("count");
   const [reservationCount, setReservationCount] = useState("3");
   const [reservationNames, setReservationNames] = useState("");
+  const [reservationSerialNumbers, setReservationSerialNumbers] = useState("");
   const [reservationProgramTitle, setReservationProgramTitle] = useState("");
   const [reservationIssuerName, setReservationIssuerName] = useState("");
   const [reservationIssueDate, setReservationIssueDate] = useState("");
@@ -696,8 +719,21 @@ export default function CertificateStudio() {
 
   const reserveCertificates = async () => {
     const rows = parseNameLines(reservationNames);
+    const serialNumbers = reservationSerialNumbers.split(/\r?\n/).map((serial) => serial.trim()).filter(Boolean);
     if (reservationMode === "names" && (rows.length < 1 || rows.length > 200)) {
       toast({ variant: "destructive", title: "أدخل من 1 إلى 200 اسم" });
+      return;
+    }
+    if (reservationMode === "codes" && (serialNumbers.length < 1 || serialNumbers.length > 200)) {
+      toast({ variant: "destructive", title: "أدخل من 1 إلى 200 كود، كود واحد في كل سطر" });
+      return;
+    }
+    if (reservationMode === "codes" && serialNumbers.some((serial) => !isValidCertificateSerial(serial))) {
+      toast({ variant: "destructive", title: "كل كود يجب أن يكون من 1 إلى 100 حرفاً ومن دون أسطر جديدة" });
+      return;
+    }
+    if (reservationMode === "codes" && new Set(serialNumbers).size !== serialNumbers.length) {
+      toast({ variant: "destructive", title: "قائمة الأكواد تحتوي على كود مكرر" });
       return;
     }
     const count = Number(reservationCount);
@@ -711,7 +747,11 @@ export default function CertificateStudio() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(reservationMode === "count" ? { count } : { rows }),
+          ...(reservationMode === "count"
+            ? { count }
+            : reservationMode === "names"
+              ? { rows }
+              : { serialNumbers }),
           ...(reservationProgramTitle.trim() ? { programTitle: reservationProgramTitle.trim() } : {}),
           ...(reservationIssuerName.trim() ? { issuerName: reservationIssuerName.trim() } : {}),
           ...(reservationIssueDate ? { issueDate: reservationIssueDate } : {}),
@@ -754,14 +794,18 @@ export default function CertificateStudio() {
           image.src = previewUrl;
         });
         const fileStem = file.name.replace(/\.[^.]+$/, "");
-        const serialNumber = fileStem.match(/AW-CERT-\d{4}-\d{6}/)?.[0] || "";
+        const generatedSerialNumber = fileStem.match(/AW-CERT-\d{4}-\d{6}/)?.[0] || "";
+        const exactReservedCode = reservedIssues.find((issue) => issue.serialNumber === fileStem.trim());
+        const serialNumber = exactReservedCode?.serialNumber || generatedSerialNumber;
         const normalizedName = (value: string) => value.normalize("NFC").trim().replace(/\s+/g, " ");
-        const reserved = serialNumber
+        const reserved = exactReservedCode ?? (generatedSerialNumber
           ? reservedIssues.find((issue) => issue.serialNumber === serialNumber)
-          : reservedIssues.find((issue) => normalizedName(issue.recipientName) === normalizedName(fileStem));
+          : reservedIssues.find((issue) => normalizedName(issue.recipientName) === normalizedName(fileStem)));
         const selectedSerial = reserved?.serialNumber || "";
-        const derivedName = serialNumber
-          ? fileStem.replace(serialNumber, "").replace(/[-_\s]+/g, " ").trim()
+        const derivedName = exactReservedCode
+          ? ""
+          : generatedSerialNumber
+          ? fileStem.replace(generatedSerialNumber, "").replace(/[-_\s]+/g, " ").trim()
           : fileStem;
         prepared.push({
           id: crypto.randomUUID(),
@@ -2183,13 +2227,43 @@ export default function CertificateStudio() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">استوديو الشهادات</h1>
-          <p className="mt-1 text-sm text-muted-foreground">قوالب قابلة للتعديل، شركاء وتوقيعات متعددة، إصدار وتحقق فعلي.</p>
+          <p className="mt-1 text-sm text-muted-foreground">كل أدوات الشهادات والأكواد والجهات في أقسام مستقلة وواضحة.</p>
         </div>
         <button className="rounded-lg border px-4 py-2 text-sm" onClick={() => refresh().catch((error: Error) => toast({ variant: "destructive", title: "تعذر التحديث", description: error.message }))}>
           تحديث البيانات
         </button>
       </header>
 
+      <nav className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3" role="tablist" aria-label="أقسام استوديو الشهادات">
+        {certificateStudioSections.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            role="tab"
+            aria-selected={activeSection === section.id}
+            className={`rounded-xl border p-3 text-right transition-colors ${
+              activeSection === section.id
+                ? "border-primary bg-primary/5 text-primary shadow-sm"
+                : "bg-white hover:bg-muted/40"
+            }`}
+            onClick={() => setActiveSection(section.id)}
+          >
+            <span className="block font-semibold">{section.label}</span>
+            <span className="mt-1 block text-xs text-muted-foreground">{section.description}</span>
+            {section.id === "codes" && (
+              <span className="mt-2 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                {reservedIssues.length} كود غير مربوط
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      <p className="text-sm font-medium text-primary">
+        {certificateStudioSections.find((section) => section.id === activeSection)?.description}
+      </p>
+
+      {activeSection === "verification" && (
       <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
         <div>
           <h2 className="text-lg font-bold">إعدادات صفحة التحقق</h2>
@@ -2292,7 +2366,10 @@ export default function CertificateStudio() {
           </button>
         </form>
       </section>
+      )}
 
+      {activeSection === "codes" && (
+      <>
       <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -2304,18 +2381,32 @@ export default function CertificateStudio() {
         <div className="flex gap-2">
           <button type="button" className={`rounded-lg border px-4 py-2 text-sm ${reservationMode === "count" ? "border-primary bg-primary/5 font-semibold text-primary" : ""}`} onClick={() => setReservationMode("count")}>عدد أكواد</button>
           <button type="button" className={`rounded-lg border px-4 py-2 text-sm ${reservationMode === "names" ? "border-primary bg-primary/5 font-semibold text-primary" : ""}`} onClick={() => setReservationMode("names")}>قائمة أسماء</button>
+          <button type="button" className={`rounded-lg border px-4 py-2 text-sm ${reservationMode === "codes" ? "border-primary bg-primary/5 font-semibold text-primary" : ""}`} onClick={() => setReservationMode("codes")}>كتابة الأكواد</button>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {reservationMode === "count" ? (
             <Field label="عدد الأكواد (1–200)" type="number" value={reservationCount} onChange={setReservationCount} />
-          ) : (
+          ) : reservationMode === "names" ? (
             <label className="block space-y-1.5 text-sm sm:col-span-2">
               <span className="font-medium">الأسماء (اسم في كل سطر، ويمكن إضافة البريد بعد فاصلة)</span>
               <textarea className="min-h-28 w-full rounded-lg border bg-background px-3 py-2" value={reservationNames} onChange={(event) => setReservationNames(event.target.value)} placeholder={"محمد أحمد, mail@example.com\nسارة علي"} />
             </label>
+          ) : (
+            <label className="block space-y-1.5 text-sm sm:col-span-2">
+              <span className="font-medium">الأكواد المخصصة (كود واحد في كل سطر)</span>
+              <textarea
+                className="min-h-28 w-full rounded-lg border bg-background px-3 py-2 font-mono"
+                dir="auto"
+                maxLength={20_200}
+                value={reservationSerialNumbers}
+                onChange={(event) => setReservationSerialNumbers(event.target.value)}
+                placeholder={"CERT-2026-001\nMY-CUSTOM-CODE-002"}
+              />
+              <span className="block text-xs text-muted-foreground">يمكنك كتابة أي صيغة، بحد أقصى 100 حرف للكود و200 كود في الدفعة. لا تُستخدم الأكواد المكررة.</span>
+            </label>
           )}
           <Field label="اسم الدورة (اختياري)" value={reservationProgramTitle} onChange={setReservationProgramTitle} />
-          <Field label="الجهة (اختياري)" value={reservationIssuerName} onChange={setReservationIssuerName} />
+          <Field label="اسم الجهة المصدرة للكود (اختياري)" value={reservationIssuerName} onChange={setReservationIssuerName} />
           <Field label="التاريخ (اختياري)" type="date" value={reservationIssueDate} onChange={setReservationIssueDate} />
         </div>
         <button type="button" disabled={reservationBusy} className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60" onClick={() => void reserveCertificates()}>
@@ -2361,7 +2452,7 @@ export default function CertificateStudio() {
       <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
         <div>
           <h2 className="text-lg font-bold">رفع الشهادات الجاهزة وربطها بالأكواد</h2>
-          <p className="mt-1 text-sm text-muted-foreground">تتم مطابقة رقم AW-CERT أو الاسم الكامل من اسم الملف تلقائياً، ويمكنك اختيار الكود يدوياً قبل الإصدار.</p>
+          <p className="mt-1 text-sm text-muted-foreground">تتم مطابقة الأكواد المخصصة أو رقم AW-CERT أو الاسم الكامل من اسم الملف تلقائياً، ويمكنك اختيار الكود يدوياً قبل الإصدار.</p>
         </div>
         <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-5 text-center hover:bg-muted/30">
           <span className="font-semibold">{reservedImageUploads.length ? `إضافة صور أخرى (${reservedImageUploads.length}/50)` : "اختيار صور الشهادات الجاهزة"}</span>
@@ -2427,7 +2518,11 @@ export default function CertificateStudio() {
           </div>
         )}
       </section>
+      </>
+      )}
 
+      {activeSection === "issue" && (
+      <>
       <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -2793,7 +2888,10 @@ export default function CertificateStudio() {
           </div>
         )}
       </section>
+      </>
+      )}
 
+      {activeSection === "templates" && (
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3041,13 +3139,17 @@ export default function CertificateStudio() {
           <p className="text-center text-xs text-muted-foreground">الموضع والحجم نسبيان إلى مساحة الشهادة؛ ملف PDF يُنشأ من إعدادات التصميم المحفوظة نفسها.</p>
         </section>
       </div>
+      )}
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+      {(activeSection === "partners" || activeSection === "issue") && (
+      <div className="space-y-6">
+      {activeSection === "partners" && (
+      <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-lg font-bold">{partnerEditId ? "تعديل مؤسسة شريكة" : "إضافة مؤسسة شريكة"}</h2>
             {partnerEditId && <button className="text-sm text-primary underline" onClick={() => { setPartnerEditId(null); setPartnerForm(emptyPartner); }}>إلغاء التعديل</button>}
           </div>
+          <p className="text-sm text-muted-foreground">أضف الجهة هنا، ثم اخترها في القالب أو ضمن المؤسسات المشاركة عند إصدار الشهادة أو دفعة أسماء.</p>
           <form onSubmit={savePartner} className="grid gap-3 sm:grid-cols-2">
             <Field label="اسم المؤسسة" value={partnerForm.name} onChange={(value) => setPartnerForm({ ...partnerForm, name: value })} />
             <Field label="ترتيب العرض" type="number" value={partnerForm.sortOrder} onChange={(value) => setPartnerForm({ ...partnerForm, sortOrder: value })} />
@@ -3068,8 +3170,10 @@ export default function CertificateStudio() {
             ))}
             {!partners.length && <p className="p-4 text-sm text-muted-foreground">أضف المؤسسات التي يمكن اختيارها لشهاداتك.</p>}
           </div>
-        </section>
+      </section>
+      )}
 
+      {activeSection === "issue" && (
         <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-bold">{certificateId ? "تعديل شهادة" : "إصدار شهادة جديدة"}</h2>
@@ -3194,8 +3298,11 @@ export default function CertificateStudio() {
             </div>
           </form>
         </section>
+      )}
       </div>
+      )}
 
+      {activeSection === "manage" && (
       <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
           {[
@@ -3232,7 +3339,7 @@ export default function CertificateStudio() {
           </div>
         </div>
         <form onSubmit={verifyCertificate} className="flex flex-wrap gap-2">
-          <input className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" placeholder="رقم الشهادة للتحقق" value={verificationInput} onChange={(event) => setVerificationInput(event.target.value)} />
+          <input className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" placeholder="كود الشهادة للتحقق" value={verificationInput} onChange={(event) => setVerificationInput(event.target.value)} />
           <button disabled={verificationLoading} className="rounded-lg bg-slate-800 px-3 py-2 text-sm text-white">{verificationLoading ? "جارٍ التحقق..." : "التحقق من الشهادة"}</button>
         </form>
         {verificationResult && <div className={`rounded-lg p-3 text-sm ${verificationResult.valid ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>{verificationResult.valid ? `شهادة صحيحة — ${verificationResult.certificate?.recipientName} · ${verificationResult.certificate?.programTitle}` : verificationResult.error || "الشهادة غير صالحة أو ملغاة"}</div>}
@@ -3331,6 +3438,7 @@ export default function CertificateStudio() {
           <button type="button" className="rounded border px-3 py-1.5 disabled:opacity-40" disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>التالي</button>
         </div>}
       </section>
+      )}
     </div>
   );
 }

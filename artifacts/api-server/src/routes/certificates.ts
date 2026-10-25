@@ -14,11 +14,17 @@ import bidiFactory from "bidi-js";
 import { createCanvas } from "@napi-rs/canvas";
 
 const router: IRouter = Router();
-const SERIAL_NUMBER_PATTERN = /^AW-CERT-\d{4}-\d{6}$/;
 const UPLOADED_CERTIFICATE_TEMPLATE_NAME = "قالب توثيق صور جاهزة";
 const RESERVED_CODE_TEMPLATE_NAME = "قالب أكواد محجوزة";
 const MAX_BULK_NAME_ROWS = 200;
 const MAX_IMAGE_EXPORT_ROWS = 200;
+
+class CertificateSerialConflictError extends Error {
+  constructor(readonly serialNumber: string) {
+    super("يوجد كود شهادة مستخدم بالفعل");
+  }
+}
+
 const CERTIFICATE_IMAGE_HIDDEN_ELEMENTS = [
   "logo",
   "certificateTitle",
@@ -266,6 +272,10 @@ function certificateFileName(value: string, fallback: string): string {
   return safeName || fallback;
 }
 
+function isValidSerialNumber(value: string): boolean {
+  return value.length > 0 && value.length <= 100 && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value);
+}
+
 function isUploadedCertificateImage(value: unknown): value is string {
   if (typeof value !== "string" || value.length > 2048) return false;
   try {
@@ -372,19 +382,26 @@ async function fetchImageBuffer(url?: string | null): Promise<Buffer | undefined
   return Buffer.from(arrayBuffer);
 }
 
-async function generateSerialNumber(executor: Pick<typeof db, "execute"> = db): Promise<string> {
+async function generateSerialNumber(executor: Pick<typeof db, "execute" | "select"> = db): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `AW-CERT-${year}-`;
-  const result = (await executor.execute(sql`
-    SELECT nextval('certificate_issue_serial_seq') AS count
-  `)) as any;
-
-  const row = Array.isArray(result?.rows) ? result.rows[0] : result?.[0] ?? null;
-  const count = Number(row?.count ?? 1);
-  if (!Number.isInteger(count) || count < 1 || count > 999_999) {
-    throw new Error("تم استنفاد أرقام الشهادات المتاحة لهذا النمط");
+  for (let attempt = 0; attempt < 999_999; attempt += 1) {
+    const result = (await executor.execute(sql`
+      SELECT nextval('certificate_issue_serial_seq') AS count
+    `)) as any;
+    const row = Array.isArray(result?.rows) ? result.rows[0] : result?.[0] ?? null;
+    const count = Number(row?.count ?? 1);
+    if (!Number.isInteger(count) || count < 1 || count > 999_999) {
+      throw new Error("تم استنفاد أرقام الشهادات المتاحة لهذا النمط");
+    }
+    const serialNumber = `${prefix}${String(count).padStart(6, "0")}`;
+    const [existing] = await executor.select({ id: certificateIssuesTable.id })
+      .from(certificateIssuesTable)
+      .where(eq(certificateIssuesTable.serialNumber, serialNumber))
+      .limit(1);
+    if (!existing) return serialNumber;
   }
-  return `${prefix}${String(count).padStart(6, "0")}`;
+  throw new Error("تم استنفاد أرقام الشهادات المتاحة لهذا النمط");
 }
 
 function buildValidationUrl(serialNumber: string): string {
@@ -393,10 +410,9 @@ function buildValidationUrl(serialNumber: string): string {
 }
 
 function publicCertificateImageUrl(issue: any, allowCancelled = false): string {
-  const baseUrl = buildValidationUrl(issue.serialNumber).split("/certificate/verify")[0];
   const endpoint = allowCancelled ? "image-preview" : "image";
   const version = issue.updatedAt instanceof Date ? issue.updatedAt.getTime() : "";
-  return `${baseUrl}/api/certificates/public/${encodeURIComponent(issue.serialNumber)}/${endpoint}${version ? `?v=${version}` : ""}`;
+  return `/api/certificates/public/${encodeURIComponent(issue.serialNumber)}/${endpoint}${version ? `?v=${version}` : ""}`;
 }
 
 function imageMatchesMimeType(file: Express.Multer.File): boolean {
@@ -1208,7 +1224,7 @@ async function serveCertificateImage(
   allowCancelled: boolean,
 ): Promise<void> {
   const serial = String(req.params.serial || "").trim();
-  if (!SERIAL_NUMBER_PATTERN.test(serial)) {
+  if (!isValidSerialNumber(serial)) {
     res.status(404).json({ error: "الشهادة غير موجودة أو غير صالحة للعرض" });
     return;
   }
@@ -1233,7 +1249,7 @@ async function serveCertificateImage(
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
   res.setHeader("ETag", etag);
-  res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${slugify(issue.recipientName)}-${issue.serialNumber}.png"`);
+  res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${certificateFileName(`${slugify(issue.recipientName)}-${issue.serialNumber}`, "certificate")}.png"`);
   if (req.headers["if-none-match"] === etag) {
     res.status(304).end();
     return;
@@ -1248,7 +1264,7 @@ router.get("/certificates/verify", async (req, res): Promise<void> => {
     res.status(400).json({ valid: false, error: "أدخل رقم الشهادة للتحقق منها" });
     return;
   }
-  if (!SERIAL_NUMBER_PATTERN.test(serial)) {
+  if (!isValidSerialNumber(serial)) {
     res.status(400).json({ valid: false, error: "رقم الشهادة غير صالح" });
     return;
   }
@@ -1300,7 +1316,7 @@ router.get("/certificates/verify", async (req, res): Promise<void> => {
     certificate.verifiedAt = issue.createdAt;
   }
   if (settings.allowDownloadPdf) {
-    certificate.pdfUrl = `${buildValidationUrl(issue.serialNumber).split("/certificate/verify")[0]}/api/certificates/public/${encodeURIComponent(issue.serialNumber)}/pdf`;
+    certificate.pdfUrl = `/api/certificates/public/${encodeURIComponent(issue.serialNumber)}/pdf`;
   }
   if (settings.visibleFields.serialNumber) certificate.serialNumber = issue.serialNumber;
   if (settings.visibleFields.recipientName) certificate.recipientName = issue.recipientName;
@@ -1324,6 +1340,10 @@ router.get("/certificates/public/:serial/image-preview", async (req, res): Promi
 
 router.get("/certificates/public/:serial/pdf", async (req, res): Promise<void> => {
   const serial = String(req.params.serial || "").trim();
+  if (!isValidSerialNumber(serial)) {
+    res.status(404).json({ error: "الشهادة غير موجودة أو غير صالحة للتنزيل" });
+    return;
+  }
   const [issue] = await db.select().from(certificateIssuesTable)
     .where(eq(certificateIssuesTable.serialNumber, serial)).limit(1);
   if (!issue || issue.status !== "issued" || issue.deletedAt) {
@@ -1344,14 +1364,14 @@ router.get("/certificates/public/:serial/pdf", async (req, res): Promise<void> =
   );
   res.setHeader("Content-Type", "application/pdf");
   const disposition = req.query.download === "1" ? "attachment" : "inline";
-  res.setHeader("Content-Disposition", `${disposition}; filename="${slugify(issue.recipientName)}-${issue.serialNumber}.pdf"`);
+  res.setHeader("Content-Disposition", `${disposition}; filename="${certificateFileName(`${slugify(issue.recipientName)}-${issue.serialNumber}`, "certificate")}.pdf"`);
   res.setHeader("Cache-Control", "no-store");
   res.end(pdfBuffer);
 });
 
 router.get("/certificates/qr", async (req, res): Promise<void> => {
   const serial = String(req.query.serial || "").trim();
-  if (!SERIAL_NUMBER_PATTERN.test(serial)) {
+  if (!isValidSerialNumber(serial)) {
     res.status(400).json({ error: "رقم الشهادة غير صالح" });
     return;
   }
@@ -1968,19 +1988,21 @@ router.post("/certificates/reserve", async (req, res): Promise<void> => {
   const body = req.body ?? {};
   const hasCount = Object.prototype.hasOwnProperty.call(body, "count");
   const hasRows = Object.prototype.hasOwnProperty.call(body, "rows");
-  if (hasCount === hasRows) {
-    res.status(400).json({ error: "أرسل عدد الأكواد أو قائمة الأسماء، وليس الاثنين معاً" });
+  const hasSerialNumbers = Object.prototype.hasOwnProperty.call(body, "serialNumbers");
+  if ([hasCount, hasRows, hasSerialNumbers].filter(Boolean).length !== 1) {
+    res.status(400).json({ error: "أرسل عدد الأكواد أو قائمة الأسماء أو قائمة الأكواد المخصصة" });
     return;
   }
 
   let rows: { name: string; email: string | null }[];
+  let customSerialNumbers: string[] | null = null;
   if (hasCount) {
     if (!Number.isInteger(body.count) || body.count < 1 || body.count > MAX_BULK_NAME_ROWS) {
       res.status(400).json({ error: `عدد الأكواد يجب أن يكون بين 1 و${MAX_BULK_NAME_ROWS}` });
       return;
     }
     rows = Array.from({ length: body.count }, () => ({ name: "بدون اسم", email: null }));
-  } else {
+  } else if (hasRows) {
     if (!Array.isArray(body.rows) || body.rows.length < 1 || body.rows.length > MAX_BULK_NAME_ROWS) {
       res.status(400).json({ error: `قائمة الأسماء يجب أن تحتوي من 1 إلى ${MAX_BULK_NAME_ROWS} صف` });
       return;
@@ -2001,6 +2023,29 @@ router.post("/certificates/reserve", async (req, res): Promise<void> => {
       }
       rows.push({ name: name || "بدون اسم", email: email || null });
     }
+  } else {
+    if (!Array.isArray(body.serialNumbers) || body.serialNumbers.length < 1 || body.serialNumbers.length > MAX_BULK_NAME_ROWS) {
+      res.status(400).json({ error: `قائمة الأكواد يجب أن تحتوي من 1 إلى ${MAX_BULK_NAME_ROWS} كود` });
+      return;
+    }
+    customSerialNumbers = [];
+    for (const value of body.serialNumbers) {
+      if (typeof value !== "string") {
+        res.status(400).json({ error: "كل كود شهادة يجب أن يكون نصاً صالحاً" });
+        return;
+      }
+      const serialNumber = value.trim();
+      if (!isValidSerialNumber(serialNumber)) {
+        res.status(400).json({ error: "يجب أن يكون كل كود من 1 إلى 100 حرف ومن دون أسطر جديدة" });
+        return;
+      }
+      customSerialNumbers.push(serialNumber);
+    }
+    if (new Set(customSerialNumbers).size !== customSerialNumbers.length) {
+      res.status(400).json({ error: "قائمة الأكواد تحتوي على كود مكرر" });
+      return;
+    }
+    rows = customSerialNumbers.map(() => ({ name: "بدون اسم", email: null }));
   }
 
   if (body.programTitle !== undefined && typeof body.programTitle !== "string" ||
@@ -2024,51 +2069,71 @@ router.post("/certificates/reserve", async (req, res): Promise<void> => {
     : "Arkan Web";
   const { userId } = getSessionUser(req);
 
-  const certificates = await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(62142, 31008)`);
-    let [template] = await tx.select().from(certificateTemplatesTable)
-      .where(eq(certificateTemplatesTable.name, RESERVED_CODE_TEMPLATE_NAME))
-      .for("update")
-      .limit(1);
-    if (!template) {
-      [template] = await tx.insert(certificateTemplatesTable).values({
-        name: RESERVED_CODE_TEMPLATE_NAME,
-        orientation: "landscape",
-        width: 1200,
-        height: 800,
-        layoutConfig: DEFAULT_LAYOUT,
-        createdBy: userId ?? null,
-      }).returning();
-    }
+  try {
+    const certificates = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(62142, 31008)`);
+      if (customSerialNumbers) {
+        const [existing] = await tx.select({ serialNumber: certificateIssuesTable.serialNumber })
+          .from(certificateIssuesTable)
+          .where(inArray(certificateIssuesTable.serialNumber, customSerialNumbers))
+          .limit(1);
+        if (existing) throw new CertificateSerialConflictError(existing.serialNumber);
+      }
 
-    const created = [];
-    for (const row of rows) {
-      const serialNumber = await generateSerialNumber(tx);
-      const validationUrl = buildValidationUrl(serialNumber);
-      const [issue] = await tx.insert(certificateIssuesTable).values({
-        templateId: template.id,
-        serialNumber,
-        validationUrl,
-        qrCodeUrl: validationUrl,
-        recipientName: row.name,
-        recipientEmail: row.email,
-        programTitle,
-        issuerName,
-        issueDate,
-        status: "reserved",
-        metadata: {
-          signatures: [],
-          partnerIds: [],
-          partnerSnapshots: [],
-          source: "reserved-code",
-        },
-      }).returning();
-      created.push(issue);
-    }
-    return created;
-  });
+      let [template] = await tx.select().from(certificateTemplatesTable)
+        .where(eq(certificateTemplatesTable.name, RESERVED_CODE_TEMPLATE_NAME))
+        .for("update")
+        .limit(1);
+      if (!template) {
+        [template] = await tx.insert(certificateTemplatesTable).values({
+          name: RESERVED_CODE_TEMPLATE_NAME,
+          orientation: "landscape",
+          width: 1200,
+          height: 800,
+          layoutConfig: DEFAULT_LAYOUT,
+          createdBy: userId ?? null,
+        }).returning();
+      }
 
-  res.status(201).json({ count: certificates.length, certificates });
+      const created = [];
+      for (const [index, row] of rows.entries()) {
+        const serialNumber = customSerialNumbers?.[index] ?? await generateSerialNumber(tx);
+        const validationUrl = buildValidationUrl(serialNumber);
+        const insert = tx.insert(certificateIssuesTable).values({
+          templateId: template.id,
+          serialNumber,
+          validationUrl,
+          qrCodeUrl: validationUrl,
+          recipientName: row.name,
+          recipientEmail: row.email,
+          programTitle,
+          issuerName,
+          issueDate,
+          status: "reserved",
+          metadata: {
+            signatures: [],
+            partnerIds: [],
+            partnerSnapshots: [],
+            source: "reserved-code",
+          },
+        });
+        const [issue] = customSerialNumbers
+          ? await insert.onConflictDoNothing({ target: certificateIssuesTable.serialNumber }).returning()
+          : await insert.returning();
+        if (!issue) throw new CertificateSerialConflictError(serialNumber);
+        created.push(issue);
+      }
+      return created;
+    });
+
+    res.status(201).json({ count: certificates.length, certificates });
+  } catch (error) {
+    if (error instanceof CertificateSerialConflictError) {
+      res.status(409).json({ error: `${error.message}: ${error.serialNumber}` });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.post("/certificates/attach-images", async (req, res): Promise<void> => {
@@ -2088,7 +2153,7 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
   for (const item of items) {
     const serialNumber = typeof item?.serialNumber === "string" ? item.serialNumber.trim() : "";
     const fail = (reason: string) => errors.push({ serialNumber, reason });
-    if (!SERIAL_NUMBER_PATTERN.test(serialNumber)) {
+    if (!isValidSerialNumber(serialNumber)) {
       fail("رقم التوثيق غير صالح");
       continue;
     }
@@ -2408,7 +2473,7 @@ router.get("/certificates/:id/export", async (req, res): Promise<void> => {
   }), partners);
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="${slugify(issue.recipientName || "certificate")}-${issue.serialNumber}.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${certificateFileName(`${slugify(issue.recipientName || "certificate")}-${issue.serialNumber}`, "certificate")}.pdf"`);
   res.end(pdfBuffer);
 });
 
@@ -2484,7 +2549,7 @@ router.get("/certificates/:id/preview", async (req, res): Promise<void> => {
     layoutConfig: DEFAULT_LAYOUT,
   }), await getIssuePartners(issue));
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `inline; filename="${slugify(issue.recipientName || "certificate")}-${issue.serialNumber}.pdf"`);
+  res.setHeader("Content-Disposition", `inline; filename="${certificateFileName(`${slugify(issue.recipientName || "certificate")}-${issue.serialNumber}`, "certificate")}.pdf"`);
   res.end(pdfBuffer);
 });
 
