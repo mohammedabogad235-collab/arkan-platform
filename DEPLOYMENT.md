@@ -89,13 +89,18 @@ When creating a **Web Service** on Render:
    NODE_ENV=production
    PORT=10000
    DATABASE_URL=postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres
-   SESSION_SECRET=your-secure-random-secret-key
-   ALLOWED_ORIGINS=https://arkan-platform.onrender.com
+   SESSION_SECRET=<at-least-32-random-characters>
+   PUBLIC_APP_URL=https://your-backend-domain.com
+   FRONTEND_URL=https://your-frontend-domain.com
+   ALLOWED_ORIGINS=https://your-frontend-domain.com,https://your-custom-domain.com
    ```
+
+   `ALLOWED_ORIGINS` is a comma-separated list of exact frontend origins (scheme and hostname, without paths). Add every production frontend domain here. The backend also allows `PUBLIC_APP_URL` and `FRONTEND_URL`. In production the server refuses to start if `SESSION_SECRET` is missing or shorter than 32 characters; generate a unique random value and keep it only in the hosting provider's secret settings.
 
 ### How Full-Stack Single Deployment Works
 - `pnpm run build` compiles both the React frontend (Vite + Tailwind CSS v4) into `artifacts/website-builder/dist` and the Express backend into `artifacts/api-server/dist`.
 - `pnpm run start` launches the Express backend which serves all API endpoints on `/api/*` and static frontend assets + single-page app fallback for all other routes.
+- `pnpm run start:standalone` is retained as a compatibility alias for the same secure API server. The legacy `server.js` entry point is disabled because it used a hard-coded administrator password.
 
 ## Local Development
 
@@ -135,13 +140,15 @@ pnpm run start
 
 1. **Session Management**: The backend uses session-based authentication with PostgreSQL session store. Ensure your database is accessible from your hosting platform.
 
-2. **CORS**: Always update `ALLOWED_ORIGINS` when deploying to new domains to prevent CORS errors.
+2. **CORS**: Set `ALLOWED_ORIGINS` to the exact frontend domains that need cookie-based API access. Do not use `*`.
 
-3. **Environment Variables**: Never commit `.env` files. Use the provided `.env.example` files as templates.
+3. **Environment Variables**: Never commit `.env` files or real credentials. Use the provided `.env.example` files as templates and configure secrets only in the hosting provider.
 
-4. **Database**: The backend expects a PostgreSQL database. Supabase is recommended for easy setup.
+4. **Credential rotation**: If a real database, SMTP, session, Supabase, or Firebase credential was ever committed or shared, replace it at its provider immediately, update the deployment secret, and redeploy. Removing a credential from an example file does not invalidate the old credential.
 
-5. **Build Outputs**: 
+5. **Database**: The backend expects a PostgreSQL database. Supabase is recommended for easy setup.
+
+6. **Build Outputs**:
    - Frontend builds to `artifacts/website-builder/dist/public`
    - Backend builds to `artifacts/api-server/dist`
 

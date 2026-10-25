@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, siteSettingsTable } from "@workspace/db";
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -11,20 +12,50 @@ async function getOrCreateSettings() {
   return row;
 }
 
-router.get("/settings", async (_req, res): Promise<void> => {
+function toPublicSettings(settings: Awaited<ReturnType<typeof getOrCreateSettings>>, includeSmtpSettings = false) {
+  return {
+    id: settings.id,
+    phone1: settings.phone1,
+    phone2: settings.phone2,
+    email: settings.email,
+    whatsapp: settings.whatsapp,
+    address: settings.address,
+    facebookUrl: settings.facebookUrl,
+    instagramUrl: settings.instagramUrl,
+    twitterUrl: settings.twitterUrl,
+    requireDeposit: settings.requireDeposit,
+    depositPercentageValue: settings.depositPercentageValue,
+    termsAndConditions: settings.termsAndConditions,
+    privacyPolicy: settings.privacyPolicy,
+    ...(includeSmtpSettings ? {
+      emailUser: settings.emailUser,
+      emailPassConfigured: Boolean(settings.emailPass),
+    } : {}),
+  };
+}
+
+router.get("/settings", async (req, res): Promise<void> => {
   const settings = await getOrCreateSettings();
-  res.json(settings);
+  const isAdmin = await hasAdminPermission(req);
+  res.json(toPublicSettings(settings, isAdmin));
 });
 
 router.patch("/settings", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["settings"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
+  const isAdmin = await hasAdminPermission(req);
   const settings = await getOrCreateSettings();
 
   const body = req.body as Record<string, unknown>;
   const update: Record<string, unknown> = {};
 
-  const textFields = ["phone1", "phone2", "email", "whatsapp", "address", "facebookUrl", "instagramUrl", "twitterUrl", "termsAndConditions", "privacyPolicy", "emailUser", "emailPass"];
+  const textFields = ["phone1", "phone2", "email", "whatsapp", "address", "facebookUrl", "instagramUrl", "twitterUrl", "termsAndConditions", "privacyPolicy"];
+  if (isAdmin) textFields.push("emailUser", "emailPass");
   for (const key of textFields) {
-    if (typeof body[key] === "string") update[key] = body[key];
+    if (typeof body[key] === "string" && (key !== "emailPass" || body[key])) update[key] = body[key];
   }
   if (typeof body.requireDeposit === "boolean") update.requireDeposit = body.requireDeposit;
   if (typeof body.depositPercentageValue === "number") update.depositPercentageValue = body.depositPercentageValue;
@@ -39,7 +70,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     .where(eq(siteSettingsTable.id, settings.id))
     .returning();
 
-  res.json(updated);
+  res.json(toPublicSettings(updated, isAdmin));
 });
 
 export default router;

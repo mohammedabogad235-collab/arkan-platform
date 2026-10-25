@@ -253,26 +253,6 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
   res.json({ user: sanitizeUser(user), message: "تم تسجيل الدخول بنجاح" });
 }));
 
-// POST /auth/verify-phone (kept for backward compat)
-router.post("/auth/verify-phone", asyncHandler(async (req, res): Promise<void> => {
-  const { phone } = req.body as { phone?: string };
-  if (!phone) { res.status(400).json({ error: "رقم الجوال مطلوب" }); return; }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, phone.trim()));
-  if (!user) { res.status(404).json({ error: "لا يوجد حساب مسجل بهذا الرقم" }); return; }
-  res.json({ found: true, username: user.username });
-}));
-
-// POST /auth/reset-password-by-phone (kept for backward compat)
-router.post("/auth/reset-password-by-phone", asyncHandler(async (req, res): Promise<void> => {
-  const { phone, newPassword } = req.body as { phone?: string; newPassword?: string };
-  if (!phone || !newPassword) { res.status(400).json({ error: "رقم الجوال وكلمة المرور الجديدة مطلوبان" }); return; }
-  if (newPassword.length < 6) { res.status(400).json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }); return; }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, phone.trim()));
-  if (!user) { res.status(404).json({ error: "لا يوجد حساب مسجل بهذا الرقم" }); return; }
-  await db.update(usersTable).set({ passwordHash: hashPassword(newPassword) }).where(eq(usersTable.id, user.id));
-  res.json({ message: "تم تغيير كلمة المرور بنجاح" });
-}));
-
 // POST /auth/logout
 router.post("/auth/logout", asyncHandler(async (req, res): Promise<void> => {
   await new Promise<void>((resolve, reject) => {

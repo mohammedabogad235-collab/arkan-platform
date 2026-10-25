@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { hashPassword } from "../lib/crypto";
 import { sendResetPasswordOtpEmail } from "../lib/mailer";
-import { ApiError, asyncHandler, getErrorMessage } from "../lib/http";
-import { issueOtp, normalizeEmail, validateOtp } from "../lib/otp";
+import { ApiError, asyncHandler } from "../lib/http";
+import { invalidateOtp, issueOtp, normalizeEmail, validateOtp } from "../lib/otp";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -18,24 +19,16 @@ router.post("/auth/send-otp", asyncHandler(async (req, res): Promise<void> => {
 
   const trimmed = normalizeEmail(email);
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, trimmed));
-
-  if (!user) {
-    res.status(404).json({ error: "لا يوجد حساب مسجل بهذا البريد الإلكتروني" });
-    return;
+  if (user?.isActive) {
+    const { otp } = issueOtp(trimmed, "password_reset");
+    try {
+      await sendResetPasswordOtpEmail(trimmed, otp, user.fullName);
+    } catch (error) {
+      logger.error({ err: error, userId: user.id }, "Password reset OTP delivery failed");
+      invalidateOtp(trimmed, "password_reset");
+    }
   }
-
-  const { otp } = issueOtp(trimmed, "password_reset");
-
-  try {
-    await sendResetPasswordOtpEmail(trimmed, otp, user.fullName);
-    res.json({ message: "تم إرسال رمز التحقق إلى بريدك الإلكتروني", otpSent: true });
-  } catch (error) {
-    res.status(503).json({
-      error: getErrorMessage(error),
-      otpSent: false,
-      email: trimmed,
-    });
-  }
+  res.json({ message: "إذا كان البريد مرتبطاً بحساب نشط، فسيصلك رمز التحقق.", otpSent: true });
 }));
 
 // POST /auth/verify-otp  — verify OTP and reset password
@@ -74,8 +67,8 @@ router.post("/auth/verify-otp", asyncHandler(async (req, res): Promise<void> => 
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, trimmed));
-  if (!user) {
-    res.status(404).json({ error: "المستخدم غير موجود" });
+  if (!user?.isActive) {
+    res.status(400).json({ error: "تعذر إعادة تعيين كلمة المرور لهذا الحساب" });
     return;
   }
 

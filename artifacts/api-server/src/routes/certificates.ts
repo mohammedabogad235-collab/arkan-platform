@@ -7,9 +7,10 @@ import { ZipArchive } from "archiver";
 import multer from "multer";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { db, certificateTemplatesTable, certificateIssuesTable, certificatePartnersTable, certificateVerifySettingsTable, usersTable } from "@workspace/db";
+import { db, certificateTemplatesTable, certificateIssuesTable, certificatePartnersTable, certificateVerifySettingsTable } from "@workspace/db";
 import { uploadBufferToSupabase } from "../lib/supabase-storage";
 import { sendCertificateEmail } from "../lib/mailer";
+import { hasAdminPermission } from "../lib/access-control";
 import bidiFactory from "bidi-js";
 import { createCanvas } from "@napi-rs/canvas";
 
@@ -148,23 +149,7 @@ function getSessionUser(req: any): { userId?: number; role?: string } {
 }
 
 async function ensureAdmin(req: any): Promise<boolean> {
-  const { userId } = getSessionUser(req);
-  if (!userId) return false;
-  const [user] = await db.select({
-    role: usersTable.role,
-    permissions: usersTable.permissions,
-    isActive: usersTable.isActive,
-  }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user?.isActive) return false;
-  if (user.role === "admin") return true;
-  if (user.role !== "subadmin" || !user.permissions) return false;
-  try {
-    const permissions: unknown = JSON.parse(user.permissions);
-    return Array.isArray(permissions) &&
-      (permissions.includes("certificate-studio") || permissions.includes("certificates"));
-  } catch {
-    return false;
-  }
+  return hasAdminPermission(req, ["certificate-studio", "certificates"]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

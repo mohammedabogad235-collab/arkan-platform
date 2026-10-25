@@ -1,3 +1,5 @@
+import { randomInt } from "node:crypto";
+
 export type OtpPurpose = "signup_verification" | "password_reset";
 
 type OtpEntry = {
@@ -28,7 +30,7 @@ export function normalizeEmail(email: string): string {
 }
 
 export function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 1_000_000).toString();
 }
 
 export function issueOtp(email: string, purpose: OtpPurpose, ttlMs = OTP_TTL_MS) {

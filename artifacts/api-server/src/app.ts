@@ -16,6 +16,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const frontendDistPath = resolve(__dirname, "../../website-builder/dist");
 const frontendIndexPath = resolve(frontendDistPath, "index.html");
+const sessionSecret = process.env.SESSION_SECRET?.trim();
+
+if (process.env.NODE_ENV === "production" && (!sessionSecret || sessionSecret.length < 32)) {
+  throw new Error("SESSION_SECRET must be configured with at least 32 characters in production");
+}
 
 logger.info(
   {
@@ -27,6 +32,24 @@ logger.info(
 );
 
 app.set("trust proxy", 1);
+
+function normalizeOrigin(value: string): string {
+  const url = new URL(value.trim());
+  if (!["http:", "https:"].includes(url.protocol) || url.origin === "null") {
+    throw new Error(`Invalid allowed origin: ${value}`);
+  }
+  return url.origin;
+}
+
+const configuredOrigins = [
+  ...(process.env.ALLOWED_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean),
+  process.env.PUBLIC_APP_URL?.trim() || "https://arkan-platform.onrender.com",
+  process.env.FRONTEND_URL?.trim(),
+  ...(process.env.NODE_ENV === "production"
+    ? []
+    : ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]),
+].filter((origin): origin is string => Boolean(origin));
+const allowedOrigins = new Set(configuredOrigins.map(normalizeOrigin));
 
 app.use(
   pinoHttp({
@@ -48,16 +71,18 @@ app.use(
   }),
 );
 
+app.use((req, res, next) => {
+  const origin = req.get("Origin");
+  if (origin && !allowedOrigins.has(origin)) {
+    res.status(403).json({ error: "مصدر الطلب غير مسموح" });
+    return;
+  }
+  next();
+});
+
 app.use(
   cors({
-    /**
-     * Allow ALL origins.
-     *
-     * Note: When `credentials: true`, using `origin: "*"` is not valid per the CORS spec
-     * (browsers will reject it). `origin: true` tells `cors` to reflect the request's
-     * Origin header, effectively allowing any origin while still permitting cookies.
-     */
-    origin: true,
+    origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
@@ -89,7 +114,7 @@ app.use(
       tableName: "session",
       createTableIfMissing: false, // تم التعديل لمنع البحث عن ملف table.sql المفقود
     }),
-    secret: process.env.SESSION_SECRET ?? "fallback-secret-change-in-production",
+    secret: sessionSecret ?? "development-only-session-secret",
     resave: false,
     saveUninitialized: false,
     cookie: {

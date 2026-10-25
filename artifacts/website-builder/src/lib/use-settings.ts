@@ -15,17 +15,18 @@ export interface SiteSettings {
   depositPercentageValue: number;
   termsAndConditions: string;
   privacyPolicy: string;
-  emailUser: string;
-  emailPass: string;
+  emailUser?: string;
+  emailPassConfigured?: boolean;
 }
 
 const SETTINGS_KEY = ["site-settings"] as const;
+type UpdateSiteSettings = Partial<Omit<SiteSettings, "id" | "emailPassConfigured">> & { emailPass?: string };
 
 async function fetchSettings(): Promise<SiteSettings> {
   return apiFetchJson<SiteSettings>("/api/settings");
 }
 
-async function patchSettings(data: Partial<Omit<SiteSettings, "id">>): Promise<SiteSettings> {
+async function patchSettings(data: UpdateSiteSettings): Promise<SiteSettings> {
   return apiFetchJson<SiteSettings>("/api/settings", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -42,7 +43,7 @@ export function useSettings() {
 }
 
 export function useUpdateSettings() {
-  return useMutation<SiteSettings, Error, Partial<Omit<SiteSettings, "id">>>({
+  return useMutation<SiteSettings, Error, UpdateSiteSettings>({
     mutationFn: patchSettings,
   });
 }

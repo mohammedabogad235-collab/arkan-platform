@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { Api } from "@workspace/api-zod";
 import { hashPassword } from "../lib/crypto";
+import { hasAdminPermission } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -20,12 +21,20 @@ function sanitizeUser(user: typeof usersTable.$inferSelect) {
   };
 }
 
-router.get("/users", async (_req, res): Promise<void> => {
+router.get("/users", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["users"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
   const users = await db.select().from(usersTable).orderBy(usersTable.createdAt);
   res.json(users.map(sanitizeUser));
 });
 
 router.get("/users/:id", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["users"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
   const params = Api.GetUserParams.safeParse({ id: parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -42,6 +51,10 @@ router.get("/users/:id", async (req, res): Promise<void> => {
 });
 
 router.patch("/users/:id/role", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "معرّف غير صالح" }); return; }
 
@@ -80,6 +93,10 @@ router.patch("/admin/change-password", async (req, res): Promise<void> => {
 });
 
 router.post("/admin/create-admin", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
   const { fullName, phone, email, username, password } = req.body as Record<string, string>;
   if (!fullName || !phone || !email || !username || !password) {
     res.status(400).json({ error: "جميع الحقول مطلوبة" }); return;
@@ -98,15 +115,41 @@ router.post("/admin/create-admin", async (req, res): Promise<void> => {
 });
 
 router.delete("/users/:id", async (req, res): Promise<void> => {
+  if (!(await hasAdminPermission(req, ["users"]))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
   const params = Api.DeleteUserParams.safeParse({ id: parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const [user] = await db.delete(usersTable).where(eq(usersTable.id, params.data.id)).returning();
-  if (!user) {
+  if (req.session?.userId === params.data.id) {
+    res.status(403).json({ error: "لا يمكنك حذف حسابك الحالي" });
+    return;
+  }
+
+  const [target] = await db.select({ role: usersTable.role })
+    .from(usersTable)
+    .where(eq(usersTable.id, params.data.id))
+    .limit(1);
+  if (!target) {
     res.status(404).json({ error: "المستخدم غير موجود" });
+    return;
+  }
+
+  const isMainAdmin = await hasAdminPermission(req);
+  if (!isMainAdmin && target.role !== "user" && target.role !== "client") {
+    res.status(403).json({ error: "لا تملك صلاحية حذف هذا الحساب" });
+    return;
+  }
+
+  const [user] = await db.delete(usersTable)
+    .where(and(eq(usersTable.id, params.data.id), eq(usersTable.role, target.role)))
+    .returning();
+  if (!user) {
+    res.status(409).json({ error: "تغيرت بيانات المستخدم. أعد المحاولة" });
     return;
   }
 

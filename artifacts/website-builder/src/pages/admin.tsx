@@ -551,6 +551,7 @@ export default function Admin() {
 
   const [otpForm, setOtpForm] = useState({ emailUser: "", emailPass: "" });
   const [savedOtpForm, setSavedOtpForm] = useState({ emailUser: "", emailPass: "" });
+  const [savedOtpConfigured, setSavedOtpConfigured] = useState(false);
   const [otpSaving, setOtpSaving] = useState(false);
   const [otpTestLoading, setOtpTestLoading] = useState(false);
   const [otpTestEmail, setOtpTestEmail] = useState("");
@@ -566,10 +567,10 @@ export default function Admin() {
       setPrivacyText(loadedPrivacy);
       setSavedTermsText(loadedTerms);
       setSavedPrivacyText(loadedPrivacy);
-      const emailUser = (siteSettings as any).emailUser || "";
-      const emailPass = (siteSettings as any).emailPass || "";
-      setOtpForm({ emailUser, emailPass });
-      setSavedOtpForm({ emailUser, emailPass });
+      const emailUser = siteSettings.emailUser || "";
+      setOtpForm({ emailUser, emailPass: "" });
+      setSavedOtpForm({ emailUser, emailPass: "" });
+      setSavedOtpConfigured(Boolean(siteSettings.emailPassConfigured));
     }
   }, [siteSettings]);
 
@@ -1103,8 +1104,18 @@ export default function Admin() {
 
   const handleSaveOtp = async (e: React.FormEvent) => {
     e.preventDefault(); setOtpSaving(true);
-    updateSettings.mutate({ emailUser: otpForm.emailUser, emailPass: otpForm.emailPass } as any, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }); setSavedOtpForm({ ...otpForm }); toast({ title: "تم حفظ إعدادات البريد", duration: 2000 }); setOtpSaving(false); },
+    updateSettings.mutate({
+      emailUser: otpForm.emailUser,
+      ...(otpForm.emailPass ? { emailPass: otpForm.emailPass } : {}),
+    }, {
+      onSuccess: (savedSettings) => {
+        queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+        setOtpForm({ emailUser: otpForm.emailUser, emailPass: "" });
+        setSavedOtpForm({ emailUser: otpForm.emailUser, emailPass: "" });
+        setSavedOtpConfigured(Boolean(savedSettings.emailPassConfigured));
+        toast({ title: "تم حفظ إعدادات البريد", duration: 2000 });
+        setOtpSaving(false);
+      },
       onError: () => { toast({ variant: "destructive", title: "خطأ في الحفظ", duration: 2000 }); setOtpSaving(false); },
     });
   };
@@ -1639,9 +1650,11 @@ export default function Admin() {
                   <h1 className="text-2xl font-bold">المستخدمين</h1>
                   <p className="text-muted-foreground text-sm mt-1">{safeUsers.length} مستخدم</p>
                 </div>
-                <Button size="sm" onClick={() => setCreateAdminOpen(true)} className="gap-1.5">
-                  <UserPlus className="w-4 h-4" /> إضافة أدمن
-                </Button>
+                {isMainAdmin && (
+                  <Button size="sm" onClick={() => setCreateAdminOpen(true)} className="gap-1.5">
+                    <UserPlus className="w-4 h-4" /> إضافة أدمن
+                  </Button>
+                )}
               </div>
               <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
                 <div className="divide-y">
@@ -1661,12 +1674,16 @@ export default function Admin() {
                         {user.role === "admin" ? "مدير" : "مستخدم"}
                       </Badge>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <Button variant="outline" size="icon" className="h-8 w-8" title={user.role === "admin" ? "إزالة من المديرين" : "ترقية لمدير"} onClick={() => handleToggleRole(user.id, user.role)}>
-                          {user.role === "admin" ? <ShieldOff className="h-3.5 w-3.5 text-orange-500" /> : <ShieldCheck className="h-3.5 w-3.5 text-green-600" />}
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteUser(user.id)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {isMainAdmin && (
+                          <Button variant="outline" size="icon" className="h-8 w-8" title={user.role === "admin" ? "إزالة من المديرين" : "ترقية لمدير"} onClick={() => handleToggleRole(user.id, user.role)}>
+                            {user.role === "admin" ? <ShieldOff className="h-3.5 w-3.5 text-orange-500" /> : <ShieldCheck className="h-3.5 w-3.5 text-green-600" />}
+                          </Button>
+                        )}
+                        {user.id !== currentUser?.id && (isMainAdmin || (user.role !== "admin" && user.role !== "subadmin")) && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteUser(user.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -2075,13 +2092,12 @@ export default function Admin() {
                       type="password"
                       value={otpForm.emailPass}
                       onChange={e => setOtpForm(f => ({ ...f, emailPass: e.target.value }))}
-                      placeholder="xsmtpsib-..."
+                      placeholder={savedOtpConfigured ? "اتركه فارغاً للاحتفاظ بالمفتاح الحالي" : "أدخل مفتاح SMTP"}
                       dir="ltr"
-                      required
                     />
                     <p className="text-xs text-muted-foreground">مفتاح السر الخاص بخدمة الإرسال أو App Password</p>
                   </div>
-                  {(otpForm.emailUser !== savedOtpForm.emailUser || otpForm.emailPass !== savedOtpForm.emailPass) && (
+                  {(otpForm.emailUser !== savedOtpForm.emailUser || Boolean(otpForm.emailPass)) && (
                     <Button type="submit" disabled={otpSaving} className="gap-1.5">
                       {otpSaving ? "جاري الحفظ..." : "حفظ الإعدادات"}
                     </Button>
@@ -2093,10 +2109,10 @@ export default function Admin() {
                 <h2 className="font-bold mb-1">حالة الإعداد</h2>
                 <p className="text-sm text-muted-foreground mb-4">المصدر الفعلي الذي يُستخدم عند الإرسال (DB يأخذ الأولوية على .env)</p>
                 <div className="space-y-2">
-                  <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${savedOtpForm.emailUser ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
-                    <div className={`w-2.5 h-2.5 rounded-full ${savedOtpForm.emailUser ? "bg-green-500" : "bg-amber-400"}`} />
+                  <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${savedOtpForm.emailUser || savedOtpConfigured ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                    <div className={`w-2.5 h-2.5 rounded-full ${savedOtpForm.emailUser || savedOtpConfigured ? "bg-green-500" : "bg-amber-400"}`} />
                     <div>
-                      <p className="text-sm font-medium">{savedOtpForm.emailUser ? "إعداد DB" : "لم يُضبط في DB"}</p>
+                      <p className="text-sm font-medium">{savedOtpForm.emailUser || savedOtpConfigured ? "إعداد DB" : "لم يُضبط في DB"}</p>
                       <p className="text-xs text-muted-foreground">{savedOtpForm.emailUser ? savedOtpForm.emailUser : "سيُستخدم EMAIL_USER من متغيرات البيئة كـ fallback"}</p>
                     </div>
                   </div>
