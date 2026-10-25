@@ -16,8 +16,22 @@ import { createCanvas } from "@napi-rs/canvas";
 const router: IRouter = Router();
 const SERIAL_NUMBER_PATTERN = /^AW-CERT-\d{4}-\d{6}$/;
 const UPLOADED_CERTIFICATE_TEMPLATE_NAME = "قالب توثيق صور جاهزة";
+const RESERVED_CODE_TEMPLATE_NAME = "قالب أكواد محجوزة";
 const MAX_BULK_NAME_ROWS = 200;
 const MAX_IMAGE_EXPORT_ROWS = 200;
+const CERTIFICATE_IMAGE_HIDDEN_ELEMENTS = [
+  "logo",
+  "certificateTitle",
+  "recipientName",
+  "programTitle",
+  "issuerName",
+  "issueDate",
+  "serialNumber",
+  "qrCode",
+  "signature",
+  "signatures",
+  "partners",
+];
 const DEFAULT_VERIFY_SETTINGS = {
   pageTitle: "التحقق من الشهادات",
   pageSubtitle: "تأكد من صحة الشهادة وحالتها بالبحث عن رقمها أو بمسح رمز QR المطبوع عليها.",
@@ -355,10 +369,10 @@ async function fetchImageBuffer(url?: string | null): Promise<Buffer | undefined
   return Buffer.from(arrayBuffer);
 }
 
-async function generateSerialNumber(): Promise<string> {
+async function generateSerialNumber(executor: Pick<typeof db, "execute"> = db): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `AW-CERT-${year}-`;
-  const result = (await db.execute(sql`
+  const result = (await executor.execute(sql`
     SELECT nextval('certificate_issue_serial_seq') AS count
   `)) as any;
 
@@ -440,7 +454,7 @@ async function makeCertificatesWorkbook(items: any[], fileExtension = "pdf"): Pr
     item.recipientName,
     item.programTitle,
     item.issueDate ? new Date(item.issueDate).toISOString() : "",
-    item.deletedAt ? "في سلة المحذوفات" : item.status === "issued" ? "سارية" : item.status === "cancelled" ? "ملغاة" : "مسودة",
+    item.deletedAt ? "في سلة المحذوفات" : item.status === "issued" ? "سارية" : item.status === "cancelled" ? "ملغاة" : item.status === "reserved" ? "محجوزة" : "مسودة",
     item.issuerName,
     (Array.isArray(item.metadata?.partnerSnapshots) ? item.metadata.partnerSnapshots : []).map((partner: any) => partner.name).join("، "),
     item.validationUrl,
@@ -466,7 +480,7 @@ async function makeCertificatesWorkbook(items: any[], fileExtension = "pdf"): Pr
 function certificateFilter(req: any, trash = false) {
   const filters: any[] = [trash ? isNotNull(certificateIssuesTable.deletedAt) : isNull(certificateIssuesTable.deletedAt)];
   const status = typeof req.query.status === "string" ? req.query.status : "";
-  if (status && ["issued", "cancelled", "draft"].includes(status)) filters.push(eq(certificateIssuesTable.status, status));
+  if (status && ["issued", "cancelled", "draft", "reserved"].includes(status)) filters.push(eq(certificateIssuesTable.status, status));
   const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
   if (search) {
     const pattern = `%${search.replace(/[%_]/g, "\\$&")}%`;
@@ -877,9 +891,10 @@ router.get("/certificates/admin/stats", async (req, res): Promise<void> => {
       if (row.status === "issued") result.issued += 1;
       else if (row.status === "cancelled") result.cancelled += 1;
       else if (row.status === "draft") result.drafts += 1;
+      else if (row.status === "reserved") result.reserved += 1;
     }
     return result;
-  }, { total: 0, issued: 0, cancelled: 0, drafts: 0, trash: 0 });
+  }, { total: 0, issued: 0, cancelled: 0, drafts: 0, reserved: 0, trash: 0 });
   res.json(stats);
 });
 
@@ -1227,7 +1242,7 @@ router.get("/certificates/verify", async (req, res): Promise<void> => {
   }
 
   if (issue.status !== "issued") {
-    if (issue.status === "draft") {
+    if (issue.status !== "cancelled") {
       res.status(404).json({ valid: false, error: settings.notFoundMessage });
       return;
     }
@@ -1860,6 +1875,237 @@ router.post("/certificates/bulk-issue-images", async (req, res): Promise<void> =
   res.status(201).json({ count: certificates.length, certificates });
 });
 
+router.post("/certificates/reserve", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
+  const body = req.body ?? {};
+  const hasCount = Object.prototype.hasOwnProperty.call(body, "count");
+  const hasRows = Object.prototype.hasOwnProperty.call(body, "rows");
+  if (hasCount === hasRows) {
+    res.status(400).json({ error: "أرسل عدد الأكواد أو قائمة الأسماء، وليس الاثنين معاً" });
+    return;
+  }
+
+  let rows: { name: string; email: string | null }[];
+  if (hasCount) {
+    if (!Number.isInteger(body.count) || body.count < 1 || body.count > MAX_BULK_NAME_ROWS) {
+      res.status(400).json({ error: `عدد الأكواد يجب أن يكون بين 1 و${MAX_BULK_NAME_ROWS}` });
+      return;
+    }
+    rows = Array.from({ length: body.count }, () => ({ name: "بدون اسم", email: null }));
+  } else {
+    if (!Array.isArray(body.rows) || body.rows.length < 1 || body.rows.length > MAX_BULK_NAME_ROWS) {
+      res.status(400).json({ error: `قائمة الأسماء يجب أن تحتوي من 1 إلى ${MAX_BULK_NAME_ROWS} صف` });
+      return;
+    }
+    rows = [];
+    for (const row of body.rows) {
+      if (!row || typeof row !== "object" ||
+          (row.name !== undefined && typeof row.name !== "string") ||
+          (row.email !== undefined && typeof row.email !== "string")) {
+        res.status(400).json({ error: "يوجد صف باسم أو بريد إلكتروني غير صالح" });
+        return;
+      }
+      const name = typeof row.name === "string" ? row.name.trim().replace(/\s+/g, " ").slice(0, 200) : "";
+      const email = typeof row.email === "string" ? row.email.trim().slice(0, 320) : "";
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.status(400).json({ error: "يوجد بريد إلكتروني غير صالح ضمن قائمة الحجز" });
+        return;
+      }
+      rows.push({ name: name || "بدون اسم", email: email || null });
+    }
+  }
+
+  if (body.programTitle !== undefined && typeof body.programTitle !== "string" ||
+      body.issuerName !== undefined && typeof body.issuerName !== "string" ||
+      body.issueDate !== undefined && typeof body.issueDate !== "string") {
+    res.status(400).json({ error: "بيانات الدورة أو التاريخ غير صالحة" });
+    return;
+  }
+  const issueDate = typeof body.issueDate === "string" && body.issueDate.trim()
+    ? parseCertificateDate(body.issueDate)
+    : new Date();
+  if (!issueDate) {
+    res.status(400).json({ error: "تاريخ الإصدار غير صالح" });
+    return;
+  }
+  const programTitle = typeof body.programTitle === "string" && body.programTitle.trim()
+    ? body.programTitle.trim().slice(0, 300)
+    : "توثيق شهادة";
+  const issuerName = typeof body.issuerName === "string" && body.issuerName.trim()
+    ? body.issuerName.trim().slice(0, 200)
+    : "Arkan Web";
+  const { userId } = getSessionUser(req);
+
+  const certificates = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(62142, 31008)`);
+    let [template] = await tx.select().from(certificateTemplatesTable)
+      .where(eq(certificateTemplatesTable.name, RESERVED_CODE_TEMPLATE_NAME))
+      .for("update")
+      .limit(1);
+    if (!template) {
+      [template] = await tx.insert(certificateTemplatesTable).values({
+        name: RESERVED_CODE_TEMPLATE_NAME,
+        orientation: "landscape",
+        width: 1200,
+        height: 800,
+        layoutConfig: DEFAULT_LAYOUT,
+        createdBy: userId ?? null,
+      }).returning();
+    }
+
+    const created = [];
+    for (const row of rows) {
+      const serialNumber = await generateSerialNumber(tx);
+      const validationUrl = buildValidationUrl(serialNumber);
+      const [issue] = await tx.insert(certificateIssuesTable).values({
+        templateId: template.id,
+        serialNumber,
+        validationUrl,
+        qrCodeUrl: validationUrl,
+        recipientName: row.name,
+        recipientEmail: row.email,
+        programTitle,
+        issuerName,
+        issueDate,
+        status: "reserved",
+        metadata: {
+          signatures: [],
+          partnerIds: [],
+          partnerSnapshots: [],
+          source: "reserved-code",
+        },
+      }).returning();
+      created.push(issue);
+    }
+    return created;
+  });
+
+  res.status(201).json({ count: certificates.length, certificates });
+});
+
+router.post("/certificates/attach-images", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
+  const items = req.body?.items;
+  if (!Array.isArray(items) || items.length < 1 || items.length > 50) {
+    res.status(400).json({ error: "أرسل من 1 إلى 50 صورة لربطها بالأكواد" });
+    return;
+  }
+
+  const updated: any[] = [];
+  const errors: { serialNumber: string; reason: string }[] = [];
+  for (const item of items) {
+    const serialNumber = typeof item?.serialNumber === "string" ? item.serialNumber.trim() : "";
+    const fail = (reason: string) => errors.push({ serialNumber, reason });
+    if (!SERIAL_NUMBER_PATTERN.test(serialNumber)) {
+      fail("رقم التوثيق غير صالح");
+      continue;
+    }
+    if (!isUploadedCertificateImage(item.backgroundUrl)) {
+      fail("ارفع صورة الشهادة إلى مخزن الشهادات أولاً");
+      continue;
+    }
+    if (!Number.isFinite(item.width) || !Number.isFinite(item.height) || item.width < 1 || item.height < 1) {
+      fail("أبعاد صورة الشهادة غير صالحة");
+      continue;
+    }
+    if (["recipientName", "programTitle", "issuerName", "issueDate", "recipientEmail"].some(
+      (field) => item[field] !== undefined && item[field] !== null && typeof item[field] !== "string",
+    )) {
+      fail("بيانات الشهادة غير صالحة");
+      continue;
+    }
+    const submittedEmail = typeof item.recipientEmail === "string" ? item.recipientEmail.trim().slice(0, 320) : "";
+    if (submittedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submittedEmail)) {
+      fail("البريد الإلكتروني غير صالح");
+      continue;
+    }
+    const submittedDate = typeof item.issueDate === "string" && item.issueDate.trim()
+      ? parseCertificateDate(item.issueDate)
+      : undefined;
+    if (typeof item.issueDate === "string" && item.issueDate.trim() && !submittedDate) {
+      fail("تاريخ الإصدار غير صالح");
+      continue;
+    }
+    const width = clamp(Math.round(item.width), 300, 5000);
+    const height = clamp(Math.round(item.height), 300, 5000);
+    const orientation = item.orientation === "portrait" || item.orientation === "landscape"
+      ? item.orientation
+      : height > width ? "portrait" : "landscape";
+
+    try {
+      const issue = await db.transaction(async (tx) => {
+        const [reserved] = await tx.select().from(certificateIssuesTable)
+          .where(and(
+            eq(certificateIssuesTable.serialNumber, serialNumber),
+            eq(certificateIssuesTable.status, "reserved"),
+            isNull(certificateIssuesTable.deletedAt),
+          ))
+          .for("update")
+          .limit(1);
+        if (!reserved) throw new Error("الكود غير موجود أو لم يعد محجوزاً");
+
+        const submittedName = typeof item.recipientName === "string"
+          ? item.recipientName.trim().replace(/\s+/g, " ").slice(0, 200)
+          : "";
+        const recipientName = submittedName || reserved.recipientName;
+        if (!recipientName || recipientName === "بدون اسم") {
+          throw new Error("أدخل اسم المستفيد قبل إصدار الشهادة");
+        }
+        const metadata: Record<string, any> = reserved.metadata && typeof reserved.metadata === "object"
+          ? reserved.metadata as Record<string, any>
+          : {};
+        const oldLayout = metadata.layoutConfig && typeof metadata.layoutConfig === "object"
+          ? metadata.layoutConfig
+          : {};
+        const nextMetadata = {
+          ...metadata,
+          backgroundUrl: item.backgroundUrl,
+          width,
+          height,
+          orientation,
+          source: "attached-certificate-image",
+          layoutConfig: {
+            ...oldLayout,
+            hiddenElements: CERTIFICATE_IMAGE_HIDDEN_ELEMENTS,
+          },
+        };
+        const [result] = await tx.update(certificateIssuesTable)
+          .set({
+            recipientName,
+            ...(typeof item.programTitle === "string" && item.programTitle.trim()
+              ? { programTitle: item.programTitle.trim().slice(0, 300) }
+              : {}),
+            ...(typeof item.issuerName === "string" && item.issuerName.trim()
+              ? { issuerName: item.issuerName.trim().slice(0, 200) }
+              : {}),
+            ...(submittedDate ? { issueDate: submittedDate } : {}),
+            ...(submittedEmail ? { recipientEmail: submittedEmail } : {}),
+            status: "issued",
+            metadata: nextMetadata,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(certificateIssuesTable.id, reserved.id), eq(certificateIssuesTable.status, "reserved")))
+          .returning();
+        if (!result) throw new Error("تعذر تحديث الكود المحجوز");
+        return result;
+      });
+      updated.push(issue);
+    } catch (error) {
+      fail(error instanceof Error ? error.message : "تعذر ربط صورة الشهادة");
+    }
+  }
+
+  res.status(200).json({ updated, errors });
+});
+
 router.get("/certificates/export-zip", async (req, res): Promise<void> => {
   if (!(await ensureAdmin(req))) {
     res.status(403).json({ error: "غير مصرح" });
@@ -1881,7 +2127,7 @@ router.get("/certificates/export-zip", async (req, res): Promise<void> => {
       .where(certificateFilter(req))
       .orderBy(desc(certificateIssuesTable.createdAt));
 
-  const printableItems = items.filter((item) => item.status !== "draft");
+  const printableItems = items.filter((item) => item.status === "issued" || item.status === "cancelled");
   if (printableItems.length === 0) {
     res.status(404).json({ error: "لا توجد شهادات صادرة مطابقة للتنزيل" });
     return;
@@ -1916,6 +2162,51 @@ router.get("/certificates/export-zip", async (req, res): Promise<void> => {
   res.end(zipBuffer);
 });
 
+router.get("/certificates/reserved-export", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+
+  const idsParam = typeof req.query.ids === "string" ? req.query.ids.trim() : "";
+  const ids = idsParam ? [...new Set(idsParam.split(",").map((value) => Number(value.trim())))] : [];
+  if (idsParam && (ids.length === 0 || ids.some((id) => !Number.isInteger(id) || id < 1))) {
+    res.status(400).json({ error: "قائمة أرقام الأكواد غير صالحة" });
+    return;
+  }
+  const items = ids.length
+    ? await db.select().from(certificateIssuesTable).where(and(
+      inArray(certificateIssuesTable.id, ids),
+      eq(certificateIssuesTable.status, "reserved"),
+      isNull(certificateIssuesTable.deletedAt),
+    )).orderBy(certificateIssuesTable.id)
+    : await db.select().from(certificateIssuesTable).where(and(
+      eq(certificateIssuesTable.status, "reserved"),
+      isNull(certificateIssuesTable.deletedAt),
+    )).orderBy(certificateIssuesTable.id);
+  if (!items.length) {
+    res.status(404).json({ error: "لا توجد أكواد محجوزة للتنزيل" });
+    return;
+  }
+
+  const zip = new JSZip();
+  for (const issue of items) {
+    const namePrefix = issue.recipientName && issue.recipientName !== "بدون اسم"
+      ? `${certificateFileName(issue.recipientName, "certificate").slice(0, 80)}-${issue.serialNumber}`
+      : issue.serialNumber;
+    zip.file(`${certificateFileName(namePrefix, issue.serialNumber)}.png`, await QRCode.toBuffer(
+      issue.validationUrl,
+      { type: "png", width: 1000, margin: 1 },
+    ));
+  }
+  zip.file("codes.xlsx", await makeCertificatesWorkbook(items, "png"));
+  const archive = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="reserved-certificate-codes-${Date.now()}.zip"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.end(archive);
+});
+
 router.get("/certificates/export-images-zip", async (req, res): Promise<void> => {
   if (!(await ensureAdmin(req))) {
     res.status(403).json({ error: "غير مصرح" });
@@ -1943,7 +2234,7 @@ router.get("/certificates/export-images-zip", async (req, res): Promise<void> =>
     : await db.select().from(certificateIssuesTable)
       .where(certificateFilter(req))
       .orderBy(desc(certificateIssuesTable.createdAt));
-  const printableItems = items.filter((item) => item.status !== "draft");
+  const printableItems = items.filter((item) => item.status === "issued" || item.status === "cancelled");
   if (!printableItems.length) {
     res.status(404).json({ error: "لا توجد شهادات صادرة مطابقة للتنزيل" });
     return;
@@ -2015,7 +2306,7 @@ router.get("/certificates/:id/export", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [issue] = await db.select().from(certificateIssuesTable)
     .where(and(eq(certificateIssuesTable.id, id), isNull(certificateIssuesTable.deletedAt))).limit(1);
-  if (!issue || issue.status === "draft") {
+  if (!issue || issue.status === "draft" || issue.status === "reserved") {
     res.status(404).json({ error: "الشهادة غير موجودة" });
     return;
   }
@@ -2094,7 +2385,7 @@ router.get("/certificates/:id/preview", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [issue] = await db.select().from(certificateIssuesTable)
     .where(and(eq(certificateIssuesTable.id, id), isNull(certificateIssuesTable.deletedAt))).limit(1);
-  if (!issue) {
+  if (!issue || issue.status === "reserved") {
     res.status(404).json({ error: "الشهادة غير موجودة" });
     return;
   }

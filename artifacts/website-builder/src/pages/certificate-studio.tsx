@@ -86,6 +86,18 @@ type UploadedCertificate = {
   height: number;
   orientation: "portrait" | "landscape";
 };
+type ReservedImageUpload = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  recipientName: string;
+  serialNumber: string;
+  matched: boolean;
+  uploadedUrl?: string;
+  width: number;
+  height: number;
+  orientation: "portrait" | "landscape";
+};
 
 const initialBoxes: Record<string, Box> = {
   logo: { x: 8, y: 8, width: 18, height: 12 },
@@ -381,7 +393,7 @@ export default function CertificateStudio() {
   const [issues, setIssues] = useState<CertificateIssue[]>([]);
   const [trashIssues, setTrashIssues] = useState<CertificateIssue[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
-  const [stats, setStats] = useState({ total: 0, issued: 0, cancelled: 0, drafts: 0, trash: 0 });
+  const [stats, setStats] = useState({ total: 0, issued: 0, cancelled: 0, drafts: 0, reserved: 0, trash: 0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [referenceTemplateLoading, setReferenceTemplateLoading] = useState(false);
@@ -423,7 +435,19 @@ export default function CertificateStudio() {
   const [bulkPartnerIds, setBulkPartnerIds] = useState<number[]>([]);
   const [bulkNameIssuing, setBulkNameIssuing] = useState(false);
   const [imageExporting, setImageExporting] = useState<string | null>(null);
+  const [reservationMode, setReservationMode] = useState<"count" | "names">("count");
+  const [reservationCount, setReservationCount] = useState("3");
+  const [reservationNames, setReservationNames] = useState("");
+  const [reservationProgramTitle, setReservationProgramTitle] = useState("");
+  const [reservationIssuerName, setReservationIssuerName] = useState("");
+  const [reservationIssueDate, setReservationIssueDate] = useState("");
+  const [reservationBusy, setReservationBusy] = useState(false);
+  const [newlyReserved, setNewlyReserved] = useState<CertificateIssue[]>([]);
+  const [reservedImageUploads, setReservedImageUploads] = useState<ReservedImageUpload[]>([]);
+  const [attachingImages, setAttachingImages] = useState(false);
+  const [attachmentErrors, setAttachmentErrors] = useState<{ serialNumber: string; reason: string }[]>([]);
   const uploadedCertificatesRef = useRef<UploadedCertificate[]>([]);
+  const reservedImageUploadsRef = useRef<ReservedImageUpload[]>([]);
   const [bulkLayout, setBulkLayout] = useState<Record<string, any>>({
     ...initialBoxes,
     hiddenElements: certificateElements
@@ -441,6 +465,7 @@ export default function CertificateStudio() {
     [templates, bulkTemplateId],
   );
   const selectedPartnerRecords = partners.filter((partner) => selectedPartners.includes(partner.id));
+  const reservedIssues = issues.filter((issue) => issue.status === "reserved" && !issue.deletedAt);
 
   const refresh = async () => {
     const [templateData, issueData, partnerData, statsData] = await Promise.all([
@@ -494,6 +519,214 @@ export default function CertificateStudio() {
   const updateBulkNameText = (value: string) => {
     setBulkText(value);
     setBulkNameRows(parseNameLines(value).map((row) => ({ ...row, id: crypto.randomUUID() })));
+  };
+
+  const downloadReservedCodes = async (ids: number[] = []) => {
+    try {
+      const query = ids.length ? `?${new URLSearchParams({ ids: ids.join(",") }).toString()}` : "";
+      const response = await apiFetch(`/api/certificates/reserved-export${query}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "reserved-certificate-codes.zip";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      toast({ title: "بدأ تنزيل QR وملف الأكواد" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر تنزيل الأكواد المحجوزة", description: (error as Error).message });
+    }
+  };
+
+  const reserveCertificates = async () => {
+    const rows = parseNameLines(reservationNames);
+    if (reservationMode === "names" && (rows.length < 1 || rows.length > 200)) {
+      toast({ variant: "destructive", title: "أدخل من 1 إلى 200 اسم" });
+      return;
+    }
+    const count = Number(reservationCount);
+    if (reservationMode === "count" && (!Number.isInteger(count) || count < 1 || count > 200)) {
+      toast({ variant: "destructive", title: "عدد الأكواد يجب أن يكون بين 1 و200" });
+      return;
+    }
+    setReservationBusy(true);
+    try {
+      const payload = await apiFetchJson<{ certificates: CertificateIssue[] }>("/api/certificates/reserve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(reservationMode === "count" ? { count } : { rows }),
+          ...(reservationProgramTitle.trim() ? { programTitle: reservationProgramTitle.trim() } : {}),
+          ...(reservationIssuerName.trim() ? { issuerName: reservationIssuerName.trim() } : {}),
+          ...(reservationIssueDate ? { issueDate: reservationIssueDate } : {}),
+        }),
+      });
+      setNewlyReserved(payload.certificates);
+      await refresh();
+      toast({ title: `تم حجز ${payload.certificates.length} كود توثيق` });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر حجز الأكواد", description: (error as Error).message });
+    } finally {
+      setReservationBusy(false);
+    }
+  };
+
+  const addReservedImageFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const selectedFiles = Array.from(files);
+    if (reservedImageUploads.length + selectedFiles.length > 50) {
+      toast({ variant: "destructive", title: "الحد الأقصى 50 صورة في الدفعة الواحدة" });
+      return;
+    }
+    const prepared: ReservedImageUpload[] = [];
+    try {
+      for (const file of selectedFiles) {
+        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+          throw new Error(`صيغة ${file.name} غير مدعومة؛ استخدم JPG أو PNG أو WebP.`);
+        }
+        if (file.size > 8 * 1024 * 1024) {
+          throw new Error(`حجم ${file.name} أكبر من 8 ميجابايت.`);
+        }
+        const previewUrl = URL.createObjectURL(file);
+        const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+          image.onerror = () => {
+            URL.revokeObjectURL(previewUrl);
+            reject(new Error(`تعذرت قراءة صورة ${file.name}.`));
+          };
+          image.src = previewUrl;
+        });
+        const fileStem = file.name.replace(/\.[^.]+$/, "");
+        const serialNumber = fileStem.match(/AW-CERT-\d{4}-\d{6}/)?.[0] || "";
+        const normalizedName = (value: string) => value.normalize("NFC").trim().replace(/\s+/g, " ");
+        const reserved = serialNumber
+          ? reservedIssues.find((issue) => issue.serialNumber === serialNumber)
+          : reservedIssues.find((issue) => normalizedName(issue.recipientName) === normalizedName(fileStem));
+        const selectedSerial = reserved?.serialNumber || "";
+        const derivedName = serialNumber
+          ? fileStem.replace(serialNumber, "").replace(/[-_\s]+/g, " ").trim()
+          : fileStem;
+        prepared.push({
+          id: crypto.randomUUID(),
+          file,
+          previewUrl,
+          recipientName: reserved && reserved.recipientName !== "بدون اسم"
+            ? reserved.recipientName
+            : derivedName,
+          serialNumber: selectedSerial,
+          matched: Boolean(reserved),
+          width: dimensions.width,
+          height: dimensions.height,
+          orientation: dimensions.height > dimensions.width ? "portrait" : "landscape",
+        });
+      }
+      setReservedImageUploads((current) => [...current, ...prepared]);
+      setAttachmentErrors([]);
+    } catch (error) {
+      prepared.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+      toast({ variant: "destructive", title: "تعذر إضافة الصور", description: (error as Error).message });
+    }
+  };
+
+  const removeReservedImage = (id: string) => {
+    const removed = reservedImageUploads.find((image) => image.id === id);
+    if (removed) URL.revokeObjectURL(removed.previewUrl);
+    setReservedImageUploads((current) => {
+      return current.filter((image) => image.id !== id);
+    });
+  };
+
+  const attachReservedImages = async () => {
+    if (!reservedImageUploads.length) return;
+    const serials = reservedImageUploads.map((image) => image.serialNumber).filter(Boolean);
+    const duplicateSerial = serials.find((serial, index) => serials.indexOf(serial) !== index);
+    if (duplicateSerial) {
+      setAttachmentErrors([{ serialNumber: duplicateSerial, reason: "تم اختيار الكود نفسه لأكثر من صورة" }]);
+      return;
+    }
+    setAttachingImages(true);
+    setAttachmentErrors([]);
+    const errors: { serialNumber: string; reason: string }[] = [];
+    const items: Record<string, unknown>[] = [];
+    for (const image of reservedImageUploads) {
+      const reserved = reservedIssues.find((issue) => issue.serialNumber === image.serialNumber);
+      if (!reserved) {
+        errors.push({ serialNumber: image.serialNumber, reason: "اختر كوداً محجوزاً لهذه الصورة" });
+        continue;
+      }
+      const recipientName = image.recipientName.trim() || reserved.recipientName;
+      if (!recipientName || recipientName === "بدون اسم") {
+        errors.push({ serialNumber: image.serialNumber, reason: "أدخل اسم المستفيد قبل الإصدار" });
+        continue;
+      }
+      try {
+        let backgroundUrl = image.uploadedUrl;
+        if (!backgroundUrl) {
+          const form = new FormData();
+          form.append("file", image.file);
+          const response = await apiFetch("/api/certificates/upload", { method: "POST", body: form });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || typeof result.publicUrl !== "string") {
+            throw new Error(result.error || "تعذر رفع الصورة");
+          }
+          backgroundUrl = result.publicUrl;
+          setReservedImageUploads((current) => current.map((item) => item.id === image.id
+            ? { ...item, uploadedUrl: backgroundUrl }
+            : item));
+        }
+        items.push({
+          serialNumber: image.serialNumber,
+          backgroundUrl,
+          width: image.width,
+          height: image.height,
+          orientation: image.orientation,
+          recipientName,
+        });
+      } catch (error) {
+        errors.push({
+          serialNumber: image.serialNumber,
+          reason: error instanceof Error ? error.message : "تعذر رفع الصورة",
+        });
+      }
+    }
+
+    let updated: CertificateIssue[] = [];
+    if (items.length) {
+      try {
+        const result = await apiFetchJson<{ updated: CertificateIssue[]; errors: { serialNumber: string; reason: string }[] }>(
+          "/api/certificates/attach-images",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items }),
+          },
+        );
+        updated = result.updated;
+        errors.push(...result.errors);
+      } catch (error) {
+        errors.push({ serialNumber: "", reason: (error as Error).message });
+      }
+    }
+
+    if (updated.length) {
+      const completedSerials = new Set(updated.map((issue) => issue.serialNumber));
+      reservedImageUploads
+        .filter((image) => completedSerials.has(image.serialNumber))
+        .forEach((image) => URL.revokeObjectURL(image.previewUrl));
+      setReservedImageUploads((current) => current.filter((image) => !completedSerials.has(image.serialNumber)));
+      await refresh().catch((error: Error) => {
+        errors.push({ serialNumber: "", reason: `تم الربط لكن تعذر تحديث القائمة: ${error.message}` });
+      });
+      toast({ title: `تم إصدار ${updated.length} شهادة`, description: errors.length ? `تعذر ربط ${errors.length} صورة` : undefined });
+    }
+    setAttachmentErrors(errors);
+    setAttachingImages(false);
   };
 
   const importBulkNameFile = async (file?: File) => {
@@ -674,6 +907,14 @@ export default function CertificateStudio() {
 
   useEffect(() => () => {
     uploadedCertificatesRef.current.forEach((certificate) => URL.revokeObjectURL(certificate.previewUrl));
+  }, []);
+
+  useEffect(() => {
+    reservedImageUploadsRef.current = reservedImageUploads;
+  }, [reservedImageUploads]);
+
+  useEffect(() => () => {
+    reservedImageUploadsRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
   }, []);
 
   useEffect(() => {
@@ -1729,6 +1970,141 @@ export default function CertificateStudio() {
       </section>
 
       <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold">حجز أكواد توثيق</h2>
+            <p className="mt-1 text-sm text-muted-foreground">أنشئ أرقاماً وروابط QR ثابتة قبل تجهيز تصميم الشهادة خارج الموقع.</p>
+          </div>
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">الأكواد المحجوزة: {reservedIssues.length}</span>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" className={`rounded-lg border px-4 py-2 text-sm ${reservationMode === "count" ? "border-primary bg-primary/5 font-semibold text-primary" : ""}`} onClick={() => setReservationMode("count")}>عدد أكواد</button>
+          <button type="button" className={`rounded-lg border px-4 py-2 text-sm ${reservationMode === "names" ? "border-primary bg-primary/5 font-semibold text-primary" : ""}`} onClick={() => setReservationMode("names")}>قائمة أسماء</button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {reservationMode === "count" ? (
+            <Field label="عدد الأكواد (1–200)" type="number" value={reservationCount} onChange={setReservationCount} />
+          ) : (
+            <label className="block space-y-1.5 text-sm sm:col-span-2">
+              <span className="font-medium">الأسماء (اسم في كل سطر، ويمكن إضافة البريد بعد فاصلة)</span>
+              <textarea className="min-h-28 w-full rounded-lg border bg-background px-3 py-2" value={reservationNames} onChange={(event) => setReservationNames(event.target.value)} placeholder={"محمد أحمد, mail@example.com\nسارة علي"} />
+            </label>
+          )}
+          <Field label="اسم الدورة (اختياري)" value={reservationProgramTitle} onChange={setReservationProgramTitle} />
+          <Field label="الجهة (اختياري)" value={reservationIssuerName} onChange={setReservationIssuerName} />
+          <Field label="التاريخ (اختياري)" type="date" value={reservationIssueDate} onChange={setReservationIssueDate} />
+        </div>
+        <button type="button" disabled={reservationBusy} className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60" onClick={() => void reserveCertificates()}>
+          {reservationBusy ? "جارٍ حجز الأكواد..." : "حجز الأكواد"}
+        </button>
+        {newlyReserved.length > 0 && (
+          <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold">تم حجز {newlyReserved.length} كود</p>
+              <button type="button" className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" onClick={() => void downloadReservedCodes(newlyReserved.map((issue) => issue.id))}>تنزيل ZIP للـ QR + Excel</button>
+            </div>
+            <div className="max-h-64 overflow-auto rounded-lg border bg-white">
+              {newlyReserved.map((issue) => (
+                <div key={issue.id} className="flex flex-wrap items-center gap-2 border-b p-2 text-sm last:border-b-0">
+                  <span className="font-mono" dir="ltr">{issue.serialNumber}</span>
+                  <span className="flex-1">{issue.recipientName}</span>
+                  <a className="text-primary underline" href={issue.validationUrl} target="_blank" rel="noreferrer">رابط التحقق</a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold">الأكواد المحجوزة التي لم تُربط بصورة ({reservedIssues.length})</h3>
+            {reservedIssues.length > 0 && <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={() => void downloadReservedCodes(reservedIssues.map((issue) => issue.id))}>تنزيل كل الأكواد المحجوزة</button>}
+          </div>
+          <div className="max-h-72 divide-y overflow-auto rounded-xl border">
+            {reservedIssues.map((issue) => (
+              <div key={issue.id} className="flex flex-wrap items-center gap-2 p-3 text-sm">
+                <span className="font-mono" dir="ltr">{issue.serialNumber}</span>
+                <span className="min-w-24 flex-1">{issue.recipientName}</span>
+                {issue.recipientEmail && <span className="text-muted-foreground" dir="ltr">{issue.recipientEmail}</span>}
+                <a className="text-primary underline" href={issue.validationUrl} target="_blank" rel="noreferrer">رابط التحقق</a>
+                <button type="button" className="text-primary underline" onClick={() => void downloadReservedCodes([issue.id])}>تنزيل QR + Excel</button>
+              </div>
+            ))}
+            {!reservedIssues.length && <p className="p-4 text-center text-sm text-muted-foreground">لا توجد أكواد محجوزة حالياً.</p>}
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-bold">رفع الشهادات الجاهزة وربطها بالأكواد</h2>
+          <p className="mt-1 text-sm text-muted-foreground">تتم مطابقة رقم AW-CERT أو الاسم الكامل من اسم الملف تلقائياً، ويمكنك اختيار الكود يدوياً قبل الإصدار.</p>
+        </div>
+        <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-5 text-center hover:bg-muted/30">
+          <span className="font-semibold">{reservedImageUploads.length ? `إضافة صور أخرى (${reservedImageUploads.length}/50)` : "اختيار صور الشهادات الجاهزة"}</span>
+          <span className="text-xs text-muted-foreground">JPG أو PNG أو WebP — حتى 8 ميجابايت للصورة، وبحد أقصى 50 صورة</span>
+          <input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={attachingImages} onChange={(event) => {
+            void addReservedImageFiles(event.target.files);
+            event.target.value = "";
+          }} />
+        </label>
+        {reservedImageUploads.length > 0 && (
+          <div className="space-y-3">
+            {reservedImageUploads.map((image, index) => {
+              const currentMatch = reservedIssues.find((issue) => issue.serialNumber === image.serialNumber);
+              const usedByOtherImage = (serial: string) => reservedImageUploads.some((other) => other.id !== image.id && other.serialNumber === serial);
+              return (
+                <div key={image.id} className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[150px_1fr]">
+                  <div className="space-y-2">
+                    <div className="overflow-hidden rounded-lg border bg-muted" style={{ aspectRatio: `${image.width} / ${image.height}` }}>
+                      <img src={image.previewUrl} alt={`معاينة الصورة ${index + 1}`} className="h-full w-full object-contain" />
+                    </div>
+                    <p className="break-all text-xs text-muted-foreground">{image.file.name}</p>
+                  </div>
+                  <div className="space-y-3">
+                    <div className={`rounded-lg px-3 py-2 text-sm ${currentMatch ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
+                      {currentMatch ? image.matched ? "تمت المطابقة تلقائياً" : "تم اختيار الكود يدوياً" : "لم تتم المطابقة — اختر كوداً محجوزاً"}
+                    </div>
+                    <label className="block space-y-1.5 text-sm">
+                      <span className="font-medium">كود التوثيق</span>
+                      <select className="w-full rounded-lg border bg-background px-3 py-2 font-mono" dir="ltr" value={image.serialNumber} onChange={(event) => {
+                        const selected = reservedIssues.find((issue) => issue.serialNumber === event.target.value);
+                        setReservedImageUploads((current) => current.map((item) => item.id === image.id ? {
+                          ...item,
+                          serialNumber: event.target.value,
+                          matched: false,
+                          recipientName: selected && selected.recipientName !== "بدون اسم"
+                            ? selected.recipientName
+                            : item.recipientName,
+                        } : item));
+                      }}>
+                        <option value="">اختر كوداً محجوزاً</option>
+                        {reservedIssues.map((issue) => (
+                          <option key={issue.id} value={issue.serialNumber} disabled={usedByOtherImage(issue.serialNumber)}>
+                            {issue.serialNumber} · {issue.recipientName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <Field label="اسم المستفيد" value={image.recipientName} onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, recipientName: value } : item))} />
+                    <button type="button" className="text-sm text-destructive underline" onClick={() => removeReservedImage(image.id)}>إزالة الصورة</button>
+                  </div>
+                </div>
+              );
+            })}
+            <button type="button" disabled={attachingImages} className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60" onClick={() => void attachReservedImages()}>
+              {attachingImages ? "جارٍ رفع الصور وإصدار الشهادات..." : "إصدار وتوثيق"}
+            </button>
+          </div>
+        )}
+        {attachmentErrors.length > 0 && (
+          <div className="space-y-1 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <p className="font-semibold">تعذر إكمال بعض الصور:</p>
+            {attachmentErrors.map((error, index) => <p key={`${error.serialNumber}-${index}`}>{error.serialNumber ? `${error.serialNumber}: ` : ""}{error.reason}</p>)}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
         <div>
           <h2 className="text-lg font-bold">توثيق شهادة أو أكثر</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -2368,12 +2744,13 @@ export default function CertificateStudio() {
       </div>
 
       <section className="space-y-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
           {[
             ["الإجمالي", stats.total],
             ["صادرة", stats.issued],
             ["ملغاة", stats.cancelled],
             ["مسودات", stats.drafts],
+            ["محجوزة", stats.reserved],
             ["سلة المحذوفات", stats.trash],
           ].map(([label, value]) => (
             <div key={label} className="rounded-lg bg-muted/40 p-3 text-center">
@@ -2418,6 +2795,7 @@ export default function CertificateStudio() {
               <option value="issued">صادرة</option>
               <option value="cancelled">ملغاة</option>
               <option value="draft">مسودات</option>
+              <option value="reserved">محجوزة</option>
             </select>
           </label>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm" disabled={!filteredIssues.length || showTrash} onClick={() => void downloadCollection("zip", selectedIssueIds)}>تنزيل الشهادات PDF بصيغة ZIP (بأسماء المستفيدين)</button>
@@ -2455,7 +2833,7 @@ export default function CertificateStudio() {
             <div key={issue.id} className="flex flex-wrap items-center gap-3 p-3">
               <input type="checkbox" aria-label={`تحديد ${issue.recipientName}`} checked={selectedIssueIds.includes(issue.id)} onChange={(event) => setSelectedIssueIds((selected) => event.target.checked ? [...selected, issue.id] : selected.filter((id) => id !== issue.id))} />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold">{issue.recipientName} <span className="text-xs text-muted-foreground">· {issue.status === "issued" ? "صادرة" : issue.status === "draft" ? "مسودة" : "ملغاة"}</span></p>
+                <p className="font-semibold">{issue.recipientName} <span className="text-xs text-muted-foreground">· {issue.status === "issued" ? "صادرة" : issue.status === "draft" ? "مسودة" : issue.status === "reserved" ? "محجوزة" : "ملغاة"}</span></p>
                 <p className="text-sm text-muted-foreground">{issue.programTitle} · {issue.serialNumber}</p>
                 {showTrash && issue.deletedAt && <p className="text-xs text-muted-foreground">تاريخ الحذف: {new Date(issue.deletedAt).toLocaleDateString("ar-EG")}</p>}
               </div>
@@ -2465,8 +2843,8 @@ export default function CertificateStudio() {
               </>}
               {!showTrash && <>
                 <button className="text-sm text-primary" onClick={() => beginEditCertificate(issue)}>تعديل</button>
-                <button className="text-sm text-primary" onClick={() => openPdf(issue, true)}>معاينة</button>
-                {issue.status !== "draft" && <button className="text-sm text-primary" onClick={() => openPdf(issue, false)}>تنزيل PDF</button>}
+                {issue.status !== "reserved" && <button className="text-sm text-primary" onClick={() => openPdf(issue, true)}>معاينة</button>}
+                {(issue.status === "issued" || issue.status === "cancelled") && <button className="text-sm text-primary" onClick={() => openPdf(issue, false)}>تنزيل PDF</button>}
                 {issue.status === "issued" && <button className="text-sm text-primary disabled:opacity-50" disabled={emailSendingId === issue.id} onClick={() => void emailCertificate(issue)}>{emailSendingId === issue.id ? "جارٍ الإرسال..." : "إرسال بالبريد"}</button>}
                 {issue.status === "draft" && <button className="text-sm text-emerald-700" onClick={() => void issueDraft(issue)}>إصدار</button>}
                 {issue.status === "issued" && <button className="text-sm text-amber-700" onClick={() => void cancelCertificate(issue)}>إلغاء الشهادة</button>}
