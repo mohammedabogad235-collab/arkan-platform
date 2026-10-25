@@ -683,17 +683,36 @@ router.delete("/certificates/templates/:id", async (req, res): Promise<void> => 
   }
 
   const templateId = Number(req.params.id);
-  const [existingIssue] = await db.select({ id: certificateIssuesTable.id })
-    .from(certificateIssuesTable)
-    .where(eq(certificateIssuesTable.templateId, templateId))
-    .limit(1);
-  if (existingIssue) {
-    res.status(409).json({ error: "لا يمكن حذف قالب مرتبط بشهادات صادرة" });
+  if (!Number.isInteger(templateId) || templateId < 1) {
+    res.status(400).json({ error: "معرف القالب غير صالح" });
     return;
   }
-  const [deleted] = await db.delete(certificateTemplatesTable).where(eq(certificateTemplatesTable.id, templateId)).returning();
 
-  if (!deleted) {
+  const result = await db.transaction(async (tx) => {
+    const [template] = await tx.select({ id: certificateTemplatesTable.id })
+      .from(certificateTemplatesTable)
+      .where(eq(certificateTemplatesTable.id, templateId))
+      .for("update")
+      .limit(1);
+    if (!template) return { status: "missing" as const };
+
+    const [existingIssue] = await tx.select({ id: certificateIssuesTable.id })
+      .from(certificateIssuesTable)
+      .where(eq(certificateIssuesTable.templateId, templateId))
+      .limit(1);
+    if (existingIssue) return { status: "in-use" as const };
+
+    const [deleted] = await tx.delete(certificateTemplatesTable)
+      .where(eq(certificateTemplatesTable.id, templateId))
+      .returning({ id: certificateTemplatesTable.id });
+    return deleted ? { status: "deleted" as const } : { status: "missing" as const };
+  });
+
+  if (result.status === "in-use") {
+    res.status(409).json({ error: "لا يمكن حذف قالب مرتبط بشهادة أو مسودة" });
+    return;
+  }
+  if (result.status === "missing") {
     res.status(404).json({ error: "القالب غير موجود" });
     return;
   }

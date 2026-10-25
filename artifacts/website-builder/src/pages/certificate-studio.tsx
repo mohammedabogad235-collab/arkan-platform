@@ -223,6 +223,7 @@ export default function CertificateStudio() {
     setPartners(partnerData);
     setStats(statsData);
     if (!templateId && templateData[0]) setTemplateId(String(templateData[0].id));
+    return templateData;
   };
 
   const loadTrash = async () => {
@@ -402,6 +403,9 @@ export default function CertificateStudio() {
           });
       await refresh();
       setTemplateId(String(result.id));
+      if (!certificateId) {
+        setCertificateForm((current) => ({ ...current, templateId: String(result.id) }));
+      }
       toast({ title: "تم حفظ تصميم القالب" });
     } catch (error) {
       toast({ variant: "destructive", title: "تعذر حفظ القالب", description: (error as Error).message });
@@ -419,6 +423,34 @@ export default function CertificateStudio() {
       toast({ title: "تم نسخ القالب", description: copy.name });
     } catch (error) {
       toast({ variant: "destructive", title: "تعذر نسخ القالب", description: (error as Error).message });
+    }
+  };
+
+  const deleteTemplate = async () => {
+    const selected = templates.find((template) => String(template.id) === templateId);
+    if (!selected) return;
+    if (!window.confirm(`حذف القالب «${selected.name}» نهائياً؟ لا يمكن حذف قالب مرتبط بأي شهادة.`)) return;
+
+    setSaving(true);
+    try {
+      await apiFetchJson(`/api/certificates/templates/${selected.id}`, { method: "DELETE" });
+      setTemplateId("");
+      setTemplateForm(emptyTemplate);
+      if (String(certificateForm.templateId) === String(selected.id)) {
+        setCertificateForm((current) => ({ ...current, templateId: "" }));
+      }
+      applyLayout(initialBoxes);
+      const remainingTemplates = await refresh();
+      setTemplateId(String(remainingTemplates[0]?.id ?? ""));
+      if (!remainingTemplates.length) {
+        setTemplateForm(emptyTemplate);
+        applyLayout(initialBoxes);
+      }
+      toast({ title: "تم حذف القالب" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر حذف القالب", description: (error as Error).message });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -568,6 +600,7 @@ export default function CertificateStudio() {
       toast({ variant: "destructive", title: "احفظ تعديل الشهادة الحالية قبل بدء قالب جديد" });
       return;
     }
+    if (templateId && !window.confirm("سيبدأ هذا التصميم قالباً جديداً بدلاً من القالب المحدد. متابعة؟")) return;
 
     setReferenceTemplateLoading(true);
     try {
@@ -583,6 +616,18 @@ export default function CertificateStudio() {
         throw new Error(uploadResult.error || "تعذر رفع خلفية القالب إلى مخزن الشهادات");
       }
 
+      const referencePartners = partners.filter((partner) => {
+        const normalizedName = partner.name.toLocaleLowerCase().replace(/[\s_-]+/g, "");
+        return /trainova|ترينوفا|تراينوفا|arkan|أركان|اركان/.test(normalizedName);
+      }).slice(0, 2);
+      const partnerLogoBoxes = Object.fromEntries(referencePartners.map((partner, index) => [
+        String(partner.id),
+        { x: index === 0 ? 36 : 52, y: 8, width: 14, height: 16 },
+      ]));
+      const partnerSignatureBoxes = Object.fromEntries(referencePartners.map((partner, index) => [
+        String(partner.id),
+        { x: index === 0 ? 48 : 68, y: 77, width: 18, height: 13 },
+      ]));
       const referenceLayout = {
         ...initialBoxes,
         certificateTitle: { ...initialBoxes.certificateTitle, x: 20, y: 28, width: 60, height: 9 },
@@ -593,6 +638,8 @@ export default function CertificateStudio() {
         serialNumber: { ...initialBoxes.serialNumber, x: 13, y: 84, width: 22, height: 6, align: "left" },
         qrCode: { ...initialBoxes.qrCode, x: 3, y: 77, width: 8, height: 10 },
         certificateTitleText: "شهادة إتمام",
+        partnerLogoBoxes,
+        partnerSignatureBoxes,
         partnerSignatureDefault: { y: 77, height: 13 },
       };
 
@@ -605,10 +652,13 @@ export default function CertificateStudio() {
         backgroundUrl: uploadResult.publicUrl,
       });
       setCertificateForm((current) => ({ ...current, templateId: "" }));
+      setSelectedPartners(referencePartners.map((partner) => partner.id));
       applyLayout(referenceLayout);
       toast({
         title: "تم تجهيز القالب المرجعي",
-        description: "أضف المؤسسات الشريكة والتوقيعات عند إنشاء الشهادة، ثم احفظ القالب.",
+        description: referencePartners.length
+          ? "تم اختيار شركاء TraiNova وArkan الموجودين. راجع المواضع واحفظ القالب."
+          : "أضف سجلات المؤسسات الشريكة أولاً لاستخدام شعاراتها وتوقيعاتها، ثم احفظ القالب.",
       });
     } catch (error) {
       toast({
@@ -910,7 +960,16 @@ export default function CertificateStudio() {
               {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
             </select>
           </label>
-          {templateId && <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={duplicateTemplate}>نسخ القالب المحدد</button>}
+          {templateId && (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-60" disabled={saving} onClick={() => void duplicateTemplate()}>
+                نسخ القالب المحدد
+              </button>
+              <button type="button" className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive disabled:opacity-60" disabled={saving} onClick={() => void deleteTemplate()}>
+                حذف القالب المحدد
+              </button>
+            </div>
+          )}
           <form onSubmit={saveTemplate} className="space-y-3">
             <Field label="اسم القالب" value={templateForm.name} onChange={(value) => updateTemplateField("name", value)} />
             <Field
@@ -938,6 +997,7 @@ export default function CertificateStudio() {
             </div>
             <div className="space-y-2 border-t pt-3">
               <p className="text-sm font-semibold">مواضع العناصر (%)</p>
+              <p className="text-xs text-muted-foreground">اسحب العناصر في المعاينة لتغيير موقعها، أو اضبط الموقع والحجم بالأرقام.</p>
               {[
                 ["certificateTitle", "عنوان الشهادة"],
                 ["recipientName", "اسم المستفيد"],
@@ -1032,7 +1092,18 @@ export default function CertificateStudio() {
             {activeSerial ? (
               <img onPointerDown={(event) => startDrag(event, "qrCode", boxFor(layout, "qrCode", initialBoxes.qrCode))} src={resolveApiUrl(`/api/certificates/qr?serial=${encodeURIComponent(activeSerial)}`)} alt="رمز التحقق QR" className="absolute cursor-move touch-none bg-white" style={{ left: `${boxFor(layout, "qrCode", initialBoxes.qrCode).x}%`, top: `${boxFor(layout, "qrCode", initialBoxes.qrCode).y}%`, width: `${boxFor(layout, "qrCode", initialBoxes.qrCode).width}%`, height: `${boxFor(layout, "qrCode", initialBoxes.qrCode).height}%` }} />
             ) : (
-              <div className="absolute flex items-center justify-center border border-dashed border-slate-400 bg-white/70 text-[clamp(6px,0.7vw,10px)] text-slate-500" style={{ left: `${boxFor(layout, "qrCode", initialBoxes.qrCode).x}%`, top: `${boxFor(layout, "qrCode", initialBoxes.qrCode).y}%`, width: `${boxFor(layout, "qrCode", initialBoxes.qrCode).width}%`, height: `${boxFor(layout, "qrCode", initialBoxes.qrCode).height}%` }}>بعد الإصدار</div>
+              <div
+                onPointerDown={(event) => startDrag(event, "qrCode", boxFor(layout, "qrCode", initialBoxes.qrCode))}
+                className="absolute flex cursor-move touch-none items-center justify-center border border-dashed border-slate-400 bg-white/70 text-[clamp(6px,0.7vw,10px)] text-slate-500"
+                style={{
+                  left: `${boxFor(layout, "qrCode", initialBoxes.qrCode).x}%`,
+                  top: `${boxFor(layout, "qrCode", initialBoxes.qrCode).y}%`,
+                  width: `${boxFor(layout, "qrCode", initialBoxes.qrCode).width}%`,
+                  height: `${boxFor(layout, "qrCode", initialBoxes.qrCode).height}%`,
+                }}
+              >
+                اسحب رمز QR
+              </div>
             )}
             {selectedPartnerRecords.map((partner, index) => {
               const defaultWidth = 70 / Math.max(selectedPartnerRecords.length, 1);
