@@ -214,6 +214,11 @@ export default function Order() {
 
   const requireDeposit = settings?.requireDeposit ?? true;
   const depositPct = settings?.depositPercentageValue ?? 50;
+  const hasFullDiscountCoupon =
+    couponStatus === "valid"
+    && couponData?.discountType === "percentage"
+    && couponData.discountValue >= 100;
+  const shouldCollectPayment = requireDeposit && !hasFullDiscountCoupon;
 
   const form = useForm<z.infer<typeof orderSchema>>({
     resolver: zodResolver(orderSchema),
@@ -256,6 +261,8 @@ export default function Order() {
       }
     } catch {
       setCouponStatus("invalid");
+      setCouponData(null);
+      setAppliedCoupon(null);
       toast({ variant: "destructive", title: "تعذّر التحقق من الكود، حاول مرة أخرى" });
     }
   };
@@ -269,13 +276,15 @@ export default function Order() {
         onSuccess: (data: any) => {
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           const orderId = data?.id ?? data?.order?.id ?? null;
-          if (requireDeposit && orderId) {
+          if (shouldCollectPayment && orderId) {
             setCreatedOrderId(orderId);
             setStep("receipt");
           } else {
             toast({
               title: "تم استلام طلبك بنجاح",
-              description: "سيتم التواصل معك قريباً للبدء في التنفيذ.",
+              description: hasFullDiscountCoupon
+                ? "ستحدد الإدارة قيمة الطلب، ولن يُطلب منك الدفع إذا غطّى الكوبون كامل المبلغ."
+                : "سيتم التواصل معك قريباً للبدء في التنفيذ.",
             });
             setLocation("/my-orders");
           }
@@ -453,44 +462,54 @@ export default function Order() {
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="paymentMethodId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base">
-                          طريقة الدفع {requireDeposit ? <span className="text-amber-600">(مطلوبة للمقدم)</span> : "(اختياري)"}
-                          {watchedCurrency && <span className="text-xs text-muted-foreground ms-2">— حسابات {watchedCurrency === "EGP" ? "🇪🇬 مصر" : "🇸🇦 السعودية"}</span>}
-                        </FormLabel>
-                        {!paymentsLoading && activePaymentMethods.length === 0 ? (
-                          <div className="h-12 flex items-center px-4 rounded-xl border border-dashed text-sm text-muted-foreground bg-muted/20">
-                            لا توجد طرق دفع متاحة لهذه العملة حالياً
-                          </div>
-                        ) : (
-                          <Select
-                            onValueChange={(val) => field.onChange(val ? Number(val) : null)}
-                            value={field.value ? field.value.toString() : ""}
-                          >
-                            <FormControl>
-                              <SelectTrigger className="h-12">
-                                <SelectValue placeholder="اختر طريقة الدفع" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {(Array.isArray(activePaymentMethods) ? activePaymentMethods : []).map(p => (
-                                <SelectItem key={p.id} value={p.id.toString()}>
-                                  {p.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {hasFullDiscountCoupon ? (
+                    <Alert className="border-green-200 bg-green-50">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <AlertTitle className="font-bold text-green-800">لا حاجة لاختيار طريقة دفع الآن</AlertTitle>
+                      <AlertDescription className="text-green-700">
+                        ستحدد الإدارة قيمة الطلب أولاً. إذا غطّى الكوبون كامل القيمة، فلن يُطلب منك دفع أو إرسال بيانات تحويل.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <FormField
+                      control={form.control}
+                      name="paymentMethodId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-base">
+                            طريقة الدفع {requireDeposit ? <span className="text-amber-600">(مطلوبة للمقدم)</span> : "(اختياري)"}
+                            {watchedCurrency && <span className="text-xs text-muted-foreground ms-2">— حسابات {watchedCurrency === "EGP" ? "🇪🇬 مصر" : "🇸🇦 السعودية"}</span>}
+                          </FormLabel>
+                          {!paymentsLoading && activePaymentMethods.length === 0 ? (
+                            <div className="h-12 flex items-center px-4 rounded-xl border border-dashed text-sm text-muted-foreground bg-muted/20">
+                              لا توجد طرق دفع متاحة لهذه العملة حالياً
+                            </div>
+                          ) : (
+                            <Select
+                              onValueChange={(val) => field.onChange(val ? Number(val) : null)}
+                              value={field.value ? field.value.toString() : ""}
+                            >
+                              <FormControl>
+                                <SelectTrigger className="h-12">
+                                  <SelectValue placeholder="اختر طريقة الدفع" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {(Array.isArray(activePaymentMethods) ? activePaymentMethods : []).map(p => (
+                                  <SelectItem key={p.id} value={p.id.toString()}>
+                                    {p.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
-                  {selectedPaymentMethod && (
+                  {!hasFullDiscountCoupon && selectedPaymentMethod && (
                     <div className="p-4 bg-muted rounded-xl text-sm border space-y-2">
                       <p className="font-semibold text-foreground">تفاصيل الدفع — {selectedPaymentMethod.name}</p>
                       <p className="text-muted-foreground whitespace-pre-line leading-relaxed">{selectedPaymentMethod.details}</p>
@@ -552,7 +571,13 @@ export default function Order() {
                     <div className="flex gap-2">
                       <Input
                         value={couponInput}
-                        onChange={e => { setCouponInput(e.target.value.toUpperCase()); if (couponStatus !== "idle") setCouponStatus("idle"); }}
+                        disabled={couponStatus === "checking"}
+                        onChange={e => {
+                          setCouponInput(e.target.value.toUpperCase());
+                          setCouponStatus("idle");
+                          setCouponData(null);
+                          setAppliedCoupon(null);
+                        }}
                         placeholder="أدخل كود الخصم"
                         dir="ltr"
                         className="font-mono tracking-widest uppercase flex-1"
@@ -589,11 +614,15 @@ export default function Order() {
                     <div className="px-4 pb-4 space-y-3">
                       <ul className="list-disc list-inside space-y-1 text-xs text-red-700">
                         <li>
-                          يُدفع مقدّم بنسبة <strong>{depositPct}%</strong> من قيمة الطلب — وهو <strong>غير قابل للاسترداد</strong> بعد بدء التنفيذ.
+                          {hasFullDiscountCoupon
+                            ? "سيُحدد السعر بعد مراجعة الطلب، وإذا غطّى الكوبون كامل القيمة فلن تكون هناك دفعة مستحقة."
+                            : <>يُدفع مقدّم بنسبة <strong>{depositPct}%</strong> من قيمة الطلب — وهو <strong>غير قابل للاسترداد</strong> بعد بدء التنفيذ.</>}
                         </li>
-                        <li>
-                          المبلغ المتبقي (<strong>{100 - depositPct}%</strong>) يُسدَّد عند الانتهاء من الموقع وقبل استلام الصلاحيات الكاملة.
-                        </li>
+                        {!hasFullDiscountCoupon && (
+                          <li>
+                            المبلغ المتبقي (<strong>{100 - depositPct}%</strong>) يُسدَّد عند الانتهاء من الموقع وقبل استلام الصلاحيات الكاملة.
+                          </li>
+                        )}
                         <li>بإرسالك للطلب فأنت توافق على هذه الشروط.</li>
                       </ul>
                       <a
@@ -627,7 +656,7 @@ export default function Order() {
                 <div className="pt-4 border-t flex justify-end">
                   <Button type="submit" size="lg" className="h-14 px-12 text-lg gap-2" disabled={createOrder.isPending || !agreedToTerms}>
                     <CheckCircle2 className="h-5 w-5" />
-                    {createOrder.isPending ? "جاري الإرسال..." : requireDeposit ? "إرسال الطلب والانتقال للدفع" : "إرسال الطلب"}
+                    {createOrder.isPending ? "جاري الإرسال..." : shouldCollectPayment ? "إرسال الطلب والانتقال للدفع" : "إرسال الطلب"}
                   </Button>
                 </div>
               </form>

@@ -31,7 +31,10 @@ function hasTransferDetails(order: any): boolean {
 }
 
 function getDisplayStatus(order: any): { label: string; color: string } {
-  const { status, totalAmount, depositPaid, finalPaid } = order;
+  const { status, totalAmount, discountAmount, depositPaid, finalPaid } = order;
+  const balanceDue = totalAmount == null
+    ? null
+    : Math.max(0, Number(totalAmount) - Number(discountAmount ?? 0));
   if (status === 'cancelled') {
     return { label: "ملغي", color: "text-red-700 border-red-300 bg-red-50" };
   }
@@ -43,6 +46,9 @@ function getDisplayStatus(order: any): { label: string; color: string } {
     return { label: "جاري التنفيذ", color: "text-blue-700 border-blue-300 bg-blue-50" };
   }
   if (status === 'pending') {
+    if (balanceDue === 0 && Number(totalAmount) > 0) {
+      return { label: "مغطى بالكامل بالخصم", color: "text-emerald-700 border-emerald-300 bg-emerald-50" };
+    }
     if (hasTransferDetails(order) && !depositPaid) return { label: "بانتظار مراجعة التحويل", color: "text-orange-600 border-orange-300 bg-orange-50" };
     if (totalAmount) return { label: "بانتظار الدفعة المقدمة", color: "text-amber-600 border-amber-300 bg-amber-50" };
     return { label: "قيد المراجعة", color: "text-gray-600 border-gray-300 bg-gray-50" };
@@ -433,7 +439,8 @@ export default function MyOrders() {
             const currencyLabel = order.currency === "EGP" ? "جنيه" : "ريال";
 
             const priceSet = totalAmount !== null && totalAmount > 0;
-            const showReceiptUpload = order.status === "pending" && priceSet && !hasTransferDetails(order);
+            const fullyDiscounted = priceSet && effectiveAmount === 0;
+            const showReceiptUpload = order.status === "pending" && priceSet && !fullyDiscounted && !hasTransferDetails(order);
             const receiptUploaded = hasTransferDetails(order);
             const canCancel = order.status === "pending" || order.status === "in_progress";
             const displayStatus = getDisplayStatus(order);
@@ -471,7 +478,12 @@ export default function MyOrders() {
                 </CardHeader>
 
                 {order.status === "pending" && (
-                  receiptUploaded ? (
+                  fullyDiscounted ? (
+                    <div className="px-6 py-4 border-b bg-emerald-50 text-emerald-800 text-sm flex items-start gap-3">
+                      <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>غطّى كوبون الخصم كامل قيمة الطلب. لا توجد دفعة مستحقة، ولن تحتاج إلى إرسال بيانات تحويل.</span>
+                    </div>
+                  ) : receiptUploaded ? (
                     <div className="px-6 py-3 border-b text-sm flex items-start gap-3 bg-green-50 text-green-800">
                       <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
                       <span>تم إرسال بيانات التحويل — بانتظار مراجعة الإدارة لبدء التنفيذ.</span>
@@ -579,7 +591,7 @@ export default function MyOrders() {
                   </div>
                 )}
 
-                {order.status === "completed" && !order.finalPaid && remainingAmount !== null && (
+                {order.status === "completed" && !order.finalPaid && remainingAmount !== null && !fullyDiscounted && (
                   <div className="px-6 py-4 border-b bg-blue-50 border-blue-100 text-sm text-blue-800 space-y-3">
                     <div className="flex items-start gap-3">
                       <Lock className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
@@ -705,7 +717,11 @@ export default function MyOrders() {
                                   {effectiveAmount?.toLocaleString()} {currencyLabel}
                                 </span>
                               </div>
-                              {requireDeposit && depositAmount !== null && (
+                              {fullyDiscounted ? (
+                                <div className="rounded-lg bg-emerald-50 px-2 py-2 text-emerald-700 font-semibold">
+                                  لا توجد دفعة مستحقة — تمت تغطية القيمة بالكامل بالكوبون
+                                </div>
+                              ) : requireDeposit && depositAmount !== null && (
                                 <div className="flex justify-between items-center">
                                   <span className="text-muted-foreground">المقدم ({depositPct}%)</span>
                                   <div className="flex items-center gap-2">
@@ -716,7 +732,7 @@ export default function MyOrders() {
                                   </div>
                                 </div>
                               )}
-                              {requireDeposit && remainingAmount !== null && (
+                              {!fullyDiscounted && requireDeposit && remainingAmount !== null && (
                                 <div className="flex justify-between items-center">
                                   <span className="text-muted-foreground">المتبقي</span>
                                   <div className="flex items-center gap-2">

@@ -87,7 +87,13 @@ function HomeContent() {
 
               {/* زر التحميل الفخم جداً - يظهر في المتصفح فقط وتحت الأزرار الرئيسية مباشرة */}
               {isWeb && (
-                <div className="w-full sm:w-auto">
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                  <Link href="/certificate/verify" className="w-full sm:w-auto">
+                    <Button size="lg" variant="outline" className="w-full text-lg h-14 px-6 rounded-xl bg-background">
+                      <ShieldCheck className="ms-2 h-5 w-5" />
+                      التحقق من الشهادات
+                    </Button>
+                  </Link>
                   <Dialog>
                     <DialogTrigger asChild>
                       <button

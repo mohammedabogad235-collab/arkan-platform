@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, or, desc } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import {
   couponsTable,
   db,
@@ -44,6 +44,15 @@ function calculateCouponDiscountAmount(coupon: typeof couponsTable.$inferSelect,
       : coupon.discountValue;
 
   return Math.min(amount, Math.max(0, Math.round(rawDiscount * 100) / 100));
+}
+
+function getOrderBalanceDue(order: typeof ordersTable.$inferSelect): number | null {
+  if (order.totalAmount == null) return null;
+  return Math.max(0, Number(order.totalAmount) - Number((order as any).discountAmount ?? 0));
+}
+
+function isFullyDiscountedOrder(order: typeof ordersTable.$inferSelect): boolean {
+  return Number(order.totalAmount) > 0 && getOrderBalanceDue(order) === 0;
 }
 
 async function recalculateOrderCoupon(
@@ -348,22 +357,53 @@ router.post("/orders", asyncHandler(async (req, res): Promise<void> => {
 
   const settings = await getOrCreateSettings();
   const depositPct = settings.depositPercentageValue ?? 50;
+  const couponCode = parsed.data.couponCode ? normalizeCouponCode(parsed.data.couponCode) : null;
 
-  const [order] = await db.insert(ordersTable).values({
-    userId,
-    siteName: parsed.data.siteName,
-    siteType: parsed.data.siteType,
-    details: parsed.data.details,
-    packageId: parsed.data.packageId ?? null,
-    customBudget: parsed.data.customBudget ?? null,
-    currency: parsed.data.currency,
-    paymentMethodId: parsed.data.paymentMethodId ?? null,
-    status: "pending",
-    depositPaid: false,
-    finalPaid: false,
-    depositPercentage: depositPct,
-    couponCode: parsed.data.couponCode ?? null,
-  } as any).returning();
+  const creation = await db.transaction(async (tx) => {
+    if (couponCode) {
+      const [coupon] = await tx.select().from(couponsTable).where(eq(couponsTable.code, couponCode));
+      if (!coupon) return { error: "كود الخصم غير موجود أو غير صحيح" };
+      if (!coupon.isActive) return { error: "هذا الكود غير مفعّل حالياً" };
+      if (isCouponExpired(coupon)) return { error: "انتهت صلاحية كود الخصم" };
+      if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
+        return { error: "تم استنفاد الحد الأقصى لاستخدام هذا الكود" };
+      }
+
+      const [reservedCoupon] = await tx.update(couponsTable)
+        .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
+        .where(and(
+          eq(couponsTable.id, coupon.id),
+          eq(couponsTable.isActive, true),
+          or(isNull(couponsTable.maxUses), lt(couponsTable.usedCount, couponsTable.maxUses)),
+          or(isNull(couponsTable.expiresAt), gt(couponsTable.expiresAt, new Date())),
+        ))
+        .returning({ id: couponsTable.id });
+      if (!reservedCoupon) return { error: "لم يعد كود الخصم متاحاً" };
+    }
+
+    const [order] = await tx.insert(ordersTable).values({
+      userId,
+      siteName: parsed.data.siteName,
+      siteType: parsed.data.siteType,
+      details: parsed.data.details,
+      packageId: parsed.data.packageId ?? null,
+      customBudget: parsed.data.customBudget ?? null,
+      currency: parsed.data.currency,
+      paymentMethodId: parsed.data.paymentMethodId ?? null,
+      status: "pending",
+      depositPaid: false,
+      finalPaid: false,
+      depositPercentage: depositPct,
+      couponCode,
+    } as any).returning();
+    return { order };
+  });
+
+  if ("error" in creation) {
+    res.status(400).json({ error: creation.error });
+    return;
+  }
+  const { order } = creation;
 
   await notifySafely("Failed to send order received email", async () => {
     await sendOrderReceivedEmail(user.email, user.fullName, order.id, order.siteName);
@@ -411,13 +451,9 @@ router.delete("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
       const normalizedCouponCode = order.couponCode ? normalizeCouponCode(order.couponCode) : null;
 
       if (normalizedCouponCode) {
-        const [coupon] = await tx.select().from(couponsTable).where(eq(couponsTable.code, normalizedCouponCode));
-        if (coupon && coupon.usedCount > 0) {
-          await tx
-            .update(couponsTable)
-            .set({ usedCount: coupon.usedCount - 1 })
-            .where(eq(couponsTable.id, coupon.id));
-        }
+        await tx.update(couponsTable)
+          .set({ usedCount: sql`${couponsTable.usedCount} - 1` })
+          .where(and(eq(couponsTable.code, normalizedCouponCode), gt(couponsTable.usedCount, 0)));
       }
 
       await tx.delete(ordersTable).where(eq(ordersTable.id, orderId));
@@ -464,6 +500,10 @@ router.post("/orders/:id/receipt", async (req, res): Promise<void> => {
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
   if (!order) { res.status(404).json({ error: "الطلب غير موجود" }); return; }
   if (order.userId !== userId) { res.status(403).json({ error: "غير مصرح" }); return; }
+  if (isFullyDiscountedOrder(order)) {
+    res.status(409).json({ error: "غطّى كوبون الخصم كامل قيمة الطلب، ولا توجد دفعة مستحقة" });
+    return;
+  }
 
   const [updated] = await db
     .update(ordersTable)
@@ -521,6 +561,10 @@ router.post("/orders/:id/final-receipt", async (req, res): Promise<void> => {
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
   if (!order) { res.status(404).json({ error: "الطلب غير موجود" }); return; }
   if (order.userId !== userId) { res.status(403).json({ error: "غير مصرح" }); return; }
+  if (isFullyDiscountedOrder(order)) {
+    res.status(409).json({ error: "غطّى كوبون الخصم كامل قيمة الطلب، ولا توجد دفعة مستحقة" });
+    return;
+  }
 
   const [updated] = await db.update(ordersTable).set({ 
     transferAccount: normalizedTransferAccount,
@@ -662,7 +706,11 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
   if (user) {
     const statusChanged = originalOrder.status !== updatedOrder.status;
 
-    if (originalOrder.totalAmount == null && updatedOrder.totalAmount != null) {
+    if (
+      originalOrder.totalAmount == null
+      && updatedOrder.totalAmount != null
+      && !isFullyDiscountedOrder(updatedOrder)
+    ) {
       await notifySafely("Failed to send payment approved email", async () => {
         await sendOrderPaymentApprovedEmail({
           to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName,
@@ -690,13 +738,26 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
           await sendOrderPhaseEmail({ to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName, phase: "started" });
         });
       } else if (updatedOrder.status === "in_progress") {
-        await notifySafely("Failed to send in-progress email", async () => {
-          await sendOrderInProgressPaymentDetailsEmail({
-            to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName,
-            totalAmount: updatedOrder.totalAmount, depositPercentage: updatedOrder.depositPercentage ?? 50, currency: updatedOrder.currency,
-            paymentMethodName: pm?.name ?? null, paymentMethodDetails: pm?.details ?? null,
+        if (isFullyDiscountedOrder(updatedOrder)) {
+          await notifySafely("Failed to send fully discounted order email", async () => {
+            await sendOrderStatusUpdateEmail(
+              user.email,
+              user.fullName,
+              updatedOrder.id,
+              updatedOrder.siteName,
+              "جاري التنفيذ",
+              "تم بدء تنفيذ طلبك. غطّى كوبون الخصم كامل القيمة ولا توجد دفعة مستحقة.",
+            );
+          }, { orderId: updatedOrder.id });
+        } else {
+          await notifySafely("Failed to send in-progress email", async () => {
+            await sendOrderInProgressPaymentDetailsEmail({
+              to: user.email, name: user.fullName, orderId: updatedOrder.id, siteName: updatedOrder.siteName,
+              totalAmount: updatedOrder.totalAmount, depositPercentage: updatedOrder.depositPercentage ?? 50, currency: updatedOrder.currency,
+              paymentMethodName: pm?.name ?? null, paymentMethodDetails: pm?.details ?? null,
+            });
           });
-        });
+        }
       } else if (updatedOrder.status !== "completed") {
         const statusMap: Record<string, string> = { "pending": "قيد الانتظار", "cancelled": "ملغي", "refunded": "مسترجع" };
         const statusAr = statusMap[updatedOrder.status as string] || updatedOrder.status;

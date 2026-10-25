@@ -1,13 +1,15 @@
 import { ReactNode, useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Link, useLocation } from "wouter";
-import { MessageCircle, Menu, X, Home, ShoppingBag, Star, LayoutDashboard, User as UserIcon, LogOut, Phone, Mail, MapPin } from "lucide-react";
+import { BadgeCheck, Download, MessageCircle, Menu, X, Home, ShoppingBag, Star, LayoutDashboard, User as UserIcon, LogOut, Phone, Mail, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useSettings } from "@/lib/use-settings";
 import { apiFetch } from "@/lib/api-fetch";
+
+const APP_DOWNLOAD_URL = "https://drive.google.com/drive/folders/1OrsQuXQyYC6ZFPxcvhPQ0p-Rh-TemxjO?usp=drive_link";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth();
@@ -133,6 +135,20 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-4">
+            <div className="hidden items-center gap-2 md:flex">
+              <Link href="/certificate/verify">
+                <Button variant="outline" size="sm">
+                  <BadgeCheck className="ms-1 h-4 w-4" />
+                  التحقق من الشهادات
+                </Button>
+              </Link>
+              <a href={APP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
+                <Button variant="secondary" size="sm">
+                  <Download className="ms-1 h-4 w-4" />
+                  تحميل التطبيق
+                </Button>
+              </a>
+            </div>
             {isAuthenticated ? (
               <div className="flex items-center gap-4">
                 {isClient && (
@@ -166,7 +182,21 @@ export function Layout({ children }: { children: ReactNode }) {
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="flex flex-col gap-6 pt-12">
+                <SheetTitle className="sr-only">قائمة التنقل</SheetTitle>
+                <SheetDescription className="sr-only">روابط الموقع والإجراءات المتاحة.</SheetDescription>
                 <NavLinks />
+                <Link href="/certificate/verify" onClick={() => setOpen(false)}>
+                  <Button variant="outline" className="w-full">
+                    <BadgeCheck className="ms-2 h-4 w-4" />
+                    التحقق من الشهادات
+                  </Button>
+                </Link>
+                <a href={APP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
+                  <Button variant="secondary" className="w-full">
+                    <Download className="ms-2 h-4 w-4" />
+                    تحميل التطبيق
+                  </Button>
+                </a>
                 {isAuthenticated && isClient && (
                   <Link href="/order" onClick={() => setOpen(false)}>
                     <Button variant="default" className="w-full">طلب موقع جديد</Button>

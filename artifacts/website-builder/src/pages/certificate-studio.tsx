@@ -43,6 +43,7 @@ type CertificateIssue = {
 
 const initialBoxes: Record<string, Box> = {
   logo: { x: 8, y: 8, width: 18, height: 12 },
+  certificateTitle: { x: 20, y: 24, width: 60, height: 10 },
   recipientName: { x: 22, y: 28, width: 56, height: 12 },
   programTitle: { x: 22, y: 41, width: 56, height: 8 },
   issuerName: { x: 14, y: 72, width: 28, height: 6 },
@@ -179,6 +180,7 @@ export default function CertificateStudio() {
   const [stats, setStats] = useState({ total: 0, issued: 0, cancelled: 0, drafts: 0, trash: 0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [referenceTemplateLoading, setReferenceTemplateLoading] = useState(false);
   const [templateId, setTemplateId] = useState("");
   const [templateForm, setTemplateForm] = useState(emptyTemplate);
   const [layout, setLayout] = useState<Record<string, any>>(initialBoxes);
@@ -561,6 +563,64 @@ export default function CertificateStudio() {
     }
   };
 
+  const loadReferenceTemplate = async () => {
+    if (certificateId) {
+      toast({ variant: "destructive", title: "احفظ تعديل الشهادة الحالية قبل بدء قالب جديد" });
+      return;
+    }
+
+    setReferenceTemplateLoading(true);
+    try {
+      const imageResponse = await fetch("/templates/arkan-trainova-certificate-base.jpg");
+      if (!imageResponse.ok) throw new Error("تعذر تحميل صورة القالب المرجعي");
+
+      const image = await imageResponse.blob();
+      const form = new FormData();
+      form.append("file", new File([image], "arkan-trainova-certificate-base.jpg", { type: "image/jpeg" }));
+      const uploadResponse = await apiFetch("/api/certificates/upload", { method: "POST", body: form });
+      const uploadResult = await uploadResponse.json().catch(() => ({}));
+      if (!uploadResponse.ok || typeof uploadResult.publicUrl !== "string") {
+        throw new Error(uploadResult.error || "تعذر رفع خلفية القالب إلى مخزن الشهادات");
+      }
+
+      const referenceLayout = {
+        ...initialBoxes,
+        certificateTitle: { ...initialBoxes.certificateTitle, x: 20, y: 28, width: 60, height: 9 },
+        recipientName: { ...initialBoxes.recipientName, x: 18, y: 44, width: 64, height: 10 },
+        programTitle: { ...initialBoxes.programTitle, x: 18, y: 60, width: 64, height: 8 },
+        issuerName: { ...initialBoxes.issuerName, x: 30, y: 69, width: 40, height: 6, align: "center" },
+        issueDate: { ...initialBoxes.issueDate, x: 13, y: 77, width: 22, height: 5, align: "left" },
+        serialNumber: { ...initialBoxes.serialNumber, x: 13, y: 84, width: 22, height: 6, align: "left" },
+        qrCode: { ...initialBoxes.qrCode, x: 3, y: 77, width: 8, height: 10 },
+        certificateTitleText: "شهادة إتمام",
+        partnerSignatureDefault: { y: 77, height: 13 },
+      };
+
+      setTemplateId("");
+      setTemplateForm({
+        ...emptyTemplate,
+        name: "TraiNova × Arkan Web — شهادة تدريب",
+        width: 1376,
+        height: 768,
+        backgroundUrl: uploadResult.publicUrl,
+      });
+      setCertificateForm((current) => ({ ...current, templateId: "" }));
+      applyLayout(referenceLayout);
+      toast({
+        title: "تم تجهيز القالب المرجعي",
+        description: "أضف المؤسسات الشريكة والتوقيعات عند إنشاء الشهادة، ثم احفظ القالب.",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "تعذر تجهيز القالب المرجعي",
+        description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+      });
+    } finally {
+      setReferenceTemplateLoading(false);
+    }
+  };
+
   const saveDraft = async () => {
     if (certificateId && editingStatus !== "draft") {
       toast({ variant: "destructive", title: "لا يمكن تحويل شهادة صادرة إلى مسودة" });
@@ -822,7 +882,20 @@ export default function CertificateStudio() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold">تصميم القالب</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold">تصميم القالب</h2>
+            <button
+              type="button"
+              className="rounded-lg border border-primary/30 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={referenceTemplateLoading || saving}
+              onClick={() => void loadReferenceTemplate()}
+            >
+              {referenceTemplateLoading ? "جارٍ تجهيز القالب..." : "استخدام قالب TraiNova × Arkan"}
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            يستورد التصميم المرجعي بخلفية نظيفة؛ الاسم والبرنامج والشعارات والتوقيعات تبقى عناصر مستقلة قابلة للتعديل.
+          </p>
           <label className="block space-y-1.5 text-sm">
             <span className="font-medium">قالب محفوظ</span>
             <select className="w-full rounded-lg border bg-background px-3 py-2" value={templateId} onChange={(event) => {
@@ -840,6 +913,11 @@ export default function CertificateStudio() {
           {templateId && <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={duplicateTemplate}>نسخ القالب المحدد</button>}
           <form onSubmit={saveTemplate} className="space-y-3">
             <Field label="اسم القالب" value={templateForm.name} onChange={(value) => updateTemplateField("name", value)} />
+            <Field
+              label="عنوان الشهادة (اختياري)"
+              value={layout.certificateTitleText ?? ""}
+              onChange={(value) => applyLayout({ ...layoutRef.current, certificateTitleText: value })}
+            />
             <div className="grid grid-cols-2 gap-3">
               <label className="space-y-1.5 text-sm">
                 <span className="font-medium">اتجاه الصفحة</span>
@@ -861,6 +939,7 @@ export default function CertificateStudio() {
             <div className="space-y-2 border-t pt-3">
               <p className="text-sm font-semibold">مواضع العناصر (%)</p>
               {[
+                ["certificateTitle", "عنوان الشهادة"],
                 ["recipientName", "اسم المستفيد"],
                 ["programTitle", "اسم البرنامج"],
                 ["issuerName", "الجهة المصدرة"],
@@ -920,6 +999,21 @@ export default function CertificateStudio() {
             {!templateForm.backgroundUrl && <div className="absolute inset-3 border border-amber-600/60" />}
             {templateForm.logoUrl && <img onPointerDown={(event) => startDrag(event, "logo", boxFor(layout, "logo", initialBoxes.logo))} src={templateForm.logoUrl} className="absolute cursor-move touch-none object-contain" style={{ left: `${boxFor(layout, "logo", initialBoxes.logo).x}%`, top: `${boxFor(layout, "logo", initialBoxes.logo).y}%`, width: `${boxFor(layout, "logo", initialBoxes.logo).width}%`, height: `${boxFor(layout, "logo", initialBoxes.logo).height}%` }} alt="" />}
             {templateForm.signatureUrl && <img onPointerDown={(event) => startDrag(event, "signature", boxFor(layout, "signature", initialBoxes.signature))} src={templateForm.signatureUrl} className="absolute cursor-move touch-none object-contain" style={{ left: `${boxFor(layout, "signature", initialBoxes.signature).x}%`, top: `${boxFor(layout, "signature", initialBoxes.signature).y}%`, width: `${boxFor(layout, "signature", initialBoxes.signature).width}%`, height: `${boxFor(layout, "signature", initialBoxes.signature).height}%` }} alt="التوقيع الافتراضي" />}
+            {typeof layout.certificateTitleText === "string" && layout.certificateTitleText.trim() && (
+              <span
+                onPointerDown={(event) => startDrag(event, "certificateTitle", boxFor(layout, "certificateTitle", initialBoxes.certificateTitle))}
+                className="absolute flex cursor-move touch-none items-center justify-center overflow-hidden text-center text-[clamp(14px,2.4vw,32px)] font-serif font-bold text-[#0f2350]"
+                style={{
+                  left: `${boxFor(layout, "certificateTitle", initialBoxes.certificateTitle).x}%`,
+                  top: `${boxFor(layout, "certificateTitle", initialBoxes.certificateTitle).y}%`,
+                  width: `${boxFor(layout, "certificateTitle", initialBoxes.certificateTitle).width}%`,
+                  height: `${boxFor(layout, "certificateTitle", initialBoxes.certificateTitle).height}%`,
+                  textAlign: alignmentFor(layout, "certificateTitle"),
+                }}
+              >
+                {layout.certificateTitleText}
+              </span>
+            )}
             <span onPointerDown={(event) => startDrag(event, "recipientName", boxFor(layout, "recipientName", initialBoxes.recipientName))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(12px,2vw,28px)] font-bold text-slate-900" style={{ left: `${boxFor(layout, "recipientName", initialBoxes.recipientName).x}%`, top: `${boxFor(layout, "recipientName", initialBoxes.recipientName).y}%`, width: `${boxFor(layout, "recipientName", initialBoxes.recipientName).width}%`, height: `${boxFor(layout, "recipientName", initialBoxes.recipientName).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "recipientName") === "left" ? "flex-start" : alignmentFor(layout, "recipientName") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "recipientName") }}>
               {certificateForm.recipientName || "اسم صاحب الشهادة"}
             </span>
@@ -950,7 +1044,12 @@ export default function CertificateStudio() {
               const signatureBox = boxFor(
                 { position: layout.partnerSignatureBoxes?.[String(partner.id)] },
                 "position",
-                { x: logoBox.x, y: 68, width: logoBox.width, height: 20 },
+                {
+                  x: logoBox.x,
+                  y: Number(layout.partnerSignatureDefault?.y ?? 68),
+                  width: logoBox.width,
+                  height: Number(layout.partnerSignatureDefault?.height ?? 20),
+                },
               );
               return (
                 <div key={partner.id}>
@@ -1073,7 +1172,16 @@ export default function CertificateStudio() {
                   const defaultWidth = 70 / Math.max(selectedPartners.length, 1);
                   const defaultLogoBox = { x: 15 + selectedIndex * defaultWidth, y: 5, width: Math.min(defaultWidth, 20), height: 14 };
                   const logoBox = boxFor({ position: layout.partnerLogoBoxes?.[String(partner.id)] ?? layout.partnerBoxes?.[String(partner.id)] }, "position", defaultLogoBox);
-                  const signatureBox = boxFor({ position: layout.partnerSignatureBoxes?.[String(partner.id)] }, "position", { x: logoBox.x, y: 68, width: logoBox.width, height: 20 });
+                  const signatureBox = boxFor(
+                    { position: layout.partnerSignatureBoxes?.[String(partner.id)] },
+                    "position",
+                    {
+                      x: logoBox.x,
+                      y: Number(layout.partnerSignatureDefault?.y ?? 68),
+                      width: logoBox.width,
+                      height: Number(layout.partnerSignatureDefault?.height ?? 20),
+                    },
+                  );
                   return (
                     <div key={partner.id} className="space-y-2 rounded-lg border p-3">
                       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selected} onChange={(event) => {
@@ -1087,7 +1195,7 @@ export default function CertificateStudio() {
                           {(["x", "y", "width", "height"] as const).map((part) => <Field key={part} label={{ x: "أفقي", y: "عمودي", width: "عرض", height: "ارتفاع" }[part]} type="number" value={logoBox[part]} onChange={(value) => updatePartnerBox("partnerLogoBoxes", partner.id, part, value, defaultLogoBox)} />)}
                         </div></div>
                         <div><p className="text-xs font-semibold">موضع وحجم التوقيع والبيانات</p><div className="grid grid-cols-4 gap-1">
-                          {(["x", "y", "width", "height"] as const).map((part) => <Field key={part} label={{ x: "أفقي", y: "عمودي", width: "عرض", height: "ارتفاع" }[part]} type="number" value={signatureBox[part]} onChange={(value) => updatePartnerBox("partnerSignatureBoxes", partner.id, part, value, { x: logoBox.x, y: 68, width: logoBox.width, height: 20 })} />)}
+                          {(["x", "y", "width", "height"] as const).map((part) => <Field key={part} label={{ x: "أفقي", y: "عمودي", width: "عرض", height: "ارتفاع" }[part]} type="number" value={signatureBox[part]} onChange={(value) => updatePartnerBox("partnerSignatureBoxes", partner.id, part, value, { x: logoBox.x, y: Number(layout.partnerSignatureDefault?.y ?? 68), width: logoBox.width, height: Number(layout.partnerSignatureDefault?.height ?? 20) })} />)}
                         </div></div>
                       </div>}
                     </div>

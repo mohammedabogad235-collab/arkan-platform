@@ -11,6 +11,7 @@ import { uploadBufferToSupabase } from "../lib/supabase-storage";
 import bidiFactory from "bidi-js";
 
 const router: IRouter = Router();
+const SERIAL_NUMBER_PATTERN = /^AW-CERT-\d{4}-\d{6}$/;
 const require = createRequire(import.meta.url);
 const arabicShaper = (require("arabic-persian-reshaper") as {
   ArabicShaper: { convertArabic: (value: string) => string };
@@ -80,6 +81,7 @@ const uploadCertificateImage = multer({
 
 const DEFAULT_LAYOUT = {
   logo: { x: 8, y: 8, width: 18, height: 12 },
+  certificateTitle: { x: 20, y: 24, width: 60, height: 10 },
   recipientName: { x: 22, y: 28, width: 56, height: 12 },
   programTitle: { x: 22, y: 41, width: 56, height: 8 },
   issuerName: { x: 14, y: 72, width: 28, height: 6 },
@@ -151,7 +153,7 @@ function normalizePosition(box: any, fallback: { x: number; y: number; width: nu
   };
 }
 
-function normalizeLayout(layout: any = {}): Record<string, { x: number; y: number; width: number; height: number }> {
+function normalizeLayout(layout: any = {}): Record<string, any> {
   const merged = { ...DEFAULT_LAYOUT, ...(layout && typeof layout === "object" ? layout : {}) } as Record<string, any>;
   for (const key of Object.keys(DEFAULT_LAYOUT)) {
     merged[key] = normalizePosition(layout?.[key], DEFAULT_LAYOUT[key as keyof typeof DEFAULT_LAYOUT]);
@@ -397,6 +399,13 @@ export async function generateCertificatePdfBuffer(issue: any, template: any, pa
     drawCertificateText(doc, "بعد الإصدار", qrBox.x, qrBox.y + qrBox.height * 0.35, qrBox.width, qrBox.height * 0.3, 10, "center");
   }
 
+  const certificateTitle = typeof layout.certificateTitleText === "string" ? layout.certificateTitleText.trim() : "";
+  if (certificateTitle) {
+    const titleBox = getBox(layout, "certificateTitle", width, height);
+    doc.fillColor("#0f2350");
+    drawCertificateText(doc, certificateTitle, titleBox.x, titleBox.y, titleBox.width, titleBox.height, 30, getTextAlignment(layout, "certificateTitle"), "bold");
+  }
+
   const recipientBox = getBox(layout, "recipientName", width, height);
   doc.fillColor("#0f172a");
   drawCertificateText(doc, issue.recipientName || "-", recipientBox.x, recipientBox.y, recipientBox.width, recipientBox.height, 28, getTextAlignment(layout, "recipientName"), "bold");
@@ -469,11 +478,17 @@ export async function generateCertificatePdfBuffer(issue: any, template: any, pa
       width: Math.min(defaultWidth, 20),
       height: 14,
     });
+    const signatureDefault: { y?: unknown; height?: unknown } =
+      layout.partnerSignatureDefault && typeof layout.partnerSignatureDefault === "object"
+      ? layout.partnerSignatureDefault
+      : {};
+    const defaultSignatureY = Number(signatureDefault.y);
+    const defaultSignatureHeight = Number(signatureDefault.height);
     const signatureBox = normalizePosition(signatureBoxesByPartner[String(partner.id)], {
       x: logoBox.x,
-      y: 68,
+      y: Number.isFinite(defaultSignatureY) ? defaultSignatureY : 68,
       width: logoBox.width,
-      height: 20,
+      height: Number.isFinite(defaultSignatureHeight) ? defaultSignatureHeight : 20,
     });
     const logoPosition = {
       x: (logoBox.x / 100) * width,
@@ -861,6 +876,15 @@ router.delete("/certificates/partners/:id", async (req, res): Promise<void> => {
 
 router.get("/certificates/verify", async (req, res): Promise<void> => {
   const serial = String(req.query.serial || "").trim();
+  if (!serial) {
+    res.status(400).json({ valid: false, error: "أدخل رقم الشهادة للتحقق منها" });
+    return;
+  }
+  if (!SERIAL_NUMBER_PATTERN.test(serial)) {
+    res.status(400).json({ valid: false, error: "رقم الشهادة غير صالح" });
+    return;
+  }
+
   const [issue] = await db.select().from(certificateIssuesTable).where(eq(certificateIssuesTable.serialNumber, serial)).limit(1);
 
   if (!issue || issue.deletedAt) {
@@ -873,11 +897,21 @@ router.get("/certificates/verify", async (req, res): Promise<void> => {
       res.status(404).json({ valid: false, error: "الشهادة غير موجودة أو لم تصدر بعد" });
       return;
     }
+    const partners = await getIssuePartners(issue);
     res.status(410).json({
       valid: false,
       cancelled: issue.status === "cancelled",
       status: issue.status,
       error: "تم إلغاء هذه الشهادة",
+      certificate: {
+        serialNumber: issue.serialNumber,
+        recipientName: issue.recipientName,
+        programTitle: issue.programTitle,
+        issuerName: issue.issuerName,
+        issueDate: issue.issueDate,
+        status: issue.status,
+        partners: partners.map((partner) => String(partner.name || "")).filter(Boolean),
+      },
     });
     return;
   }
@@ -914,14 +948,15 @@ router.get("/certificates/public/:serial/pdf", async (req, res): Promise<void> =
     await getIssuePartners(issue),
   );
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `inline; filename="${slugify(issue.recipientName)}-${issue.serialNumber}.pdf"`);
+  const disposition = req.query.download === "1" ? "attachment" : "inline";
+  res.setHeader("Content-Disposition", `${disposition}; filename="${slugify(issue.recipientName)}-${issue.serialNumber}.pdf"`);
   res.setHeader("Cache-Control", "no-store");
   res.end(pdfBuffer);
 });
 
 router.get("/certificates/qr", async (req, res): Promise<void> => {
   const serial = String(req.query.serial || "").trim();
-  if (!/^AW-CERT-\d{4}-\d{6}$/.test(serial)) {
+  if (!SERIAL_NUMBER_PATTERN.test(serial)) {
     res.status(400).json({ error: "رقم الشهادة غير صالح" });
     return;
   }
