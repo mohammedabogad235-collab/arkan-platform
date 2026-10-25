@@ -161,6 +161,22 @@ function normalizeLayout(layout: any = {}): Record<string, any> {
   return merged;
 }
 
+function isLayoutElementVisible(layout: Record<string, any>, key: string): boolean {
+  return !Array.isArray(layout.hiddenElements) || !layout.hiddenElements.includes(key);
+}
+
+function parseCertificateDate(value: unknown): Date | undefined {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(`${value}T12:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) &&
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+    ? parsed
+    : undefined;
+}
+
 function getBox(layout: Record<string, any>, key: string, pageWidth: number, pageHeight: number) {
   const fallback = DEFAULT_LAYOUT[key as keyof typeof DEFAULT_LAYOUT] ?? { x: 0, y: 0, width: 1, height: 1 };
   const box = normalizePosition(layout[key], fallback);
@@ -376,56 +392,66 @@ export async function generateCertificatePdfBuffer(issue: any, template: any, pa
     doc.strokeColor("#cbd5e1").lineWidth(4).rect(20, 20, width - 40, height - 40).stroke();
   }
 
-  const logoImage = await fetchImageBuffer(template?.logoUrl ?? null);
+  const logoImage = isLayoutElementVisible(layout, "logo") ? await fetchImageBuffer(template?.logoUrl ?? null) : undefined;
   if (logoImage) {
     const logoBox = getBox(layout, "logo", width, height);
     doc.image(logoImage, logoBox.x, logoBox.y, { fit: [logoBox.width, logoBox.height], align: "center", valign: "center" });
   }
 
-  const signatureImage = await fetchImageBuffer(template?.signatureUrl ?? null);
+  const signatureImage = isLayoutElementVisible(layout, "signature") ? await fetchImageBuffer(template?.signatureUrl ?? null) : undefined;
   if (signatureImage) {
     const signatureBox = getBox(layout, "signature", width, height);
     doc.image(signatureImage, signatureBox.x, signatureBox.y, { fit: [signatureBox.width, signatureBox.height], align: "center", valign: "center" });
   }
 
   const qrBox = getBox(layout, "qrCode", width, height);
-  if (issue.status === "issued" && issue.validationUrl) {
+  if (isLayoutElementVisible(layout, "qrCode") && issue.status === "issued" && issue.validationUrl) {
     const qrDataUrl = await QRCode.toDataURL(issue.validationUrl, { width: 320, margin: 1 });
     const qrBuffer = Buffer.from(qrDataUrl.split(",")[1], "base64");
     doc.image(qrBuffer, qrBox.x, qrBox.y, { fit: [qrBox.width, qrBox.height] });
-  } else {
+  } else if (isLayoutElementVisible(layout, "qrCode")) {
     doc.strokeColor("#94a3b8").lineWidth(1).rect(qrBox.x, qrBox.y, qrBox.width, qrBox.height).stroke();
     doc.fillColor("#475569");
     drawCertificateText(doc, "بعد الإصدار", qrBox.x, qrBox.y + qrBox.height * 0.35, qrBox.width, qrBox.height * 0.3, 10, "center");
   }
 
   const certificateTitle = typeof layout.certificateTitleText === "string" ? layout.certificateTitleText.trim() : "";
-  if (certificateTitle) {
+  if (isLayoutElementVisible(layout, "certificateTitle") && certificateTitle) {
     const titleBox = getBox(layout, "certificateTitle", width, height);
     doc.fillColor("#0f2350");
     drawCertificateText(doc, certificateTitle, titleBox.x, titleBox.y, titleBox.width, titleBox.height, 30, getTextAlignment(layout, "certificateTitle"), "bold");
   }
 
-  const recipientBox = getBox(layout, "recipientName", width, height);
-  doc.fillColor("#0f172a");
-  drawCertificateText(doc, issue.recipientName || "-", recipientBox.x, recipientBox.y, recipientBox.width, recipientBox.height, 28, getTextAlignment(layout, "recipientName"), "bold");
+  if (isLayoutElementVisible(layout, "recipientName")) {
+    const recipientBox = getBox(layout, "recipientName", width, height);
+    doc.fillColor("#0f172a");
+    drawCertificateText(doc, issue.recipientName || "-", recipientBox.x, recipientBox.y, recipientBox.width, recipientBox.height, 28, getTextAlignment(layout, "recipientName"), "bold");
+  }
 
-  const programBox = getBox(layout, "programTitle", width, height);
-  doc.fillColor("#334155");
-  drawCertificateText(doc, issue.programTitle || "-", programBox.x, programBox.y, programBox.width, programBox.height, 18, getTextAlignment(layout, "programTitle"));
+  if (isLayoutElementVisible(layout, "programTitle")) {
+    const programBox = getBox(layout, "programTitle", width, height);
+    doc.fillColor("#334155");
+    drawCertificateText(doc, issue.programTitle || "-", programBox.x, programBox.y, programBox.width, programBox.height, 18, getTextAlignment(layout, "programTitle"));
+  }
 
-  const serialBox = getBox(layout, "serialNumber", width, height);
-  doc.fillColor("#1e293b");
-  drawCertificateText(doc, `رقم الشهادة: ${issue.serialNumber || "-"}`, serialBox.x, serialBox.y, serialBox.width, serialBox.height, 16, getTextAlignment(layout, "serialNumber"), "bold");
+  if (isLayoutElementVisible(layout, "serialNumber")) {
+    const serialBox = getBox(layout, "serialNumber", width, height);
+    doc.fillColor("#1e293b");
+    drawCertificateText(doc, `رقم الشهادة: ${issue.serialNumber || "-"}`, serialBox.x, serialBox.y, serialBox.width, serialBox.height, 16, getTextAlignment(layout, "serialNumber"), "bold");
+  }
 
-  const issueDateBox = getBox(layout, "issueDate", width, height);
-  const issueDate = issue.issueDate ? new Date(issue.issueDate) : new Date();
-  doc.fillColor("#475569");
-  drawCertificateText(doc, `تاريخ الإصدار: ${Number.isNaN(issueDate.getTime()) ? "-" : issueDate.toLocaleDateString("ar-EG")}`, issueDateBox.x, issueDateBox.y, issueDateBox.width, issueDateBox.height, 10, getTextAlignment(layout, "issueDate"));
+  if (isLayoutElementVisible(layout, "issueDate")) {
+    const issueDateBox = getBox(layout, "issueDate", width, height);
+    const issueDate = issue.issueDate ? new Date(issue.issueDate) : new Date();
+    doc.fillColor("#475569");
+    drawCertificateText(doc, `تاريخ الإصدار: ${Number.isNaN(issueDate.getTime()) ? "-" : issueDate.toLocaleDateString("ar-EG", { timeZone: "UTC" })}`, issueDateBox.x, issueDateBox.y, issueDateBox.width, issueDateBox.height, 10, getTextAlignment(layout, "issueDate"));
+  }
 
-  const issuerBox = getBox(layout, "issuerName", width, height);
-  doc.fillColor("#475569");
-  drawCertificateText(doc, issue.issuerName || "Arkan Web", issuerBox.x, issuerBox.y, issuerBox.width, issuerBox.height, 12, getTextAlignment(layout, "issuerName"));
+  if (isLayoutElementVisible(layout, "issuerName")) {
+    const issuerBox = getBox(layout, "issuerName", width, height);
+    doc.fillColor("#475569");
+    drawCertificateText(doc, issue.issuerName || "Arkan Web", issuerBox.x, issuerBox.y, issuerBox.width, issuerBox.height, 12, getTextAlignment(layout, "issuerName"));
+  }
 
   const metadata = issue.metadata && typeof issue.metadata === "object" ? issue.metadata : {};
   const signatures = normalizeSignatures(metadata.signatures);
@@ -439,7 +465,7 @@ export async function generateCertificatePdfBuffer(issue: any, template: any, pa
       fontSize: 18,
     });
   }
-  for (let index = 0; index < signatures.length; index += 1) {
+  for (let index = 0; isLayoutElementVisible(layout, "signatures") && index < signatures.length; index += 1) {
     const signature = signatures[index];
     const boxes = Array.isArray(layout.signatureBoxes) ? layout.signatureBoxes : [];
     const defaultWidth = 70 / Math.max(signatures.length, 1);
@@ -466,7 +492,7 @@ export async function generateCertificatePdfBuffer(issue: any, template: any, pa
     drawCertificateText(doc, [signature?.title, signature?.role].filter(Boolean).join(" · "), position.x, position.y + position.height * 0.82, position.width, position.height * 0.18, 9, "center");
   }
 
-  for (let index = 0; index < partners.length; index += 1) {
+  for (let index = 0; isLayoutElementVisible(layout, "partners") && index < partners.length; index += 1) {
     const partner = partners[index];
     const logoBoxes: Record<string, any> = layout.partnerLogoBoxes && typeof layout.partnerLogoBoxes === "object" ? layout.partnerLogoBoxes : {};
     const signatureBoxesByPartner: Record<string, any> = layout.partnerSignatureBoxes && typeof layout.partnerSignatureBoxes === "object" ? layout.partnerSignatureBoxes : {};
@@ -502,7 +528,7 @@ export async function generateCertificatePdfBuffer(issue: any, template: any, pa
       width: (signatureBox.width / 100) * width,
       height: (signatureBox.height / 100) * height,
     };
-    const logo = await fetchImageBuffer(partner.logoUrl);
+    const logo = isLayoutElementVisible(layout, "partners") ? await fetchImageBuffer(partner.logoUrl) : undefined;
     if (logo) doc.image(logo, logoPosition.x, logoPosition.y, { fit: [logoPosition.width, logoPosition.height] });
     const signature = await fetchImageBuffer(partner.signatureUrl);
     if (signature) {
@@ -1001,6 +1027,17 @@ router.post("/certificates/drafts", async (req, res): Promise<void> => {
     res.status(404).json({ error: "القالب غير موجود" });
     return;
   }
+  const draftDate = typeof body.issueDate === "string" ? parseCertificateDate(body.issueDate) : new Date();
+  if (!draftDate) {
+    res.status(400).json({ error: "تاريخ الإصدار غير صالح" });
+    return;
+  }
+  const draftLayout = body.layoutConfig ?? body.metadata?.layoutConfig ?? template.layoutConfig;
+  const draftProgramTitle = String(body.programTitle || (
+    Array.isArray(draftLayout?.hiddenElements) && draftLayout.hiddenElements.includes("programTitle")
+      ? "توثيق شهادة"
+      : "مسودة شهادة"
+  ));
   let selectedPartners: { ids: number[]; snapshots: any[] };
   try {
     selectedPartners = await getPartnerSnapshots(body.partnerIds ?? body.metadata?.partnerIds);
@@ -1017,16 +1054,17 @@ router.post("/certificates/drafts", async (req, res): Promise<void> => {
     recipientName: String(body.recipientName || "مسودة"),
     recipientEmail: body.recipientEmail ? String(body.recipientEmail) : null,
     recipientPhone: body.recipientPhone ? String(body.recipientPhone) : null,
-    programTitle: String(body.programTitle || "مسودة شهادة"),
+    programTitle: draftProgramTitle,
     description: body.description ? String(body.description) : null,
     issuerName: String(body.issuerName || "Arkan Web"),
+    issueDate: draftDate,
     status: "draft",
     qrCodeUrl: validationUrl,
     metadata: {
       signatures: normalizeSignatures(body.signatures ?? body.metadata?.signatures),
       partnerIds: selectedPartners.ids,
       partnerSnapshots: selectedPartners.snapshots,
-      layoutConfig: normalizeLayout(body.layoutConfig ?? body.metadata?.layoutConfig ?? template.layoutConfig),
+      layoutConfig: normalizeLayout(draftLayout),
     },
   }).returning();
   res.status(201).json(draft);
@@ -1079,6 +1117,7 @@ router.post("/certificates/preview", async (req, res): Promise<void> => {
     recipientName: typeof body.recipientName === "string" && body.recipientName.trim() ? body.recipientName.trim() : "اسم صاحب الشهادة",
     programTitle: typeof body.programTitle === "string" && body.programTitle.trim() ? body.programTitle.trim() : "اسم الشهادة",
     issuerName: typeof body.issuerName === "string" && body.issuerName.trim() ? body.issuerName.trim() : "Arkan Web",
+    issueDate: typeof body.issueDate === "string" ? parseCertificateDate(body.issueDate) ?? new Date() : new Date(),
     status: isIssuedPreview ? "issued" : "draft",
     signatureName: null,
     signatureTitle: null,
@@ -1118,7 +1157,14 @@ router.post("/certificates/:id/issue", async (req, res): Promise<void> => {
   }
   const recipientName = typeof req.body?.recipientName === "string" ? req.body.recipientName.trim() : draft.recipientName.trim();
   const programTitle = typeof req.body?.programTitle === "string" ? req.body.programTitle.trim() : draft.programTitle.trim();
-  if (!recipientName || !programTitle) {
+  const draftMetadata = draft.metadata && typeof draft.metadata === "object"
+    ? draft.metadata as Record<string, unknown>
+    : {};
+  const draftLayout: Record<string, unknown> = draftMetadata.layoutConfig && typeof draftMetadata.layoutConfig === "object"
+    ? draftMetadata.layoutConfig as Record<string, unknown>
+    : {};
+  const programTitleHidden = Array.isArray(draftLayout?.hiddenElements) && draftLayout.hiddenElements.includes("programTitle");
+  if (!recipientName || (!programTitle && !programTitleHidden)) {
     res.status(400).json({ error: "اسم المستفيد واسم الشهادة مطلوبان لإصدار الشهادة" });
     return;
   }
@@ -1129,9 +1175,9 @@ router.post("/certificates/:id/issue", async (req, res): Promise<void> => {
     validationUrl,
     qrCodeUrl: validationUrl,
     recipientName,
-    programTitle,
+    programTitle: programTitle || "توثيق شهادة",
     status: "issued",
-    issueDate: new Date(),
+    issueDate: draft.issueDate || new Date(),
     updatedAt: new Date(),
   }).where(and(eq(certificateIssuesTable.id, id), eq(certificateIssuesTable.status, "draft"), isNull(certificateIssuesTable.deletedAt)))
     .returning();
@@ -1152,8 +1198,15 @@ router.post("/certificates/issue", async (req, res): Promise<void> => {
   const templateId = Number(body.templateId ?? 0);
   const recipientName = typeof body.recipientName === "string" ? body.recipientName.trim() : "";
   const programTitle = typeof body.programTitle === "string" ? body.programTitle.trim() : "";
-  if (!recipientName || !programTitle) {
+  const requestedLayout = body.layoutConfig ?? body.metadata?.layoutConfig;
+  const programTitleHidden = Array.isArray(requestedLayout?.hiddenElements) && requestedLayout.hiddenElements.includes("programTitle");
+  const issueDate = typeof body.issueDate === "string" ? parseCertificateDate(body.issueDate) : new Date();
+  if (!recipientName || (!programTitle && !programTitleHidden)) {
     res.status(400).json({ error: "اسم المستفيد واسم الشهادة مطلوبان" });
+    return;
+  }
+  if (!issueDate) {
+    res.status(400).json({ error: "تاريخ الإصدار غير صالح" });
     return;
   }
   const [template] = await db.select().from(certificateTemplatesTable).where(eq(certificateTemplatesTable.id, templateId)).limit(1);
@@ -1180,17 +1233,18 @@ router.post("/certificates/issue", async (req, res): Promise<void> => {
     recipientName,
     recipientEmail: body.recipientEmail ? String(body.recipientEmail) : null,
     recipientPhone: body.recipientPhone ? String(body.recipientPhone) : null,
-    programTitle,
+    programTitle: programTitle || "توثيق شهادة",
     description: body.description ? String(body.description) : null,
     issuerName: String(body.issuerName || "Arkan Web"),
     signatureName: body.signatureName ? String(body.signatureName) : null,
     signatureTitle: body.signatureTitle ? String(body.signatureTitle) : null,
     status: "issued",
+    issueDate,
     metadata: {
       signatures: normalizeSignatures(body.signatures ?? body.metadata?.signatures),
       partnerIds: selectedPartners.ids,
       partnerSnapshots: selectedPartners.snapshots,
-      layoutConfig: normalizeLayout(body.layoutConfig ?? body.metadata?.layoutConfig ?? template.layoutConfig),
+      layoutConfig: normalizeLayout(requestedLayout ?? template.layoutConfig),
     },
     qrCodeUrl: validationUrl,
   };
@@ -1407,6 +1461,14 @@ router.patch("/certificates/:id", async (req, res): Promise<void> => {
   if (typeof body.recipientEmail === "string" || body.recipientEmail === null) update.recipientEmail = body.recipientEmail;
   if (typeof body.recipientPhone === "string" || body.recipientPhone === null) update.recipientPhone = body.recipientPhone;
   if (typeof body.description === "string" || body.description === null) update.description = body.description;
+  if (typeof body.issueDate === "string") {
+    const issueDate = parseCertificateDate(body.issueDate);
+    if (!issueDate) {
+      res.status(400).json({ error: "تاريخ الإصدار غير صالح" });
+      return;
+    }
+    update.issueDate = issueDate;
+  }
   if (body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)) {
     const metadata = body.metadata as Record<string, unknown>;
     const [currentIssue] = await db.select({ metadata: certificateIssuesTable.metadata })

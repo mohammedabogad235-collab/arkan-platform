@@ -71,7 +71,30 @@ const emptyCertificate = {
   programTitle: "",
   issuerName: "Arkan Web",
   description: "",
+  issueDate: getLocalDateInputValue(),
 };
+
+function getLocalDateInputValue(date = new Date()): string {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+const certificateElements = [
+  ["certificateTitle", "عنوان الشهادة"],
+  ["recipientName", "اسم المستفيد"],
+  ["programTitle", "اسم البرنامج"],
+  ["issuerName", "الجهة المصدرة"],
+  ["issueDate", "تاريخ الإصدار"],
+  ["serialNumber", "رقم الشهادة"],
+  ["qrCode", "رمز التحقق QR"],
+  ["logo", "شعار القالب"],
+  ["signature", "التوقيع الافتراضي"],
+  ["partners", "المؤسسات الشريكة"],
+  ["signatures", "التوقيعات الإضافية"],
+] as const;
+
+function isCertificateElementVisible(currentLayout: Record<string, any>, key: string): boolean {
+  return !Array.isArray(currentLayout.hiddenElements) || !currentLayout.hiddenElements.includes(key);
+}
 
 const emptyPartner = {
   name: "",
@@ -522,6 +545,7 @@ export default function CertificateStudio() {
       programTitle: issue.programTitle || "",
       issuerName: issue.issuerName || "Arkan Web",
       description: issue.description || "",
+      issueDate: issue.issueDate?.slice(0, 10) || getLocalDateInputValue(),
     });
     setSigners(issue.metadata?.signatures || []);
     setSelectedPartners(issue.metadata?.partnerIds || []);
@@ -668,6 +692,101 @@ export default function CertificateStudio() {
       });
     } finally {
       setReferenceTemplateLoading(false);
+    }
+  };
+
+  const createQuickVerificationTemplate = async () => {
+    if (certificateId) {
+      toast({ variant: "destructive", title: "احفظ الشهادة الحالية أو ابدأ شهادة جديدة أولاً" });
+      return;
+    }
+    if ((templateId || templateForm.name.trim()) && !window.confirm("سيتم إنشاء قالب توثيق بسيط جديد. متابعة؟")) return;
+
+    setSaving(true);
+    const hiddenElements = certificateElements
+      .map(([key]) => key)
+      .filter((key) => !["recipientName", "issueDate", "serialNumber", "qrCode"].includes(key));
+    const quickLayout = {
+      ...initialBoxes,
+      recipientName: { ...initialBoxes.recipientName, x: 20, y: 31, width: 60, height: 14 },
+      issueDate: { ...initialBoxes.issueDate, x: 25, y: 52, width: 50, height: 6, align: "center" },
+      serialNumber: { ...initialBoxes.serialNumber, x: 25, y: 62, width: 50, height: 6, align: "center" },
+      qrCode: { ...initialBoxes.qrCode, x: 44, y: 72, width: 12, height: 15 },
+      certificateTitleText: "",
+      hiddenElements,
+    };
+    try {
+      const reusableTemplate = templates.find((item) => item.name === "قالب توثيق سريع");
+      if (reusableTemplate) {
+        setTemplateId(String(reusableTemplate.id));
+        setTemplateForm({
+          name: reusableTemplate.name,
+          orientation: reusableTemplate.orientation || "portrait",
+          width: reusableTemplate.width || 800,
+          height: reusableTemplate.height || 1100,
+          backgroundUrl: reusableTemplate.backgroundUrl || "",
+          logoUrl: reusableTemplate.logoUrl || "",
+          signatureUrl: reusableTemplate.signatureUrl || "",
+        });
+        setCertificateForm((current) => ({
+          ...current,
+          templateId: String(reusableTemplate.id),
+          programTitle: "",
+          issuerName: "",
+        }));
+        setSigners([]);
+        setSelectedPartners([]);
+        applyLayout({ ...initialBoxes, ...(reusableTemplate.layoutConfig || quickLayout) });
+        toast({ title: "تم اختيار قالب التوثيق السريع", description: "أدخل اسم المستفيد والتاريخ، ثم أصدر الشهادة." });
+        return;
+      }
+      const template = await apiFetchJson<CertificateTemplate>("/api/certificates/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "قالب توثيق سريع",
+          orientation: "portrait",
+          width: 800,
+          height: 1100,
+          backgroundUrl: "",
+          logoUrl: "",
+          signatureUrl: "",
+          layoutConfig: quickLayout,
+          isActive: true,
+        }),
+      });
+      await refresh();
+      setTemplateId(String(template.id));
+      setTemplateForm({
+        name: template.name,
+        orientation: "portrait",
+        width: 800,
+        height: 1100,
+        backgroundUrl: "",
+        logoUrl: "",
+        signatureUrl: "",
+      });
+      setCertificateForm((current) => ({
+        ...current,
+        templateId: String(template.id),
+        programTitle: "",
+        issuerName: "",
+      }));
+      setSigners([]);
+      setSelectedPartners([]);
+      applyLayout(quickLayout);
+      toast({
+        title: "تم تجهيز نموذج التوثيق السريع",
+        description: "أدخل اسم المستفيد والتاريخ، وسيُنشأ رقم فريد ورمز QR عند الإصدار.",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "تعذر تجهيز التوثيق السريع",
+        description: error instanceof Error ? error.message : "حدث خطأ غير متوقع",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -977,6 +1096,30 @@ export default function CertificateStudio() {
               value={layout.certificateTitleText ?? ""}
               onChange={(value) => applyLayout({ ...layoutRef.current, certificateTitleText: value })}
             />
+            <div className="space-y-2 rounded-lg bg-muted/30 p-3">
+              <p className="text-sm font-semibold">العناصر الظاهرة على الشهادة</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {certificateElements.map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={isCertificateElementVisible(layout, key)}
+                      onChange={(event) => {
+                        const hiddenElements = Array.isArray(layoutRef.current.hiddenElements)
+                          ? [...layoutRef.current.hiddenElements]
+                          : [];
+                        const nextHidden = event.target.checked
+                          ? hiddenElements.filter((item: string) => item !== key)
+                          : [...hiddenElements, key];
+                        applyLayout({ ...layoutRef.current, hiddenElements: nextHidden });
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">يمكن إخفاء النصوص والعناصر القابلة للتحرير. النص المطبوع داخل صورة الخلفية يحتاج إلى خلفية نظيفة.</p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <label className="space-y-1.5 text-sm">
                 <span className="font-medium">اتجاه الصفحة</span>
@@ -1057,9 +1200,9 @@ export default function CertificateStudio() {
             }}
           >
             {!templateForm.backgroundUrl && <div className="absolute inset-3 border border-amber-600/60" />}
-            {templateForm.logoUrl && <img onPointerDown={(event) => startDrag(event, "logo", boxFor(layout, "logo", initialBoxes.logo))} src={templateForm.logoUrl} className="absolute cursor-move touch-none object-contain" style={{ left: `${boxFor(layout, "logo", initialBoxes.logo).x}%`, top: `${boxFor(layout, "logo", initialBoxes.logo).y}%`, width: `${boxFor(layout, "logo", initialBoxes.logo).width}%`, height: `${boxFor(layout, "logo", initialBoxes.logo).height}%` }} alt="" />}
-            {templateForm.signatureUrl && <img onPointerDown={(event) => startDrag(event, "signature", boxFor(layout, "signature", initialBoxes.signature))} src={templateForm.signatureUrl} className="absolute cursor-move touch-none object-contain" style={{ left: `${boxFor(layout, "signature", initialBoxes.signature).x}%`, top: `${boxFor(layout, "signature", initialBoxes.signature).y}%`, width: `${boxFor(layout, "signature", initialBoxes.signature).width}%`, height: `${boxFor(layout, "signature", initialBoxes.signature).height}%` }} alt="التوقيع الافتراضي" />}
-            {typeof layout.certificateTitleText === "string" && layout.certificateTitleText.trim() && (
+            {isCertificateElementVisible(layout, "logo") && templateForm.logoUrl && <img onPointerDown={(event) => startDrag(event, "logo", boxFor(layout, "logo", initialBoxes.logo))} src={templateForm.logoUrl} className="absolute cursor-move touch-none object-contain" style={{ left: `${boxFor(layout, "logo", initialBoxes.logo).x}%`, top: `${boxFor(layout, "logo", initialBoxes.logo).y}%`, width: `${boxFor(layout, "logo", initialBoxes.logo).width}%`, height: `${boxFor(layout, "logo", initialBoxes.logo).height}%` }} alt="" />}
+            {isCertificateElementVisible(layout, "signature") && templateForm.signatureUrl && <img onPointerDown={(event) => startDrag(event, "signature", boxFor(layout, "signature", initialBoxes.signature))} src={templateForm.signatureUrl} className="absolute cursor-move touch-none object-contain" style={{ left: `${boxFor(layout, "signature", initialBoxes.signature).x}%`, top: `${boxFor(layout, "signature", initialBoxes.signature).y}%`, width: `${boxFor(layout, "signature", initialBoxes.signature).width}%`, height: `${boxFor(layout, "signature", initialBoxes.signature).height}%` }} alt="التوقيع الافتراضي" />}
+            {isCertificateElementVisible(layout, "certificateTitle") && typeof layout.certificateTitleText === "string" && layout.certificateTitleText.trim() && (
               <span
                 onPointerDown={(event) => startDrag(event, "certificateTitle", boxFor(layout, "certificateTitle", initialBoxes.certificateTitle))}
                 className="absolute flex cursor-move touch-none items-center justify-center overflow-hidden text-center text-[clamp(14px,2.4vw,32px)] font-serif font-bold text-[#0f2350]"
@@ -1074,22 +1217,22 @@ export default function CertificateStudio() {
                 {layout.certificateTitleText}
               </span>
             )}
-            <span onPointerDown={(event) => startDrag(event, "recipientName", boxFor(layout, "recipientName", initialBoxes.recipientName))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(12px,2vw,28px)] font-bold text-slate-900" style={{ left: `${boxFor(layout, "recipientName", initialBoxes.recipientName).x}%`, top: `${boxFor(layout, "recipientName", initialBoxes.recipientName).y}%`, width: `${boxFor(layout, "recipientName", initialBoxes.recipientName).width}%`, height: `${boxFor(layout, "recipientName", initialBoxes.recipientName).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "recipientName") === "left" ? "flex-start" : alignmentFor(layout, "recipientName") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "recipientName") }}>
+            {isCertificateElementVisible(layout, "recipientName") && <span onPointerDown={(event) => startDrag(event, "recipientName", boxFor(layout, "recipientName", initialBoxes.recipientName))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(12px,2vw,28px)] font-bold text-slate-900" style={{ left: `${boxFor(layout, "recipientName", initialBoxes.recipientName).x}%`, top: `${boxFor(layout, "recipientName", initialBoxes.recipientName).y}%`, width: `${boxFor(layout, "recipientName", initialBoxes.recipientName).width}%`, height: `${boxFor(layout, "recipientName", initialBoxes.recipientName).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "recipientName") === "left" ? "flex-start" : alignmentFor(layout, "recipientName") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "recipientName") }}>
               {certificateForm.recipientName || "اسم صاحب الشهادة"}
-            </span>
-            <span onPointerDown={(event) => startDrag(event, "programTitle", boxFor(layout, "programTitle", initialBoxes.programTitle))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(9px,1.5vw,18px)] text-slate-700" style={{ left: `${boxFor(layout, "programTitle", initialBoxes.programTitle).x}%`, top: `${boxFor(layout, "programTitle", initialBoxes.programTitle).y}%`, width: `${boxFor(layout, "programTitle", initialBoxes.programTitle).width}%`, height: `${boxFor(layout, "programTitle", initialBoxes.programTitle).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "programTitle") === "left" ? "flex-start" : alignmentFor(layout, "programTitle") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "programTitle") }}>
+            </span>}
+            {isCertificateElementVisible(layout, "programTitle") && <span onPointerDown={(event) => startDrag(event, "programTitle", boxFor(layout, "programTitle", initialBoxes.programTitle))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(9px,1.5vw,18px)] text-slate-700" style={{ left: `${boxFor(layout, "programTitle", initialBoxes.programTitle).x}%`, top: `${boxFor(layout, "programTitle", initialBoxes.programTitle).y}%`, width: `${boxFor(layout, "programTitle", initialBoxes.programTitle).width}%`, height: `${boxFor(layout, "programTitle", initialBoxes.programTitle).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "programTitle") === "left" ? "flex-start" : alignmentFor(layout, "programTitle") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "programTitle") }}>
               {certificateForm.programTitle || "اسم الشهادة / البرنامج"}
-            </span>
-            <span onPointerDown={(event) => startDrag(event, "issuerName", boxFor(layout, "issuerName", initialBoxes.issuerName))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(7px,1vw,13px)] text-slate-600" style={{ left: `${boxFor(layout, "issuerName", initialBoxes.issuerName).x}%`, top: `${boxFor(layout, "issuerName", initialBoxes.issuerName).y}%`, width: `${boxFor(layout, "issuerName", initialBoxes.issuerName).width}%`, height: `${boxFor(layout, "issuerName", initialBoxes.issuerName).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "issuerName") === "left" ? "flex-start" : alignmentFor(layout, "issuerName") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "issuerName") }}>
+            </span>}
+            {isCertificateElementVisible(layout, "issuerName") && <span onPointerDown={(event) => startDrag(event, "issuerName", boxFor(layout, "issuerName", initialBoxes.issuerName))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(7px,1vw,13px)] text-slate-600" style={{ left: `${boxFor(layout, "issuerName", initialBoxes.issuerName).x}%`, top: `${boxFor(layout, "issuerName", initialBoxes.issuerName).y}%`, width: `${boxFor(layout, "issuerName", initialBoxes.issuerName).width}%`, height: `${boxFor(layout, "issuerName", initialBoxes.issuerName).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "issuerName") === "left" ? "flex-start" : alignmentFor(layout, "issuerName") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "issuerName") }}>
               {certificateForm.issuerName || "الجهة المصدرة"}
-            </span>
-            <span onPointerDown={(event) => startDrag(event, "serialNumber", boxFor(layout, "serialNumber", initialBoxes.serialNumber))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(7px,1vw,12px)] font-mono" style={{ left: `${boxFor(layout, "serialNumber", initialBoxes.serialNumber).x}%`, top: `${boxFor(layout, "serialNumber", initialBoxes.serialNumber).y}%`, width: `${boxFor(layout, "serialNumber", initialBoxes.serialNumber).width}%`, height: `${boxFor(layout, "serialNumber", initialBoxes.serialNumber).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "serialNumber") === "left" ? "flex-start" : alignmentFor(layout, "serialNumber") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "serialNumber") }}>
+            </span>}
+            {isCertificateElementVisible(layout, "serialNumber") && <span onPointerDown={(event) => startDrag(event, "serialNumber", boxFor(layout, "serialNumber", initialBoxes.serialNumber))} className="absolute flex cursor-move touch-none overflow-hidden text-[clamp(7px,1vw,12px)] font-mono" style={{ left: `${boxFor(layout, "serialNumber", initialBoxes.serialNumber).x}%`, top: `${boxFor(layout, "serialNumber", initialBoxes.serialNumber).y}%`, width: `${boxFor(layout, "serialNumber", initialBoxes.serialNumber).width}%`, height: `${boxFor(layout, "serialNumber", initialBoxes.serialNumber).height}%`, alignItems: "center", justifyContent: alignmentFor(layout, "serialNumber") === "left" ? "flex-start" : alignmentFor(layout, "serialNumber") === "right" ? "flex-end" : "center", textAlign: alignmentFor(layout, "serialNumber") }}>
               رقم الشهادة: {activeSerial || "سيصدر بعد الاعتماد"}
-            </span>
-            <span onPointerDown={(event) => startDrag(event, "issueDate", boxFor(layout, "issueDate", initialBoxes.issueDate))} className="absolute flex cursor-move touch-none items-center justify-center overflow-hidden text-center text-[clamp(6px,0.8vw,10px)] text-slate-600" style={{ left: `${boxFor(layout, "issueDate", initialBoxes.issueDate).x}%`, top: `${boxFor(layout, "issueDate", initialBoxes.issueDate).y}%`, width: `${boxFor(layout, "issueDate", initialBoxes.issueDate).width}%`, height: `${boxFor(layout, "issueDate", initialBoxes.issueDate).height}%` }}>
-              تاريخ الإصدار: {new Date().toLocaleDateString("ar-EG")}
-            </span>
-            {activeSerial ? (
+            </span>}
+            {isCertificateElementVisible(layout, "issueDate") && <span onPointerDown={(event) => startDrag(event, "issueDate", boxFor(layout, "issueDate", initialBoxes.issueDate))} className="absolute flex cursor-move touch-none items-center justify-center overflow-hidden text-center text-[clamp(6px,0.8vw,10px)] text-slate-600" style={{ left: `${boxFor(layout, "issueDate", initialBoxes.issueDate).x}%`, top: `${boxFor(layout, "issueDate", initialBoxes.issueDate).y}%`, width: `${boxFor(layout, "issueDate", initialBoxes.issueDate).width}%`, height: `${boxFor(layout, "issueDate", initialBoxes.issueDate).height}%` }}>
+              تاريخ الإصدار: {certificateForm.issueDate ? new Date(`${certificateForm.issueDate}T12:00:00.000Z`).toLocaleDateString("ar-EG", { timeZone: "UTC" }) : "-"}
+            </span>}
+            {isCertificateElementVisible(layout, "qrCode") && (activeSerial ? (
               <img onPointerDown={(event) => startDrag(event, "qrCode", boxFor(layout, "qrCode", initialBoxes.qrCode))} src={resolveApiUrl(`/api/certificates/qr?serial=${encodeURIComponent(activeSerial)}`)} alt="رمز التحقق QR" className="absolute cursor-move touch-none bg-white" style={{ left: `${boxFor(layout, "qrCode", initialBoxes.qrCode).x}%`, top: `${boxFor(layout, "qrCode", initialBoxes.qrCode).y}%`, width: `${boxFor(layout, "qrCode", initialBoxes.qrCode).width}%`, height: `${boxFor(layout, "qrCode", initialBoxes.qrCode).height}%` }} />
             ) : (
               <div
@@ -1104,8 +1247,8 @@ export default function CertificateStudio() {
               >
                 اسحب رمز QR
               </div>
-            )}
-            {selectedPartnerRecords.map((partner, index) => {
+            ))}
+            {isCertificateElementVisible(layout, "partners") && selectedPartnerRecords.map((partner, index) => {
               const defaultWidth = 70 / Math.max(selectedPartnerRecords.length, 1);
               const logoBox = boxFor(
                 { position: layout.partnerLogoBoxes?.[String(partner.id)] ?? layout.partnerBoxes?.[String(partner.id)] },
@@ -1134,7 +1277,7 @@ export default function CertificateStudio() {
                 </div>
               );
             })}
-            {signers.map((signer, index) => {
+            {isCertificateElementVisible(layout, "signatures") && signers.map((signer, index) => {
               const box = signatureBoxes[index] || initialBoxes.signature;
               return (
                 <div key={index} onPointerDown={(event) => startDrag(event, `signature:${index}`, box)} className="absolute flex cursor-move touch-none flex-col items-center justify-center overflow-hidden text-center" style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.width}%`, height: `${box.height}%` }}>
@@ -1187,6 +1330,16 @@ export default function CertificateStudio() {
             <h2 className="text-lg font-bold">{certificateId ? "تعديل شهادة" : "إصدار شهادة جديدة"}</h2>
             {certificateId && <button className="text-sm text-primary underline" onClick={clearCertificateForm}>إصدار شهادة جديدة</button>}
           </div>
+          {!certificateId && (
+            <button
+              type="button"
+              className="w-full rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary disabled:opacity-60"
+              disabled={saving}
+              onClick={() => void createQuickVerificationTemplate()}
+            >
+              {saving ? "جارٍ تجهيز النموذج..." : "إعداد شهادة توثيق فقط (اسم + تاريخ + QR)"}
+            </button>
+          )}
           <form onSubmit={saveCertificate} className="space-y-3">
             <label className="block space-y-1.5 text-sm">
               <span className="font-medium">قالب الشهادة</span>
@@ -1197,9 +1350,10 @@ export default function CertificateStudio() {
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="اسم المستفيد" value={certificateForm.recipientName} onChange={(value) => setCertificateForm({ ...certificateForm, recipientName: value })} />
-              <Field label="اسم الشهادة / البرنامج" value={certificateForm.programTitle} onChange={(value) => setCertificateForm({ ...certificateForm, programTitle: value })} />
-              <Field label="الجهة المصدرة" value={certificateForm.issuerName} onChange={(value) => setCertificateForm({ ...certificateForm, issuerName: value })} />
+              {isCertificateElementVisible(layout, "programTitle") && <Field label="اسم الشهادة / البرنامج" value={certificateForm.programTitle} onChange={(value) => setCertificateForm({ ...certificateForm, programTitle: value })} />}
+              {isCertificateElementVisible(layout, "issuerName") && <Field label="الجهة المصدرة" value={certificateForm.issuerName} onChange={(value) => setCertificateForm({ ...certificateForm, issuerName: value })} />}
               <Field label="البريد (داخلي)" value={certificateForm.recipientEmail} dir="ltr" onChange={(value) => setCertificateForm({ ...certificateForm, recipientEmail: value })} />
+              {isCertificateElementVisible(layout, "issueDate") && <Field label="تاريخ الإصدار" type="date" value={certificateForm.issueDate} onChange={(value) => setCertificateForm({ ...certificateForm, issueDate: value })} />}
             </div>
             <Field label="وصف / ملاحظات داخلية" value={certificateForm.description} onChange={(value) => setCertificateForm({ ...certificateForm, description: value })} />
             <div className="space-y-2 border-t pt-3">
