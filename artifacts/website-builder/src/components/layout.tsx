@@ -1,4 +1,5 @@
 import { ReactNode, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth";
 import { Link, useLocation } from "wouter";
 import { BadgeCheck, Download, MessageCircle, Menu, X, Home, ShoppingBag, Star, LayoutDashboard, User as UserIcon, LogOut, Phone, Mail, MapPin } from "lucide-react";
@@ -108,7 +109,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <Link href="/" className="text-sm font-medium text-foreground hover:text-primary transition-colors">الرئيسية</Link>
       <Link href="/testimonials" className="text-sm font-medium text-foreground hover:text-primary transition-colors">آراء العملاء</Link>
       {isAuthenticated && isClient && (
-        <Link href="/my-orders" className="text-sm font-medium text-foreground hover:text-primary transition-colors">طلباتي</Link>
+        <Link href="/account" className="text-sm font-medium text-foreground hover:text-primary transition-colors">حسابي</Link>
       )}
       {isAdminLike && (
         <Link href="/admin" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">لوحة التحكم</Link>
@@ -129,13 +130,13 @@ export function Layout({ children }: { children: ReactNode }) {
               <span className="font-bold text-lg hidden sm:inline-block">Arkan</span>
             </Link>
             
-            <nav className="hidden md:flex items-center gap-6 ms-6">
+            <nav className="hidden lg:flex items-center gap-6 ms-6">
               <NavLinks />
             </nav>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="hidden items-center gap-2 md:flex">
+            <div className="hidden items-center gap-2 lg:flex">
               <Link href="/certificate/verify">
                 <Button variant="outline" size="sm">
                   <BadgeCheck className="ms-1 h-4 w-4" />
@@ -176,7 +177,7 @@ export function Layout({ children }: { children: ReactNode }) {
             )}
 
             <Sheet open={open} onOpenChange={setOpen}>
-              <SheetTrigger asChild className="md:hidden">
+              <SheetTrigger asChild className="lg:hidden">
                 <Button variant="ghost" size="icon">
                   <Menu className="h-5 w-5" />
                 </Button>
@@ -213,19 +214,21 @@ export function Layout({ children }: { children: ReactNode }) {
       </main>
 
       {showFloatingChatBubble && (
-        <Link href="/chat">
-          <a
+        createPortal(
+          <Link
+            href="/chat"
             aria-label="المحادثة والدعم"
-            className="fixed bottom-6 right-6 z-[999] flex items-center justify-center w-14 h-14 rounded-full bg-primary text-white shadow-xl hover:scale-105 hover:shadow-primary/50 transition-all duration-200"
+            className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] z-[999] flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-xl transition-all duration-200 hover:scale-105 hover:shadow-primary/50 max-sm:bottom-[calc(1rem+env(safe-area-inset-bottom))] max-sm:right-[calc(1rem+env(safe-area-inset-right))]"
           >
-            <MessageCircle className="w-6 h-6" />
+            <MessageCircle className="h-6 w-6" />
             {unreadChatCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[11px] font-bold text-white border-2 border-white shadow-sm animate-pulse">
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 text-[11px] font-bold text-white shadow-sm animate-pulse">
                 {unreadChatCount}
               </span>
             )}
-          </a>
-        </Link>
+          </Link>,
+          document.body,
+        )
       )}
 
       <footer className="border-t bg-white mt-auto">

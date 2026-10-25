@@ -30,15 +30,15 @@ const registerSchema = z.object({
 export default function Register() {
   const register = useRegister();
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      setLocation("/");
+      setLocation(user?.role === "admin" || user?.role === "subadmin" ? "/admin" : "/account");
     }
-  }, [isAuthenticated, isLoading, setLocation]);
+  }, [isAuthenticated, isLoading, user, setLocation]);
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
@@ -61,7 +61,7 @@ export default function Register() {
           }
           // Fallback (should not happen with current backend)
           toast({ title: "تم إنشاء الحساب بنجاح" });
-          setLocation("/");
+          setLocation("/account");
         },
         onError: (error) => {
           const errData = getApiErrorData(error);

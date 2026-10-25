@@ -48,7 +48,7 @@ export default function VerifyEmail() {
       }
       queryClient.setQueryData(getGetMeQueryKey(), data.user);
       toast({ title: "تم تأكيد حسابك بنجاح", description: `أهلاً بك ${data.user.fullName}` });
-      setLocation("/order");
+      setLocation("/account");
     } catch {
       toast({ variant: "destructive", title: "خطأ", description: "حدث خطأ، حاول مجدداً" });
     } finally {

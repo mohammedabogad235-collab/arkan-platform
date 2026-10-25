@@ -648,7 +648,7 @@ export default function CertificateVerify() {
         </div>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          هل تحتاج مساعدة؟ <Link href="/"><a className="font-medium text-primary hover:underline">العودة إلى موقع أركان</a></Link>
+          هل تحتاج مساعدة؟ <Link href="/" className="font-medium text-primary hover:underline">العودة إلى موقع أركان</Link>
         </p>
       </div>
 

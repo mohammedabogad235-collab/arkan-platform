@@ -158,33 +158,33 @@ export function SystemGuard({ children }: PropsWithChildren) {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 sm:items-center sm:py-10"
+      className="fixed inset-0 isolate z-[9999] flex min-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6 sm:px-6 sm:py-8"
       dir="rtl"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#1e3a8a_0%,_#0b1224_45%,_#070b16_100%)]" />
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_#1e3a8a_0%,_#0b1224_45%,_#070b16_100%)]" />
       <motion.div
         aria-hidden="true"
         animate={prefersReducedMotion ? undefined : { x: [0, 24, 0], y: [0, -18, 0], scale: [1, 1.08, 1] }}
         transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-blue-500/20 blur-3xl"
+        className="pointer-events-none fixed -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-blue-500/20 blur-3xl"
       />
       <motion.div
         aria-hidden="true"
         animate={prefersReducedMotion ? undefined : { x: [0, -18, 0], y: [0, 20, 0], scale: [1, 1.12, 1] }}
         transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute -bottom-40 -right-40 h-[520px] w-[520px] rounded-full bg-amber-400/15 blur-3xl"
+        className="pointer-events-none fixed -bottom-40 -right-40 h-[520px] w-[520px] rounded-full bg-amber-400/15 blur-3xl"
       />
-      <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
 
       <motion.div
         initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.98, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: prefersReducedMotion ? 0 : 0.35 }}
-        className="relative w-full max-w-2xl"
+        className="relative my-auto w-full min-w-0 max-w-2xl"
       >
         <Card className="overflow-hidden border-white/15 bg-slate-950/55 text-white shadow-[0_24px_100px_rgba(2,6,23,0.55)] backdrop-blur-2xl">
           <div className="h-1.5 bg-gradient-to-l from-amber-300 via-blue-400 to-blue-600" />
-          <CardContent className="p-6 sm:p-10 text-white">
+          <CardContent className="p-4 text-white min-[420px]:p-6 sm:p-8 lg:p-10">
             <div className="flex items-start gap-4">
               <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-blue-300/30 bg-gradient-to-br from-blue-500/30 to-amber-400/15 shadow-[0_0_32px_rgba(59,130,246,0.2)]">
                 <motion.div
@@ -201,7 +201,7 @@ export function SystemGuard({ children }: PropsWithChildren) {
                   أركان — نعمل على تحسين تجربتك
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{title}</h1>
-                <p className="mt-2 text-white/75 leading-relaxed">{message}</p>
+                <p className="mt-2 break-words leading-relaxed text-white/75">{message}</p>
               </div>
             </div>
 

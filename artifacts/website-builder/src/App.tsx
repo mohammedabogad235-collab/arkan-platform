@@ -16,6 +16,7 @@ const Login = lazy(() => import("@/pages/login"));
 const Register = lazy(() => import("@/pages/register"));
 const VerifyEmail = lazy(() => import("@/pages/verify-email"));
 const Order = lazy(() => import("@/pages/order"));
+const Account = lazy(() => import("@/pages/account"));
 const MyOrders = lazy(() => import("@/pages/my-orders"));
 const Testimonials = lazy(() => import("@/pages/testimonials"));
 const Admin = lazy(() => import("@/pages/admin"));
@@ -83,6 +84,12 @@ function Router() {
       <Route path="/order">
         <ProtectedRoute>
           <Order />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/account">
+        <ProtectedRoute clientOnly>
+          <Account />
         </ProtectedRoute>
       </Route>
 

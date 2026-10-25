@@ -92,6 +92,13 @@ const ALL_NAV = [
   { id: "subadmins",         label: "مشرفون فرعيون",     icon: Shield,          adminOnly: true  },
 ];
 
+const NAV_GROUPS = [
+  { label: "الرئيسية", ids: ["overview"] },
+  { label: "العملاء والطلبات", ids: ["orders", "operations", "messages", "users"] },
+  { label: "المبيعات والخدمات", ids: ["finances", "packages", "payments", "reviews", "coupons"] },
+  { label: "إدارة المنصة", ids: ["certificate-studio", "settings", "otp-settings", "subadmins"] },
+];
+
 const PERMISSIONS_LIST = [
   { id: "overview",  label: "الإحصائيات" },
   { id: "orders",    label: "الطلبات" },
@@ -1258,19 +1265,30 @@ export default function Admin() {
 
       <div className="flex flex-1">
         <aside className="hidden md:flex w-52 bg-white border-l sticky top-14 self-start h-[calc(100vh-3.5rem)] flex-col shadow-sm shrink-0 overflow-y-auto py-4">
-          <nav className="flex flex-col gap-1 px-3">
-            {(Array.isArray(NAV) ? NAV : []).map(item => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
+          <nav className="flex flex-col gap-4 px-3">
+            {NAV_GROUPS.map((group) => {
+              const items = NAV.filter((item) => group.ids.includes(item.id));
+              if (items.length === 0) return null;
               return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full text-right ${isActive ? "bg-primary text-white shadow-sm shadow-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  {item.label}
-                </button>
+                <section key={group.label} aria-label={group.label}>
+                  <h2 className="mb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">{group.label}</h2>
+                  <div className="flex flex-col gap-1">
+                    {items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setActiveTab(item.id)}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full text-right ${isActive ? "bg-primary text-white shadow-sm shadow-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
               );
             })}
 
@@ -2444,31 +2462,32 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      <nav className="md:hidden fixed bottom-0 right-0 left-0 z-30 bg-white border-t shadow-lg" dir="rtl">
-        <div className="flex overflow-x-auto scrollbar-hide">
-          {(Array.isArray(NAV) ? NAV : []).map(item => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            const hasBadge = item.id === "orders" && pendingReceipts > 0;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex flex-col items-center justify-center gap-0.5 min-w-[4rem] flex-1 py-2.5 px-1 relative transition-colors ${isActive ? "text-primary" : "text-muted-foreground"}`}
-              >
-                <div className="relative">
-                  <Icon className="w-5 h-5" />
-                  {hasBadge && (
-                    <span className="absolute -top-1 -left-1 w-4 h-4 bg-orange-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold">
-                      {pendingReceipts}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10px] font-medium leading-tight">{item.label}</span>
-                {isActive && <span className="absolute bottom-0 right-2 left-2 h-0.5 bg-primary rounded-full" />}
-              </button>
-            );
-          })}
+      <nav className="md:hidden fixed bottom-0 right-0 left-0 z-30 border-t bg-white/95 p-3 shadow-lg backdrop-blur" dir="rtl" aria-label="أقسام لوحة التحكم">
+        <div className="mx-auto flex max-w-xl items-center gap-2">
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">اختر قسم لوحة التحكم</span>
+            <select
+              value={activeTab}
+              onChange={(event) => setActiveTab(event.target.value)}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            >
+              {NAV_GROUPS.map((group) => {
+                const items = NAV.filter((item) => group.ids.includes(item.id));
+                return items.length ? (
+                  <optgroup key={group.label} label={group.label}>
+                    {items.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}{item.id === "orders" && pendingReceipts > 0 ? ` (${pendingReceipts} تحويل)` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null;
+              })}
+            </select>
+          </label>
+          <Button asChild variant="outline" size="sm" className="h-11 shrink-0 rounded-xl px-3">
+            <Link href="/admin/system-status"><Shield className="ms-1 h-4 w-4" />الصيانة</Link>
+          </Button>
         </div>
       </nav>
     </div>

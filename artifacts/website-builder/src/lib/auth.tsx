@@ -40,27 +40,29 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-export function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
+export function ProtectedRoute({ children, adminOnly = false, clientOnly = false }: { children: React.ReactNode; adminOnly?: boolean; clientOnly?: boolean }) {
   const { user, isLoading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
 
   const isAdminOrSub = user?.role === "admin" || user?.role === "subadmin";
+  const isClient = user?.role === "client" || user?.role === "user";
+  const isForbiddenRole = (adminOnly && !isAdminOrSub) || (clientOnly && !isClient);
 
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
         setLocation(adminOnly ? "/admin/login" : "/login");
-      } else if (adminOnly && !isAdminOrSub) {
-        setLocation("/");
+      } else if (isForbiddenRole) {
+        setLocation(isAdminOrSub ? "/admin" : "/");
       }
     }
-  }, [isLoading, isAuthenticated, user, setLocation, adminOnly, isAdminOrSub]);
+  }, [isLoading, isAuthenticated, user, setLocation, adminOnly, isAdminOrSub, isClient, isForbiddenRole]);
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">جاري التحميل...</div>;
   }
 
-  if (!isAuthenticated || (adminOnly && !isAdminOrSub)) {
+  if (!isAuthenticated || isForbiddenRole) {
     return null;
   }
 

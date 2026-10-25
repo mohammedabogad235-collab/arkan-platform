@@ -50,7 +50,7 @@ export default function Login() {
       if (user.role === "admin" || user.role === "subadmin") {
         setLocation("/admin");
       } else {
-        setLocation("/");
+        setLocation("/account");
       }
     }
   }, [isAuthenticated, isLoading, user, setLocation]);
@@ -125,7 +125,7 @@ export default function Login() {
           if (data.user.role === "admin" || data.user.role === "subadmin") {
             setLocation("/admin");
           } else {
-            setLocation("/order");
+            setLocation("/account");
           }
         },
         onError: (error) => {
@@ -192,7 +192,7 @@ export default function Login() {
       if (authenticatedUser.role === "admin" || authenticatedUser.role === "subadmin") {
         setLocation("/admin");
       } else {
-        setLocation("/order");
+        setLocation("/account");
       }
     } catch (error) {
       const errData = getApiErrorData(error);
