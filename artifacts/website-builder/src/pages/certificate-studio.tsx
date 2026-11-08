@@ -45,6 +45,7 @@ type CertificateIssue = {
     signatures?: Signer[];
     partnerIds?: number[];
     layoutConfig?: Record<string, any>;
+    description?: string;
     backgroundUrl?: string;
     width?: number;
     height?: number;
@@ -103,12 +104,19 @@ type ReservedImageUpload = {
   file: File;
   previewUrl: string;
   recipientName: string;
+  recipientEmail: string;
+  recipientPhone: string;
+  programTitle: string;
+  issuerName: string;
+  issueDate: string;
+  description: string;
   serialNumber: string;
   matched: boolean;
   uploadedUrl?: string;
   width: number;
   height: number;
   orientation: "portrait" | "landscape";
+  qrBox: Box;
 };
 
 const initialBoxes: Record<string, Box> = {
@@ -928,28 +936,33 @@ export default function CertificateStudio() {
     if (!files?.length) return;
     const selectedFiles = Array.from(files);
     if (reservedImageUploads.length + selectedFiles.length > 50) {
-      toast({ variant: "destructive", title: "الحد الأقصى 50 صورة في الدفعة الواحدة" });
+      toast({ variant: "destructive", title: "الحد الأقصى 50 شهادة في الدفعة الواحدة" });
       return;
     }
     const prepared: ReservedImageUpload[] = [];
     try {
       for (const file of selectedFiles) {
-        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-          throw new Error(`صيغة ${file.name} غير مدعومة؛ استخدم JPG أو PNG أو WebP.`);
+        const isPdf = file.type === "application/pdf" || file.name.toLocaleLowerCase().endsWith(".pdf");
+        const isImage = ["image/png", "image/jpeg", "image/webp"].includes(file.type);
+        if (!isPdf && !isImage) {
+          throw new Error(`صيغة ${file.name} غير مدعومة؛ استخدم PDF أو JPG أو PNG أو WebP.`);
         }
-        if (file.size > 8 * 1024 * 1024) {
-          throw new Error(`حجم ${file.name} أكبر من 8 ميجابايت.`);
+        const maxFileSize = isPdf ? 15 * 1024 * 1024 : 8 * 1024 * 1024;
+        if (file.size > maxFileSize) {
+          throw new Error(`حجم ${file.name} أكبر من ${isPdf ? 15 : 8} ميجابايت.`);
         }
         const previewUrl = URL.createObjectURL(file);
-        const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-          const image = new Image();
-          image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-          image.onerror = () => {
-            URL.revokeObjectURL(previewUrl);
-            reject(new Error(`تعذرت قراءة صورة ${file.name}.`));
-          };
-          image.src = previewUrl;
-        });
+        const dimensions = isPdf
+          ? { width: 1200, height: 800 }
+          : await new Promise<{ width: number; height: number }>((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+            image.onerror = () => {
+              URL.revokeObjectURL(previewUrl);
+              reject(new Error(`تعذرت قراءة صورة ${file.name}.`));
+            };
+            image.src = previewUrl;
+          });
         const fileStem = file.name.replace(/\.[^.]+$/, "");
         const generatedSerialNumber = fileStem.match(/AW-CERT-\d{4}-\d{6}/)?.[0] || "";
         const exactReservedCode = reservedIssues.find((issue) => issue.serialNumber === fileStem.trim());
@@ -964,6 +977,7 @@ export default function CertificateStudio() {
           : generatedSerialNumber
           ? fileStem.replace(generatedSerialNumber, "").replace(/[-_\s]+/g, " ").trim()
           : fileStem;
+        const reservedMetadata = reserved?.metadata && typeof reserved.metadata === "object" ? reserved.metadata : {};
         prepared.push({
           id: crypto.randomUUID(),
           file,
@@ -971,11 +985,18 @@ export default function CertificateStudio() {
           recipientName: reserved && reserved.recipientName !== "بدون اسم"
             ? reserved.recipientName
             : derivedName,
+          recipientEmail: reserved?.recipientEmail ?? "",
+          recipientPhone: reserved?.recipientPhone ?? "",
+          programTitle: reserved?.programTitle ?? "",
+          issuerName: reserved?.issuerName ?? "Arkan Web",
+          issueDate: reserved?.issueDate?.slice(0, 10) ?? getLocalDateInputValue(),
+          description: typeof reservedMetadata.description === "string" ? reservedMetadata.description : "",
           serialNumber: selectedSerial,
           matched: Boolean(reserved),
           width: dimensions.width,
           height: dimensions.height,
           orientation: dimensions.height > dimensions.width ? "portrait" : "landscape",
+          qrBox: { x: 78, y: 10, width: 12, height: 12 },
         });
       }
       setReservedImageUploads((current) => [...current, ...prepared]);
@@ -1017,28 +1038,53 @@ export default function CertificateStudio() {
         errors.push({ serialNumber: image.serialNumber, reason: "أدخل اسم المستفيد قبل الإصدار" });
         continue;
       }
+      if (image.recipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(image.recipientEmail.trim())) {
+        errors.push({ serialNumber: image.serialNumber, reason: "البريد الإلكتروني غير صالح" });
+        continue;
+      }
       try {
         let backgroundUrl = image.uploadedUrl;
+        let dimensions = { width: image.width, height: image.height, orientation: image.orientation };
         if (!backgroundUrl) {
           const form = new FormData();
           form.append("file", image.file);
-          const response = await apiFetch("/api/certificates/upload", { method: "POST", body: form });
-          const result = await response.json().catch(() => ({}));
+          const response = await apiFetch("/api/certificates/upload-ready", { method: "POST", body: form });
+          const result = await response.json().catch(() => ({})) as {
+            publicUrl?: string;
+            width?: number;
+            height?: number;
+            orientation?: "portrait" | "landscape";
+            error?: string;
+          };
           if (!response.ok || typeof result.publicUrl !== "string") {
             throw new Error(result.error || "تعذر رفع الصورة");
           }
           backgroundUrl = result.publicUrl;
+          if (Number.isFinite(result.width) && Number.isFinite(result.height) && result.width! > 0 && result.height! > 0) {
+            dimensions = {
+              width: result.width!,
+              height: result.height!,
+              orientation: result.orientation === "portrait" ? "portrait" : "landscape",
+            };
+          }
           setReservedImageUploads((current) => current.map((item) => item.id === image.id
-            ? { ...item, uploadedUrl: backgroundUrl }
+            ? { ...item, uploadedUrl: backgroundUrl, ...dimensions }
             : item));
         }
         items.push({
           serialNumber: image.serialNumber,
           backgroundUrl,
-          width: image.width,
-          height: image.height,
-          orientation: image.orientation,
+          width: dimensions.width,
+          height: dimensions.height,
+          orientation: dimensions.orientation,
           recipientName,
+          recipientEmail: image.recipientEmail.trim() || undefined,
+          recipientPhone: image.recipientPhone.trim() || undefined,
+          programTitle: image.programTitle.trim() || undefined,
+          issuerName: image.issuerName.trim() || undefined,
+          issueDate: image.issueDate || undefined,
+          description: image.description.trim(),
+          qrBox: image.qrBox,
         });
       } catch (error) {
         errors.push({
@@ -2847,13 +2893,13 @@ export default function CertificateStudio() {
 
       <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
         <div>
-          <h2 className="text-lg font-bold">رفع الشهادات الجاهزة وربطها بالأكواد</h2>
-          <p className="mt-1 text-sm text-muted-foreground">تتم مطابقة الأكواد المخصصة أو رقم AW-CERT أو الاسم الكامل من اسم الملف تلقائياً، ويمكنك اختيار الكود يدوياً قبل الإصدار.</p>
+          <h2 className="text-lg font-bold">رفع PDF أو صورة وربطها بالأكواد</h2>
+          <p className="mt-1 text-sm text-muted-foreground">ارفع شهادة PDF من صفحة واحدة أو صورة؛ يتم تحويلها لصورة عرض، ثم أدخل بيانات المستفيد وحدد كوده ومكان QR قبل الإصدار. صفحة التحقق العامة تعرض الشهادة وتتحقق من الكود عند مسح QR.</p>
         </div>
         <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-5 text-center hover:bg-muted/30">
-          <span className="font-semibold">{reservedImageUploads.length ? `إضافة صور أخرى (${reservedImageUploads.length}/50)` : "اختيار صور الشهادات الجاهزة"}</span>
-          <span className="text-xs text-muted-foreground">JPG أو PNG أو WebP — حتى 8 ميجابايت للصورة، وبحد أقصى 50 صورة</span>
-          <input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={attachingImages} onChange={(event) => {
+          <span className="font-semibold">{reservedImageUploads.length ? `إضافة شهادات أخرى (${reservedImageUploads.length}/50)` : "اختيار ملفات الشهادات"}</span>
+          <span className="text-xs text-muted-foreground">PDF صفحة واحدة حتى 15 ميجابايت، أو JPG / PNG / WebP حتى 8 ميجابايت؛ بحد أقصى 50 شهادة</span>
+          <input className="sr-only" type="file" accept=".pdf,application/pdf,image/png,image/jpeg,image/webp" multiple disabled={attachingImages} onChange={(event) => {
             void addReservedImageFiles(event.target.files);
             event.target.value = "";
           }} />
@@ -2867,7 +2913,9 @@ export default function CertificateStudio() {
                 <div key={image.id} className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[150px_1fr]">
                   <div className="space-y-2">
                     <div className="overflow-hidden rounded-lg border bg-muted" style={{ aspectRatio: `${image.width} / ${image.height}` }}>
-                      <img src={image.previewUrl} alt={`معاينة الصورة ${index + 1}`} className="h-full w-full object-contain" />
+                      {image.file.type === "application/pdf" || image.file.name.toLocaleLowerCase().endsWith(".pdf")
+                        ? <iframe src={image.previewUrl} title={`معاينة PDF للشهادة ${index + 1}`} className="h-full min-h-40 w-full" />
+                        : <img src={image.previewUrl} alt={`معاينة الصورة ${index + 1}`} className="h-full w-full object-contain" />}
                     </div>
                     <p className="break-all text-xs text-muted-foreground">{image.file.name}</p>
                   </div>
@@ -2886,6 +2934,11 @@ export default function CertificateStudio() {
                           recipientName: selected && selected.recipientName !== "بدون اسم"
                             ? selected.recipientName
                             : item.recipientName,
+                          recipientEmail: selected?.recipientEmail ?? item.recipientEmail,
+                          recipientPhone: selected?.recipientPhone ?? item.recipientPhone,
+                          programTitle: selected?.programTitle ?? item.programTitle,
+                          issuerName: selected?.issuerName ?? item.issuerName,
+                          issueDate: selected?.issueDate?.slice(0, 10) ?? item.issueDate,
                         } : item));
                       }}>
                         <option value="">اختر كوداً محجوزاً</option>
@@ -2897,13 +2950,40 @@ export default function CertificateStudio() {
                       </select>
                     </label>
                     <Field label="اسم المستفيد" value={image.recipientName} onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, recipientName: value } : item))} />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Field label="اسم الدورة / البرنامج" value={image.programTitle} onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, programTitle: value } : item))} />
+                      <Field label="الجهة المصدرة" value={image.issuerName} onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, issuerName: value } : item))} />
+                      <Field label="تاريخ الإصدار" type="date" value={image.issueDate} onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, issueDate: value } : item))} />
+                      <Field label="البريد الإلكتروني (اختياري)" value={image.recipientEmail} dir="ltr" onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, recipientEmail: value } : item))} />
+                      <Field label="رقم الهاتف (اختياري)" value={image.recipientPhone} dir="ltr" onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, recipientPhone: value } : item))} />
+                      <Field label="وصف / ملاحظات" value={image.description} onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, description: value } : item))} />
+                    </div>
+                    <div className="space-y-2 rounded-lg bg-muted/30 p-3">
+                      <p className="text-sm font-semibold">موضع رمز QR على الشهادة (%)</p>
+                      <p className="text-xs text-muted-foreground">اختر مكاناً خالياً من النصوص حتى يظهر بوضوح عند مسحه.</p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {(["x", "y", "width", "height"] as const).map((part) => (
+                          <Field
+                            key={part}
+                            label={{ x: "أفقي", y: "عمودي", width: "عرض", height: "ارتفاع" }[part]}
+                            type="number"
+                            value={image.qrBox[part]}
+                            min={part === "x" || part === "y" ? "0" : "6"}
+                            max="100"
+                            onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id
+                              ? { ...item, qrBox: { ...item.qrBox, [part]: Number(value) } }
+                              : item))}
+                          />
+                        ))}
+                      </div>
+                    </div>
                     <button type="button" className="text-sm text-destructive underline" onClick={() => removeReservedImage(image.id)}>إزالة الصورة</button>
                   </div>
                 </div>
               );
             })}
             <button type="button" disabled={attachingImages} className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60" onClick={() => void attachReservedImages()}>
-              {attachingImages ? "جارٍ رفع الصور وإصدار الشهادات..." : "إصدار وتوثيق"}
+              {attachingImages ? "جارٍ رفع الملفات وإصدار الشهادات..." : "إصدار الشهادات وربط QR"}
             </button>
           </div>
         )}
@@ -3837,7 +3917,7 @@ export default function CertificateStudio() {
             <select className="block rounded-lg border bg-background px-3 py-2" value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setPage(1); }}>
               <option value="">كل المصادر</option>
               <option value="normal">عادية</option>
-              <option value="uploaded-images">صور جاهزة</option>
+              <option value="uploaded-images">ملفات جاهزة (صورة / PDF)</option>
               <option value="legacy">قديمة</option>
               <option value="reserved">محجوزة</option>
             </select>

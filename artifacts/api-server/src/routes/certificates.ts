@@ -12,7 +12,7 @@ import { uploadBufferToSupabase } from "../lib/supabase-storage";
 import { sendCertificateEmail } from "../lib/mailer";
 import { hasAdminPermission } from "../lib/access-control";
 import bidiFactory from "bidi-js";
-import { createCanvas } from "@napi-rs/canvas";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 
 const router: IRouter = Router();
 const UPLOADED_CERTIFICATE_TEMPLATE_NAME = "قالب توثيق صور جاهزة";
@@ -126,6 +126,21 @@ const uploadCertificateImage = multer({
       return;
     }
     callback(new Error("نوع الصورة غير مدعوم. ارفع PNG أو JPG أو WebP."));
+  },
+});
+
+const uploadReadyCertificateFile = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (
+      ["application/pdf", "image/png", "image/jpeg", "image/webp"].includes(file.mimetype) ||
+      (file.mimetype === "application/octet-stream" && /\.pdf$/i.test(file.originalname))
+    ) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("ارفع شهادة بصيغة PDF أو JPG أو PNG أو WebP."));
   },
 });
 
@@ -407,6 +422,36 @@ function imageMatchesMimeType(file: Express.Multer.File): boolean {
   if (file.mimetype === "image/jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   if (file.mimetype === "image/webp") return bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
   return false;
+}
+
+function isCertificatePdf(file: Express.Multer.File): boolean {
+  return (file.mimetype === "application/pdf" || (file.mimetype === "application/octet-stream" && /\.pdf$/i.test(file.originalname))) &&
+    file.buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+}
+
+async function prepareCertificateImage(file: Express.Multer.File): Promise<{ buffer: Buffer; width: number; height: number }> {
+  let source: Buffer;
+  if (isCertificatePdf(file)) {
+    source = await renderPdfToImage(file.buffer, "png", true);
+  } else {
+    if (file.size > 8 * 1024 * 1024 || !imageMatchesMimeType(file)) {
+      throw new Error("ملف الصورة غير صالح أو يتجاوز 8 ميجابايت.");
+    }
+    source = file.buffer;
+  }
+
+  const image = await loadImage(source);
+  if (!image.width || !image.height) throw new Error("أبعاد ملف الشهادة غير صالحة.");
+  const scale = Math.min(1, 2000 / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = createCanvas(width, height);
+  canvas.getContext("2d").drawImage(image, 0, 0, width, height);
+  const buffer = canvas.toBuffer("image/png");
+  if (buffer.byteLength > 10 * 1024 * 1024) {
+    throw new Error("حجم الشهادة بعد تحويلها أكبر من الحد المسموح؛ قلّل دقة الصورة أو حجم ملف PDF.");
+  }
+  return { buffer, width, height };
 }
 
 function xmlEscape(value: unknown): string {
@@ -771,7 +816,11 @@ export async function generateCertificatePdfBuffer(issue: any, template: any, pa
   return Buffer.concat(chunks);
 }
 
-async function renderPdfToImage(pdfBuffer: Buffer, format: "png" | "jpg" = "png"): Promise<Buffer> {
+async function renderPdfToImage(
+  pdfBuffer: Buffer,
+  format: "png" | "jpg" = "png",
+  requireSinglePage = false,
+): Promise<Buffer> {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const loadingTask = getDocument({
     data: new Uint8Array(pdfBuffer),
@@ -780,6 +829,9 @@ async function renderPdfToImage(pdfBuffer: Buffer, format: "png" | "jpg" = "png"
 
   try {
     const document = await loadingTask.promise;
+    if (requireSinglePage && document.numPages !== 1) {
+      throw new Error("يجب أن يحتوي ملف PDF على صفحة واحدة فقط لكل شهادة");
+    }
     const page = await document.getPage(1);
     const baseViewport = page.getViewport({ scale: 1 });
     const scale = Math.min(1.25, 2000 / Math.max(baseViewport.width, baseViewport.height));
@@ -902,6 +954,60 @@ router.post("/certificates/upload", async (req, res, next): Promise<void> => {
     res.status(201).json(uploaded);
   } catch (error) {
     res.status(503).json({ error: error instanceof Error ? error.message : "تعذر رفع صورة القالب" });
+  }
+});
+
+router.post("/certificates/upload-ready", async (req, res, next): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  next();
+}, (req, res, next) => {
+  uploadReadyCertificateFile.single("file")(req, res, (error: unknown) => {
+    if (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "تعذر استقبال ملف الشهادة.",
+      });
+      return;
+    }
+    next();
+  });
+}, async (req, res): Promise<void> => {
+  const { userId } = getSessionUser(req);
+  const isPdf = req.file ? isCertificatePdf(req.file) : false;
+  if (!req.file || (!isPdf && !imageMatchesMimeType(req.file))) {
+    res.status(400).json({ error: "ملف الشهادة غير صالح أو لا يطابق نوعه المعلن." });
+    return;
+  }
+
+  let prepared: { buffer: Buffer; width: number; height: number };
+  try {
+    prepared = await prepareCertificateImage(req.file);
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "تعذر قراءة ملف الشهادة. استخدم PDF من صفحة واحدة أو صورة سليمة.",
+    });
+    return;
+  }
+
+  const imageFile: Express.Multer.File = {
+    ...req.file,
+    originalname: `${req.file.originalname.replace(/\.[^.]+$/, "")}.png`,
+    mimetype: "image/png",
+    buffer: prepared.buffer,
+    size: prepared.buffer.length,
+  };
+  try {
+    const uploaded = await uploadBufferToSupabase(imageFile, userId!);
+    res.status(201).json({
+      ...uploaded,
+      width: prepared.width,
+      height: prepared.height,
+      orientation: prepared.height > prepared.width ? "portrait" : "landscape",
+    });
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "تعذر رفع ملف الشهادة إلى مخزن الملفات" });
   }
 });
 
@@ -2167,7 +2273,7 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
       fail("أبعاد صورة الشهادة غير صالحة");
       continue;
     }
-    if (["recipientName", "programTitle", "issuerName", "issueDate", "recipientEmail"].some(
+    if (["recipientName", "programTitle", "issuerName", "issueDate", "recipientEmail", "recipientPhone", "description"].some(
       (field) => item[field] !== undefined && item[field] !== null && typeof item[field] !== "string",
     )) {
       fail("بيانات الشهادة غير صالحة");
@@ -2185,6 +2291,12 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
       fail("تاريخ الإصدار غير صالح");
       continue;
     }
+    const qrBox = item.qrBox && typeof item.qrBox === "object" ? item.qrBox as Record<string, unknown> : {};
+    const qrPosition = normalizePosition(qrBox, { x: 78, y: 10, width: 12, height: 12 });
+    qrPosition.x = clamp(qrPosition.x, 0, 94);
+    qrPosition.y = clamp(qrPosition.y, 0, 94);
+    qrPosition.width = clamp(qrPosition.width, 6, 100 - qrPosition.x);
+    qrPosition.height = clamp(qrPosition.height, 6, 100 - qrPosition.y);
     const width = clamp(Math.round(item.width), 300, 5000);
     const height = clamp(Math.round(item.height), 300, 5000);
     const orientation = item.orientation === "portrait" || item.orientation === "landscape"
@@ -2225,7 +2337,9 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
           source: "attached-certificate-image",
           layoutConfig: {
             ...oldLayout,
-            hiddenElements: CERTIFICATE_IMAGE_HIDDEN_ELEMENTS,
+            qrCode: qrPosition,
+            whiteBackgroundBehindQr: true,
+            hiddenElements: CERTIFICATE_IMAGE_HIDDEN_ELEMENTS.filter((key) => key !== "qrCode"),
           },
         };
         const [result] = await tx.update(certificateIssuesTable)
@@ -2236,6 +2350,12 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
               : {}),
             ...(typeof item.issuerName === "string" && item.issuerName.trim()
               ? { issuerName: item.issuerName.trim().slice(0, 200) }
+              : {}),
+            ...(typeof item.recipientPhone === "string" && item.recipientPhone.trim()
+              ? { recipientPhone: item.recipientPhone.trim().slice(0, 50) }
+              : {}),
+            ...(typeof item.description === "string"
+              ? { description: item.description.trim().slice(0, 1000) || null }
               : {}),
             ...(submittedDate ? { issueDate: submittedDate } : {}),
             ...(submittedEmail ? { recipientEmail: submittedEmail } : {}),
@@ -2250,7 +2370,7 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
       });
       updated.push(issue);
     } catch (error) {
-      fail(error instanceof Error ? error.message : "تعذر ربط صورة الشهادة");
+      fail(error instanceof Error ? error.message : "تعذر ربط ملف الشهادة");
     }
   }
 
