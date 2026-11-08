@@ -1973,9 +1973,13 @@ export default function CertificateStudio() {
   };
 
   const beginEditCertificate = (issue: CertificateIssue) => {
+    setActiveSection("issue");
     setCertificateId(issue.id);
     setEditingStatus(issue.status);
-    setEditingUploadedImage(issue.metadata?.source === "uploaded-certificate-image");
+    setEditingUploadedImage(
+      issue.metadata?.source === "uploaded-certificate-image" ||
+      issue.metadata?.source === "attached-certificate-image",
+    );
     setTemplateId(String(issue.templateId));
     const issueLayout = issue.metadata?.layoutConfig;
     pendingIssueLayoutRef.current = issueLayout || null;

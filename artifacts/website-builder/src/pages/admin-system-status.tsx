@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Shield, Globe, Smartphone, Save, Link as LinkIcon, Timer, BellRing, LaptopMinimal, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +32,7 @@ const DEFAULT_APK_LINK =
 export default function AdminSystemStatus() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const formInitialized = useRef(false);
 
   const { data, isLoading, error } = useSystemStatus();
   const update = useUpdateSystemStatus();
@@ -55,7 +56,8 @@ export default function AdminSystemStatus() {
   const [requiredAppVersion, setRequiredAppVersion] = useState("0.0.0");
 
   useEffect(() => {
-    if (!initial) return;
+    if (!initial || formInitialized.current) return;
+    formInitialized.current = true;
 
     setWebMaintenanceMode(Boolean(initial.webMaintenanceMode));
     setWebShowAppAlternative(Boolean(initial.webShowAppAlternative));
@@ -104,7 +106,7 @@ export default function AdminSystemStatus() {
   return (
     <div className="min-h-screen bg-slate-950 text-white" dir="rtl">
       <div className="relative overflow-hidden border-b border-white/10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(56,189,248,0.18),transparent_55%),radial-gradient(circle_at_bottom_left,_rgba(217,70,239,0.18),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(59,130,246,0.2),transparent_55%),radial-gradient(circle_at_bottom_left,_rgba(245,158,11,0.14),transparent_55%)]" />
         <div className="relative container mx-auto px-4 py-10">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center backdrop-blur-2xl">
@@ -160,7 +162,7 @@ export default function AdminSystemStatus() {
           <Button
             onClick={save}
             disabled={update.isPending}
-            className="h-14 px-6 rounded-2xl bg-gradient-to-l from-cyan-500 to-fuchsia-600 hover:from-cyan-400 hover:to-fuchsia-500 text-base font-semibold shadow-[0_0_30px_rgba(34,211,238,0.22)]"
+            className="h-14 px-6 rounded-2xl bg-gradient-to-l from-blue-600 to-amber-500 hover:from-blue-500 hover:to-amber-400 text-base font-semibold shadow-[0_0_30px_rgba(59,130,246,0.22)]"
           >
             <BellRing className="w-4 h-4 ms-2" />
             {update.isPending ? "جارٍ الحفظ..." : "حفظ الإعدادات"}
@@ -320,7 +322,7 @@ export default function AdminSystemStatus() {
             <CardContent className="space-y-6">
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
                 <div className="flex items-center gap-2">
-                  <LaptopMinimal className="w-4 h-4 text-cyan-300" />
+                  <LaptopMinimal className="w-4 h-4 text-blue-300" />
                   <Label className="text-white/90">موعد انتهاء صيانة الموقع</Label>
                 </div>
                 <div className="flex items-center gap-2">
@@ -346,7 +348,7 @@ export default function AdminSystemStatus() {
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
                 <div className="flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-fuchsia-300" />
+                  <Smartphone className="w-4 h-4 text-amber-300" />
                   <Label className="text-white/90">موعد انتهاء صيانة التطبيق</Label>
                 </div>
                 <div className="flex items-center gap-2">
@@ -395,7 +397,7 @@ export default function AdminSystemStatus() {
                 <Button
                   onClick={save}
                   disabled={update.isPending}
-                  className="h-12 px-6 rounded-2xl bg-gradient-to-l from-cyan-500 to-fuchsia-600 hover:from-cyan-400 hover:to-fuchsia-500 text-base font-semibold"
+                  className="h-12 px-6 rounded-2xl bg-gradient-to-l from-blue-600 to-amber-500 hover:from-blue-500 hover:to-amber-400 text-base font-semibold"
                 >
                   <Save className="w-4 h-4 ms-2" />
                   {update.isPending ? "جارٍ الحفظ..." : "حفظ الإعدادات وتحديث الحالة"}

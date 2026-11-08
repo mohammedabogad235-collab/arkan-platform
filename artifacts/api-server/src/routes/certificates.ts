@@ -2739,7 +2739,9 @@ router.patch("/certificates/:id", async (req, res): Promise<void> => {
     return;
   }
   const currentMetadata = isRecord(currentIssue.metadata) ? currentIssue.metadata : {};
-  const uploadedImageCertificate = currentMetadata.source === "uploaded-certificate-image";
+  const uploadedImageCertificate =
+    currentMetadata.source === "uploaded-certificate-image" ||
+    currentMetadata.source === "attached-certificate-image";
   const update: Record<string, unknown> = { updatedAt: new Date() };
   if (!uploadedImageCertificate && Number.isInteger(Number(body.templateId)) && Number(body.templateId) > 0) {
     const [template] = await db.select({ id: certificateTemplatesTable.id })
