@@ -116,6 +116,7 @@ type ReservedImageUpload = {
   width: number;
   height: number;
   orientation: "portrait" | "landscape";
+  includeQr: boolean;
   qrBox: Box;
 };
 
@@ -996,6 +997,7 @@ export default function CertificateStudio() {
           width: dimensions.width,
           height: dimensions.height,
           orientation: dimensions.height > dimensions.width ? "portrait" : "landscape",
+          includeQr: true,
           qrBox: { x: 78, y: 10, width: 12, height: 12 },
         });
       }
@@ -1084,6 +1086,7 @@ export default function CertificateStudio() {
           issuerName: image.issuerName.trim() || undefined,
           issueDate: image.issueDate || undefined,
           description: image.description.trim(),
+          includeQr: image.includeQr,
           qrBox: image.qrBox,
         });
       } catch (error) {
@@ -2959,23 +2962,42 @@ export default function CertificateStudio() {
                       <Field label="وصف / ملاحظات" value={image.description} onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id ? { ...item, description: value } : item))} />
                     </div>
                     <div className="space-y-2 rounded-lg bg-muted/30 p-3">
-                      <p className="text-sm font-semibold">موضع رمز QR على الشهادة (%)</p>
-                      <p className="text-xs text-muted-foreground">اختر مكاناً خالياً من النصوص حتى يظهر بوضوح عند مسحه.</p>
-                      <div className="grid grid-cols-4 gap-2">
-                        {(["x", "y", "width", "height"] as const).map((part) => (
-                          <Field
-                            key={part}
-                            label={{ x: "أفقي", y: "عمودي", width: "عرض", height: "ارتفاع" }[part]}
-                            type="number"
-                            value={image.qrBox[part]}
-                            min={part === "x" || part === "y" ? "0" : "6"}
-                            max="100"
-                            onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id
-                              ? { ...item, qrBox: { ...item.qrBox, [part]: Number(value) } }
-                              : item))}
-                          />
-                        ))}
-                      </div>
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={image.includeQr}
+                          onChange={(event) => setReservedImageUploads((current) => current.map((item) => item.id === image.id
+                            ? { ...item, includeQr: event.target.checked }
+                            : item))}
+                        />
+                        <span>
+                          <span className="font-semibold">الموقع يضيف رمز QR للتحقق</span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            أزل العلامة إذا كان ملف الشهادة يحتوي بالفعل على باركود مرتبط برابط التحقق الصحيح.
+                          </span>
+                        </span>
+                      </label>
+                      {image.includeQr && (
+                        <>
+                          <p className="text-xs text-muted-foreground">اختر مكاناً خالياً من النصوص حتى يظهر بوضوح عند مسحه.</p>
+                          <div className="grid grid-cols-4 gap-2">
+                            {(["x", "y", "width", "height"] as const).map((part) => (
+                              <Field
+                                key={part}
+                                label={{ x: "أفقي", y: "عمودي", width: "عرض", height: "ارتفاع" }[part]}
+                                type="number"
+                                value={image.qrBox[part]}
+                                min={part === "x" || part === "y" ? "0" : "6"}
+                                max="100"
+                                onChange={(value) => setReservedImageUploads((current) => current.map((item) => item.id === image.id
+                                  ? { ...item, qrBox: { ...item.qrBox, [part]: Number(value) } }
+                                  : item))}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
                     <button type="button" className="text-sm text-destructive underline" onClick={() => removeReservedImage(image.id)}>إزالة الصورة</button>
                   </div>

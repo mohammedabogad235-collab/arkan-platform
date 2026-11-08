@@ -429,29 +429,47 @@ function isCertificatePdf(file: Express.Multer.File): boolean {
     file.buffer.subarray(0, 5).toString("ascii") === "%PDF-";
 }
 
-async function prepareCertificateImage(file: Express.Multer.File): Promise<{ buffer: Buffer; width: number; height: number }> {
+async function prepareCertificateImage(file: Express.Multer.File): Promise<{
+  buffer: Buffer;
+  mimeType: string;
+  extension: string;
+  width: number;
+  height: number;
+}> {
   let source: Buffer;
+  let mimeType: string;
+  let extension: string;
   if (isCertificatePdf(file)) {
     source = await renderPdfToImage(file.buffer, "png", true);
+    mimeType = "image/png";
+    extension = "png";
   } else {
     if (file.size > 8 * 1024 * 1024 || !imageMatchesMimeType(file)) {
       throw new Error("ملف الصورة غير صالح أو يتجاوز 8 ميجابايت.");
     }
     source = file.buffer;
+    mimeType = file.mimetype;
+    extension = file.mimetype === "image/jpeg" ? "jpg" : file.mimetype.slice("image/".length);
   }
 
   const image = await loadImage(source);
   if (!image.width || !image.height) throw new Error("أبعاد ملف الشهادة غير صالحة.");
-  const scale = Math.min(1, 2000 / Math.max(image.width, image.height));
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
-  const canvas = createCanvas(width, height);
-  canvas.getContext("2d").drawImage(image, 0, 0, width, height);
-  const buffer = canvas.toBuffer("image/png");
-  if (buffer.byteLength > 10 * 1024 * 1024) {
-    throw new Error("حجم الشهادة بعد تحويلها أكبر من الحد المسموح؛ قلّل دقة الصورة أو حجم ملف PDF.");
+  let width = image.width;
+  let height = image.height;
+  if (Math.max(width, height) > 5000) {
+    const scale = 5000 / Math.max(width, height);
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+    const canvas = createCanvas(width, height);
+    canvas.getContext("2d").drawImage(image, 0, 0, width, height);
+    source = canvas.toBuffer("image/png");
+    mimeType = "image/png";
+    extension = "png";
   }
-  return { buffer, width, height };
+  if (source.byteLength > 10 * 1024 * 1024) {
+    throw new Error("حجم الشهادة بعد تجهيزها أكبر من الحد المسموح؛ قلّل دقة الصورة أو حجم ملف PDF.");
+  }
+  return { buffer: source, mimeType, extension, width, height };
 }
 
 function xmlEscape(value: unknown): string {
@@ -834,7 +852,7 @@ async function renderPdfToImage(
     }
     const page = await document.getPage(1);
     const baseViewport = page.getViewport({ scale: 1 });
-    const scale = Math.min(1.25, 2000 / Math.max(baseViewport.width, baseViewport.height));
+    const scale = Math.min(4, 5000 / Math.max(baseViewport.width, baseViewport.height));
     const viewport = page.getViewport({ scale });
     const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
     const context = canvas.getContext("2d");
@@ -981,7 +999,7 @@ router.post("/certificates/upload-ready", async (req, res, next): Promise<void> 
     return;
   }
 
-  let prepared: { buffer: Buffer; width: number; height: number };
+  let prepared: { buffer: Buffer; mimeType: string; extension: string; width: number; height: number };
   try {
     prepared = await prepareCertificateImage(req.file);
   } catch (error) {
@@ -993,8 +1011,8 @@ router.post("/certificates/upload-ready", async (req, res, next): Promise<void> 
 
   const imageFile: Express.Multer.File = {
     ...req.file,
-    originalname: `${req.file.originalname.replace(/\.[^.]+$/, "")}.png`,
-    mimetype: "image/png",
+    originalname: `${req.file.originalname.replace(/\.[^.]+$/, "")}.${prepared.extension}`,
+    mimetype: prepared.mimeType,
     buffer: prepared.buffer,
     size: prepared.buffer.length,
   };
@@ -2279,6 +2297,10 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
       fail("بيانات الشهادة غير صالحة");
       continue;
     }
+    if (item.includeQr !== undefined && typeof item.includeQr !== "boolean") {
+      fail("خيار إضافة رمز QR غير صالح");
+      continue;
+    }
     const submittedEmail = typeof item.recipientEmail === "string" ? item.recipientEmail.trim().slice(0, 320) : "";
     if (submittedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submittedEmail)) {
       fail("البريد الإلكتروني غير صالح");
@@ -2302,6 +2324,7 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
     const orientation = item.orientation === "portrait" || item.orientation === "landscape"
       ? item.orientation
       : height > width ? "portrait" : "landscape";
+    const includeQr = item.includeQr !== false;
 
     try {
       const issue = await db.transaction(async (tx) => {
@@ -2339,7 +2362,9 @@ router.post("/certificates/attach-images", async (req, res): Promise<void> => {
             ...oldLayout,
             qrCode: qrPosition,
             whiteBackgroundBehindQr: true,
-            hiddenElements: CERTIFICATE_IMAGE_HIDDEN_ELEMENTS.filter((key) => key !== "qrCode"),
+            hiddenElements: includeQr
+              ? CERTIFICATE_IMAGE_HIDDEN_ELEMENTS.filter((key) => key !== "qrCode")
+              : CERTIFICATE_IMAGE_HIDDEN_ELEMENTS,
           },
         };
         const [result] = await tx.update(certificateIssuesTable)
