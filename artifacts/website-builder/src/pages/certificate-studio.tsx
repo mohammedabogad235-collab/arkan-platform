@@ -997,7 +997,7 @@ export default function CertificateStudio() {
           width: dimensions.width,
           height: dimensions.height,
           orientation: dimensions.height > dimensions.width ? "portrait" : "landscape",
-          includeQr: true,
+          includeQr: false,
           qrBox: { x: 78, y: 10, width: 12, height: 12 },
         });
       }
@@ -2972,9 +2972,9 @@ export default function CertificateStudio() {
                             : item))}
                         />
                         <span>
-                          <span className="font-semibold">الموقع يضيف رمز QR للتحقق</span>
+                          <span className="font-semibold">إضافة باركود / QR للتحقق من الموقع</span>
                           <span className="mt-1 block text-xs text-muted-foreground">
-                            أزل العلامة إذا كان ملف الشهادة يحتوي بالفعل على باركود مرتبط برابط التحقق الصحيح.
+                            اتركه مغلقاً إذا كان ملف الشهادة يحتوي بالفعل على باركود مرتبط برابط التحقق الصحيح.
                           </span>
                         </span>
                       </label>
