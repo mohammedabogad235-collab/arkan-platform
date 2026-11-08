@@ -140,6 +140,7 @@ const DEFAULT_LAYOUT = {
   issueDate: { x: 28, y: 88, width: 44, height: 5 },
   qrCode: { x: 78, y: 10, width: 12, height: 12 },
 };
+const MAX_CERTIFICATE_HTML_TEMPLATE_LENGTH = 20_000;
 
 function getSessionUser(req: any): { userId?: number; role?: string } {
   return {
@@ -837,6 +838,15 @@ router.post("/certificates/templates", async (req, res): Promise<void> => {
     return;
   }
 
+  const layoutConfig = body.layoutConfig && typeof body.layoutConfig === "object" && !Array.isArray(body.layoutConfig)
+    ? body.layoutConfig
+    : DEFAULT_LAYOUT;
+  if (layoutConfig.htmlTemplate !== undefined &&
+    (typeof layoutConfig.htmlTemplate !== "string" || layoutConfig.htmlTemplate.length > MAX_CERTIFICATE_HTML_TEMPLATE_LENGTH)) {
+    res.status(400).json({ error: "كود HTML للقالب غير صالح أو يتجاوز الحد الأقصى البالغ 20 ألف حرف" });
+    return;
+  }
+
   const payload = {
     name,
     description: body.description ? String(body.description) : null,
@@ -847,7 +857,7 @@ router.post("/certificates/templates", async (req, res): Promise<void> => {
     logoUrl: body.logoUrl ? String(body.logoUrl) : null,
     signatureUrl: body.signatureUrl ? String(body.signatureUrl) : null,
     partnerLogos: body.partnerLogos ? String(body.partnerLogos) : null,
-    layoutConfig: body.layoutConfig && typeof body.layoutConfig === "object" ? body.layoutConfig : DEFAULT_LAYOUT,
+    layoutConfig,
     isActive: body.isActive !== false,
     createdBy: userId ?? null,
   };
@@ -937,7 +947,14 @@ router.patch("/certificates/templates/:id", async (req, res): Promise<void> => {
   if (typeof body.logoUrl === "string") update.logoUrl = body.logoUrl;
   if (typeof body.signatureUrl === "string") update.signatureUrl = body.signatureUrl;
   if (typeof body.partnerLogos === "string") update.partnerLogos = body.partnerLogos;
-  if (body.layoutConfig && typeof body.layoutConfig === "object" && !Array.isArray(body.layoutConfig)) update.layoutConfig = body.layoutConfig;
+  if (body.layoutConfig && typeof body.layoutConfig === "object" && !Array.isArray(body.layoutConfig)) {
+    if (body.layoutConfig.htmlTemplate !== undefined &&
+      (typeof body.layoutConfig.htmlTemplate !== "string" || body.layoutConfig.htmlTemplate.length > MAX_CERTIFICATE_HTML_TEMPLATE_LENGTH)) {
+      res.status(400).json({ error: "كود HTML للقالب غير صالح أو يتجاوز الحد الأقصى البالغ 20 ألف حرف" });
+      return;
+    }
+    update.layoutConfig = body.layoutConfig;
+  }
   if (typeof body.isActive === "boolean") update.isActive = body.isActive;
 
   if (Object.keys(update).length === 0) {

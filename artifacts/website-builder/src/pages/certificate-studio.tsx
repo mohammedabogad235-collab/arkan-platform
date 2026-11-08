@@ -36,6 +36,8 @@ type CertificateIssue = {
   programTitle: string;
   description?: string | null;
   issuerName: string;
+  signatureName?: string | null;
+  signatureTitle?: string | null;
   status: string;
   issueDate: string;
   deletedAt?: string | null;
@@ -131,6 +133,37 @@ const emptyTemplate = {
   signatureUrl: "",
 };
 
+const defaultHtmlTemplate = `<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 100%; min-height: 100%; font-family: Arial, sans-serif; }
+      .certificate { position: relative; display: flex; min-height: 100vh; flex-direction: column; align-items: center; justify-content: center; gap: 20px; overflow: hidden; border: 14px solid #b8944d; padding: 48px; color: #172554; text-align: center; }
+      .logo { position: absolute; top: 28px; right: 32px; width: 110px; height: 80px; object-fit: contain; }
+      h1 { margin: 0; color: #9a7734; font-size: 42px; }
+      .recipient { margin: 0; font-size: 38px; font-weight: 700; }
+      .program { margin: 0; font-size: 24px; }
+      .date { position: absolute; bottom: 36px; right: 42px; }
+      .serial { position: absolute; bottom: 36px; left: 42px; font-size: 14px; }
+      .qr { position: absolute; top: 28px; left: 32px; width: 100px; height: 100px; object-fit: contain; }
+    </style>
+  </head>
+  <body>
+    <main class="certificate">
+      <img class="logo" src="{{logoUrl}}" alt="الشعار" />
+      <img class="qr" src="{{qrCode}}" alt="رمز التحقق" />
+      <h1>شهادة إتمام</h1>
+      <p>تشهد {{issuerName}} بأن</p>
+      <p class="recipient">{{recipientName}}</p>
+      <p class="program">قد أتم/أتمت {{programTitle}}</p>
+      <p class="date">{{issueDate}}</p>
+      <p class="serial">رقم الشهادة: {{serialNumber}}</p>
+    </main>
+  </body>
+</html>`;
+
 const emptyCertificate = {
   templateId: "",
   recipientName: "",
@@ -201,6 +234,128 @@ const defaultVerifySettings: VerifySettings = {
   showLegacyNote: true,
 };
 
+type CertificateHtmlFields = Record<string, string>;
+
+const certificateHtmlTags = new Set([
+  "A", "ARTICLE", "ASIDE", "B", "BLOCKQUOTE", "BR", "CAPTION", "CENTER", "CODE", "DD", "DIV",
+  "DL", "DT", "EM", "FIGCAPTION", "FIGURE", "FOOTER", "H1", "H2", "H3", "H4", "H5", "H6",
+  "HEADER", "HR", "I", "IMG", "LI", "MAIN", "NAV", "OL", "P", "SECTION", "SMALL", "SPAN",
+  "STRONG", "SUB", "SUP", "TABLE", "TBODY", "TD", "TFOOT", "TH", "THEAD", "TR", "U", "UL",
+]);
+
+function isSafeCertificateUrl(value: string, image: boolean): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (image && /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(trimmed)) return true;
+  return /^(?:https?:\/\/|\/(?!\/)|\.{1,2}\/|#|mailto:|tel:)/i.test(trimmed);
+}
+
+function sanitizeCertificateCss(value: string): string {
+  return value
+    .replace(/@import\b[^;]*;?/gi, "")
+    .replace(/expression\s*\([^)]*\)/gi, "")
+    .replace(/(?:behavior|-moz-binding)\s*:[^;}]*(?:;|$)/gi, "")
+    .replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (rule, _quote: string, rawUrl: string) => {
+      const url = rawUrl.trim();
+      return isSafeCertificateUrl(url, true) ? `url("${url.replace(/["\\]/g, "")}")` : "none";
+    });
+}
+
+function renderCertificateTemplate(
+  source: string,
+  fields: CertificateHtmlFields,
+  qrCodeUrl: string,
+): { styles: string[]; bodyHtml: string } {
+  const parsed = new DOMParser().parseFromString(source, "text/html");
+  parsed.querySelectorAll("script, iframe, object, embed, form, input, button, textarea, select, svg, math, video, audio, canvas, template, link, base, meta")
+    .forEach((element) => element.remove());
+  const styles = [...parsed.querySelectorAll("style")].map((element) => sanitizeCertificateCss(element.textContent ?? ""));
+  parsed.querySelectorAll("style").forEach((element) => element.remove());
+
+  for (const element of [...parsed.body.querySelectorAll("*")]) {
+    if (!certificateHtmlTags.has(element.tagName)) {
+      element.replaceWith(...element.childNodes);
+      continue;
+    }
+    for (const attribute of [...element.attributes]) {
+      const name = attribute.name.toLowerCase();
+      const allowed = ["alt", "align", "class", "colspan", "dir", "height", "href", "id", "lang", "rel", "role", "rowspan", "scope", "src", "style", "target", "title", "width"].includes(name) ||
+        name.startsWith("aria-") || name.startsWith("data-");
+      if (!allowed || name.startsWith("on")) {
+        element.removeAttribute(attribute.name);
+        continue;
+      }
+      const value = attribute.value.replace(/\{\{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*\}\}/g, (token, key: string) => {
+        if (key === "qrCode") return qrCodeUrl;
+        return fields[key] ?? token;
+      });
+      if ((name === "src" || name === "href") && !isSafeCertificateUrl(value, name === "src")) {
+        element.removeAttribute(attribute.name);
+      } else if (name === "style") {
+        element.setAttribute(attribute.name, sanitizeCertificateCss(value));
+      } else {
+        element.setAttribute(attribute.name, value);
+      }
+    }
+  }
+
+  const walker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+  for (const textNode of textNodes) {
+    const text = textNode.data;
+    const tokenPattern = /\{\{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*\}\}/g;
+    let match: RegExpExecArray | null;
+    let lastIndex = 0;
+    const fragment = parsed.createDocumentFragment();
+    let replaced = false;
+    while ((match = tokenPattern.exec(text))) {
+      replaced = true;
+      fragment.append(parsed.createTextNode(text.slice(lastIndex, match.index)));
+      if (match[1] === "qrCode") {
+        const image = parsed.createElement("img");
+        image.setAttribute("src", qrCodeUrl);
+        image.setAttribute("alt", "رمز التحقق");
+        image.setAttribute("class", "certificate-qr-code");
+        fragment.append(image);
+      } else {
+        fragment.append(parsed.createTextNode(fields[match[1]] ?? match[0]));
+      }
+      lastIndex = tokenPattern.lastIndex;
+    }
+    if (replaced) {
+      fragment.append(parsed.createTextNode(text.slice(lastIndex)));
+      textNode.replaceWith(fragment);
+    }
+  }
+  return { styles, bodyHtml: parsed.body.innerHTML };
+}
+
+function certificateHtmlFields(issue: CertificateIssue, template: CertificateTemplate): CertificateHtmlFields {
+  const parsedDate = new Date(issue.issueDate);
+  const firstSignature = issue.metadata?.signatures?.[0];
+  const signerFields = Object.fromEntries((issue.metadata?.signatures ?? []).slice(0, 8).flatMap((signer, index) => [
+    [`signer${index + 1}Name`, signer.name ?? ""],
+    [`signer${index + 1}Title`, signer.title ?? ""],
+  ]));
+  return {
+    certificateTitle: String(template.layoutConfig?.certificateTitleText ?? "شهادة إتمام"),
+    recipientName: issue.recipientName ?? "",
+    programTitle: issue.programTitle ?? "",
+    issuerName: issue.issuerName ?? "",
+    issueDate: Number.isNaN(parsedDate.getTime()) ? issue.issueDate ?? "" : parsedDate.toLocaleDateString("ar-EG"),
+    serialNumber: issue.serialNumber ?? "",
+    validationUrl: issue.validationUrl ?? "",
+    description: issue.description ?? "",
+    recipientEmail: issue.recipientEmail ?? "",
+    recipientPhone: issue.recipientPhone ?? "",
+    signatureName: issue.signatureName ?? firstSignature?.name ?? "",
+    signatureTitle: issue.signatureTitle ?? firstSignature?.title ?? "",
+    logoUrl: template.logoUrl ?? "",
+    ...signerFields,
+  };
+}
+
 type CertificateStudioSection =
   | "issue"
   | "codes"
@@ -212,9 +367,9 @@ type CertificateStudioSection =
 const certificateStudioSections: { id: CertificateStudioSection; label: string; description: string }[] = [
   { id: "issue", label: "إصدار الشهادات", description: "إصدار شهادة منفردة أو دفعة من صور وأسماء." },
   { id: "codes", label: "حجز الأكواد", description: "إنشاء أكواد QR مسبقاً أو ربط الأكواد المحجوزة بصور الشهادات." },
-  { id: "templates", label: "القوالب والتصميم", description: "إنشاء القوالب وضبط أماكن النصوص والشعارات والتوقيعات." },
+  { id: "templates", label: "القوالب والتصميم", description: "إنشاء قوالب مرئية أو HTML، مع حقول بيانات ومعاينة قبل الحفظ." },
   { id: "partners", label: "الجهات الشريكة", description: "إدارة الجهات التي يمكن إضافتها إلى الشهادات." },
-  { id: "manage", label: "إدارة الشهادات", description: "البحث والتحقق والتنزيل وإدارة الحالات وسلة المحذوفات." },
+  { id: "manage", label: "إدارة الشهادات", description: "البحث والتحقق والتنزيل والطباعة الجماعية وإدارة الحالات." },
   { id: "verification", label: "إعدادات التحقق", description: "تخصيص صفحة التحقق العامة والبيانات التي تظهر للزائر." },
 ];
 
@@ -563,12 +718,14 @@ export default function CertificateStudio() {
   const [referenceTemplateLoading, setReferenceTemplateLoading] = useState(false);
   const [templateId, setTemplateId] = useState("");
   const [templateForm, setTemplateForm] = useState(emptyTemplate);
+  const [templateEditorMode, setTemplateEditorMode] = useState<"visual" | "html">("visual");
   const [layout, setLayout] = useState<Record<string, any>>(initialBoxes);
   const layoutRef = useRef(layout);
   const pendingIssueLayoutRef = useRef<Record<string, any> | null>(null);
   const pendingIssueImageRef = useRef<{ backgroundUrl: string; width: number; height: number; orientation: string } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const legacyPreviewRef = useRef<HTMLDivElement>(null);
+  const htmlTemplateInputRef = useRef<HTMLTextAreaElement>(null);
   const [layoutUndo, setLayoutUndo] = useState<Record<string, any>[]>([]);
   const [layoutRedo, setLayoutRedo] = useState<Record<string, any>[]>([]);
   const [partnerForm, setPartnerForm] = useState(emptyPartner);
@@ -1024,6 +1181,135 @@ export default function CertificateStudio() {
   const pageCount = Math.max(1, Math.ceil(filteredIssues.length / pageSize));
   const pagedIssues = filteredIssues.slice((page - 1) * pageSize, page * pageSize);
 
+  const printCertificates = (issueIds?: number[], autoPrint = true) => {
+    const candidates = issueIds?.length
+      ? issues.filter((issue) => issueIds.includes(issue.id))
+      : filteredIssues;
+    const printableIssues = candidates.filter((issue) => issue.status === "issued" && !issue.deletedAt);
+    if (!printableIssues.length) {
+      toast({ variant: "destructive", title: "لا توجد شهادات صادرة للطباعة" });
+      return;
+    }
+    if (printableIssues.length > 200) {
+      toast({ variant: "destructive", title: "الحد الأقصى للطباعة في المرة الواحدة 200 شهادة", description: "حدد مجموعة أصغر أو استخدم البحث لتقسيم الطباعة." });
+      return;
+    }
+
+    const styles: Array<{ templateId: number; css: string }> = [];
+    const pages = printableIssues.map((issue, index) => {
+      const template = templates.find((item) => item.id === issue.templateId);
+      if (!template) {
+        toast({ variant: "destructive", title: `تعذر العثور على قالب الشهادة رقم ${issue.serialNumber}` });
+        return "";
+      }
+      const issueLayout = issue.metadata?.layoutConfig ?? template.layoutConfig ?? {};
+      const htmlTemplate = issueLayout.templateType === "html" && typeof issueLayout.htmlTemplate === "string"
+        ? issueLayout.htmlTemplate.trim()
+        : "";
+      const orientation = template.orientation === "portrait" ? "portrait" : "landscape";
+      if (!htmlTemplate) {
+        const imageUrl = resolveApiUrl(`/api/certificates/public/${encodeURIComponent(issue.serialNumber)}/image`);
+        return `<section class="print-page ${orientation}"><img class="legacy-certificate" src="${imageUrl}" alt="شهادة ${index + 1}" /></section>`;
+      }
+
+      const qrCodeUrl = resolveApiUrl(`/api/certificates/qr?serial=${encodeURIComponent(issue.serialNumber)}`);
+      const rendered = renderCertificateTemplate(htmlTemplate, certificateHtmlFields(issue, template), qrCodeUrl);
+      styles.push(...rendered.styles.map((css) => ({ templateId: template.id, css })));
+      return `<section class="print-page ${orientation} certificate-template-${template.id}"><div class="html-certificate">${rendered.bodyHtml}</div></section>`;
+    });
+
+    if (pages.some((pageMarkup) => !pageMarkup)) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast({ variant: "destructive", title: "تعذر فتح نافذة الطباعة", description: "اسمح بالنوافذ المنبثقة لهذا الموقع ثم حاول مرة أخرى." });
+      return;
+    }
+    const printDocument = `<!doctype html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="utf-8" />
+          <title>شهادات Arkan Web</title>
+          <style>
+            @page { margin: 0; }
+            @page certificate-landscape { size: landscape; margin: 0; }
+            @page certificate-portrait { size: portrait; margin: 0; }
+            html, body { margin: 0; padding: 0; }
+            .print-page { position: relative; display: block; width: 100vw; height: 100vh; overflow: hidden; break-after: page; page-break-after: always; }
+            .print-page:last-child { break-after: auto; page-break-after: auto; }
+            .print-page.landscape { page: certificate-landscape; }
+            .print-page.portrait { page: certificate-portrait; }
+            .html-certificate { width: 100%; height: 100%; overflow: hidden; }
+            .html-certificate img { max-width: 100%; }
+            .legacy-certificate { display: block; width: 100%; height: 100%; object-fit: contain; }
+            @media screen { body { background: #e5e7eb; } .print-page { margin: 12px auto; width: min(96vw, 1200px); height: min(90vh, 800px); background: white; box-shadow: 0 2px 12px #0002; } }
+            ${styles.map(({ templateId, css }) => `@scope (.certificate-template-${templateId}) { ${css} }`).join("\n")}
+          </style>
+        </head>
+        <body>${pages.join("")}</body>
+      </html>`;
+    printWindow.document.open();
+    printWindow.document.write(printDocument);
+    printWindow.document.close();
+    toast({
+      title: `تم تجهيز ${printableIssues.length} شهادة`,
+      description: `${printableIssues.length < candidates.length ? `تم تجاهل ${candidates.length - printableIssues.length} شهادة غير صادرة. ` : ""}${autoPrint ? "اختر الطابعة أو «حفظ بتنسيق PDF» من نافذة الطباعة." : "استخدم أمر الطباعة في المتصفح لمعاينة الشهادة أو حفظها PDF."}`,
+    });
+    if (autoPrint) {
+      const triggerPrint = () => {
+        const imageLoads = [...printWindow.document.images].map((image) => new Promise<void>((resolve) => {
+          if (image.complete) {
+            resolve();
+            return;
+          }
+          image.addEventListener("load", () => resolve(), { once: true });
+          image.addEventListener("error", () => resolve(), { once: true });
+        }));
+        void Promise.all(imageLoads).then(() => {
+          window.setTimeout(() => {
+            if (!printWindow.closed) {
+              printWindow.focus();
+              printWindow.print();
+            }
+          }, 250);
+        });
+      };
+      if (printWindow.document.readyState === "complete") triggerPrint();
+      else printWindow.addEventListener("load", triggerPrint, { once: true });
+    }
+  };
+
+  const previewHtmlTemplate = useMemo(() => {
+    if (templateEditorMode !== "html" || typeof layout.htmlTemplate !== "string") return "";
+    const previewIssue: CertificateIssue = {
+      id: 0,
+      templateId: Number(templateId) || 0,
+      serialNumber: "PREVIEW-001",
+      validationUrl: "",
+      recipientName: "اسم المستفيد",
+      recipientEmail: "",
+      programTitle: "اسم البرنامج أو الدورة",
+      issuerName: "الجهة المصدرة",
+      status: "issued",
+      issueDate: new Date().toISOString(),
+      metadata: {},
+    };
+    const qrCodeUrl = resolveApiUrl("/api/certificates/qr?serial=PREVIEW-001");
+    const rendered = renderCertificateTemplate(
+      layout.htmlTemplate,
+      certificateHtmlFields(previewIssue, {
+        id: Number(templateId) || 0,
+        name: templateForm.name,
+        orientation: templateForm.orientation,
+        width: Number(templateForm.width),
+        height: Number(templateForm.height),
+        layoutConfig: layout,
+        logoUrl: templateForm.logoUrl,
+      }),
+      qrCodeUrl,
+    );
+    return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8" /><style>html,body{margin:0;min-height:100%;font-family:Arial,sans-serif}.certificate-preview{min-height:100vh}</style>${rendered.styles.map((style) => `<style>${style}</style>`).join("")}</head><body class="certificate-preview">${rendered.bodyHtml}</body></html>`;
+  }, [templateEditorMode, layout.htmlTemplate, templateForm.name, templateForm.orientation, templateForm.width, templateForm.height, templateForm.logoUrl, templateId]);
+
   const applyLayout = (next: Record<string, any>) => {
     setLayoutUndo((history) => [...history.slice(-29), layoutRef.current]);
     setLayoutRedo([]);
@@ -1133,6 +1419,7 @@ export default function CertificateStudio() {
     });
     const nextLayout = { ...initialBoxes, ...(pendingIssueLayoutRef.current || selectedTemplate.layoutConfig || {}) };
     pendingIssueLayoutRef.current = null;
+    setTemplateEditorMode(nextLayout.templateType === "html" ? "html" : "visual");
     layoutRef.current = nextLayout;
     setLayout(nextLayout);
     setLayoutUndo([]);
@@ -1486,6 +1773,15 @@ export default function CertificateStudio() {
 
   const saveTemplate = async (event: React.FormEvent) => {
     event.preventDefault();
+    const htmlTemplate = typeof layoutRef.current.htmlTemplate === "string" ? layoutRef.current.htmlTemplate : "";
+    if (templateEditorMode === "html" && !htmlTemplate.trim()) {
+      toast({ variant: "destructive", title: "أضف كود HTML للقالب قبل الحفظ" });
+      return;
+    }
+    if (htmlTemplate.length > 20_000) {
+      toast({ variant: "destructive", title: "حجم كود HTML كبير", description: "الحد الأقصى لحجم القالب 20 ألف حرف." });
+      return;
+    }
     setSaving(true);
     try {
       const body = {
@@ -1527,6 +1823,31 @@ export default function CertificateStudio() {
     } catch (error) {
       toast({ variant: "destructive", title: "تعذر نسخ القالب", description: (error as Error).message });
     }
+  };
+
+  const switchTemplateEditorMode = (mode: "visual" | "html") => {
+    setTemplateEditorMode(mode);
+    if (mode === "html") {
+      const htmlTemplate = typeof layoutRef.current.htmlTemplate === "string" && layoutRef.current.htmlTemplate.trim()
+        ? layoutRef.current.htmlTemplate
+        : defaultHtmlTemplate;
+      applyLayout({ ...layoutRef.current, templateType: "html", htmlTemplate });
+    } else {
+      applyLayout({ ...layoutRef.current, templateType: "visual" });
+    }
+  };
+
+  const insertHtmlTemplateToken = (token: string) => {
+    const input = htmlTemplateInputRef.current;
+    const currentHtml = typeof layoutRef.current.htmlTemplate === "string" ? layoutRef.current.htmlTemplate : "";
+    const start = input?.selectionStart ?? currentHtml.length;
+    const end = input?.selectionEnd ?? start;
+    const nextHtml = `${currentHtml.slice(0, start)}${token}${currentHtml.slice(end)}`;
+    applyLayout({ ...layoutRef.current, htmlTemplate: nextHtml });
+    window.requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + token.length, start + token.length);
+    });
   };
 
   const deleteTemplate = async () => {
@@ -2025,6 +2346,12 @@ export default function CertificateStudio() {
 
   const downloadCollection = async (format: "zip" | "xlsx", ids: number[]) => {
     try {
+      if (format === "zip") {
+        const exportIssues = ids.length ? issues.filter((issue) => ids.includes(issue.id)) : filteredIssues;
+        if (exportIssues.some(issueUsesHtmlTemplate)) {
+          throw new Error("القوالب HTML تُطبع من زر الطباعة الجماعية أو تحفظ PDF من نافذة الطباعة؛ تنزيل ZIP PDF الحالي يدعم القوالب المرئية.");
+        }
+      }
       const query = new URLSearchParams();
       if (ids.length) query.set("ids", ids.join(","));
       if (!ids.length && search.trim()) query.set("search", search.trim());
@@ -2064,6 +2391,9 @@ export default function CertificateStudio() {
         ids = filtered.map((issue) => issue.id);
       }
       if (!ids.length) throw new Error("لا توجد شهادات مطابقة للتنزيل");
+      if (issues.some((issue) => ids.includes(issue.id) && issueUsesHtmlTemplate(issue))) {
+        throw new Error("القوالب HTML تُطبع من زر الطباعة الجماعية أو تحفظ PDF من نافذة الطباعة؛ تنزيل ZIP الصور الحالي يدعم القوالب المرئية.");
+      }
       const response = await apiFetch(
         `/api/certificates/export-images-zip?${new URLSearchParams({
           ids: ids.join(","),
@@ -2125,6 +2455,32 @@ export default function CertificateStudio() {
     }
   };
 
+  const issueUsesHtmlTemplate = (issue: CertificateIssue) => {
+    const savedTemplate = templates.find((template) => template.id === issue.templateId);
+    const issueLayout = issue.metadata?.layoutConfig;
+    const issueHasHtml = issueLayout?.templateType === "html" &&
+      typeof issueLayout.htmlTemplate === "string" && issueLayout.htmlTemplate.trim().length > 0;
+    const templateHasHtml = savedTemplate?.layoutConfig?.templateType === "html" &&
+      typeof savedTemplate.layoutConfig.htmlTemplate === "string" && savedTemplate.layoutConfig.htmlTemplate.trim().length > 0;
+    return issueHasHtml || templateHasHtml;
+  };
+
+  const openCertificatePreview = (issue: CertificateIssue) => {
+    if (issue.status === "issued" && issueUsesHtmlTemplate(issue)) {
+      printCertificates([issue.id], false);
+      return;
+    }
+    void openPdf(issue, true);
+  };
+
+  const printOrDownloadCertificate = (issue: CertificateIssue) => {
+    if (issue.status === "issued" && issueUsesHtmlTemplate(issue)) {
+      printCertificates([issue.id]);
+      return;
+    }
+    void openPdf(issue, false);
+  };
+
   const emailCertificate = async (issue: CertificateIssue) => {
     const email = window.prompt("أدخل البريد الإلكتروني الذي تريد إرسال الشهادة إليه:", issue.recipientEmail || "");
     if (email === null || !email.trim()) return;
@@ -2157,6 +2513,46 @@ export default function CertificateStudio() {
     if (templateId !== certificateForm.templateId) {
       setTemplateId(certificateForm.templateId);
       toast({ title: "تم تحميل تصميم القالب المحدد", description: "راجع المعاينة ثم أعد فتح معاينة PDF." });
+      return;
+    }
+    if (layout.templateType === "html" && typeof layout.htmlTemplate === "string" && layout.htmlTemplate.trim()) {
+      const template = templates.find((item) => item.id === Number(certificateForm.templateId));
+      if (!template) {
+        toast({ variant: "destructive", title: "القالب المحدد غير موجود" });
+        return;
+      }
+      const target = window.open("", "_blank");
+      if (!target) {
+        toast({ variant: "destructive", title: "تعذر فتح المعاينة", description: "اسمح بالنوافذ المنبثقة لهذا الموقع ثم حاول مرة أخرى." });
+        return;
+      }
+      const serialNumber = editingStatus === "issued" && activeIssue?.status === "issued"
+        ? activeIssue.serialNumber
+        : "PREVIEW-001";
+      const previewIssue: CertificateIssue = {
+        id: certificateId ?? 0,
+        templateId: template.id,
+        serialNumber,
+        validationUrl: "",
+        recipientName: certificateForm.recipientName || "اسم المستفيد",
+        recipientEmail: certificateForm.recipientEmail,
+        recipientPhone: certificateForm.recipientPhone,
+        programTitle: certificateForm.programTitle || "اسم البرنامج",
+        description: certificateForm.description,
+        issuerName: certificateForm.issuerName,
+        status: "issued",
+        issueDate: certificateForm.issueDate || new Date().toISOString(),
+        metadata: { signatures: signers, layoutConfig: layout },
+      };
+      const previewTemplate = { ...template, ...templateForm, layoutConfig: layout };
+      const rendered = renderCertificateTemplate(
+        layout.htmlTemplate,
+        certificateHtmlFields(previewIssue, previewTemplate),
+        resolveApiUrl(`/api/certificates/qr?serial=${encodeURIComponent(serialNumber)}`),
+      );
+      target.document.open();
+      target.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>معاينة الشهادة</title><style>html,body{margin:0;min-height:100%;font-family:Arial,sans-serif}.certificate-preview{min-height:100vh}</style>${rendered.styles.map((style) => `<style>${style}</style>`).join("")}</head><body class="certificate-preview">${rendered.bodyHtml}</body></html>`);
+      target.document.close();
       return;
     }
     const target = window.open("", "_blank");
@@ -2914,6 +3310,7 @@ export default function CertificateStudio() {
               const value = event.target.value;
               setTemplateId(value);
               if (!value) {
+                setTemplateEditorMode("visual");
                 setTemplateForm(emptyTemplate);
                 applyLayout(initialBoxes);
               }
@@ -2934,89 +3331,151 @@ export default function CertificateStudio() {
           )}
           <form onSubmit={saveTemplate} className="space-y-3">
             <Field label="اسم القالب" value={templateForm.name} onChange={(value) => updateTemplateField("name", value)} />
-            <Field
-              label="عنوان الشهادة (اختياري)"
-              value={layout.certificateTitleText ?? ""}
-              onChange={(value) => applyLayout({ ...layoutRef.current, certificateTitleText: value })}
-            />
-            <div className="space-y-2 rounded-lg bg-muted/30 p-3">
-              <p className="text-sm font-semibold">العناصر الظاهرة على الشهادة</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {certificateElements.map(([key, label]) => (
-                  <label key={key} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={isCertificateElementVisible(layout, key)}
-                      onChange={(event) => {
-                        const hiddenElements = Array.isArray(layoutRef.current.hiddenElements)
-                          ? [...layoutRef.current.hiddenElements]
-                          : [];
-                        const nextHidden = event.target.checked
-                          ? hiddenElements.filter((item: string) => item !== key)
-                          : [...hiddenElements, key];
-                        applyLayout({ ...layoutRef.current, hiddenElements: nextHidden });
-                      }}
-                    />
-                    {label}
+            <div className="flex flex-wrap gap-2 rounded-lg bg-muted/30 p-2">
+              <button type="button" className={`rounded-md px-3 py-2 text-sm ${templateEditorMode === "visual" ? "bg-primary text-primary-foreground" : "border bg-background"}`} onClick={() => switchTemplateEditorMode("visual")}>محرر العناصر</button>
+              <button type="button" className={`rounded-md px-3 py-2 text-sm ${templateEditorMode === "html" ? "bg-primary text-primary-foreground" : "border bg-background"}`} onClick={() => switchTemplateEditorMode("html")}>محرر HTML</button>
+            </div>
+            {templateEditorMode === "html" ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">اكتب تصميم HTML وCSS، واستخدم الرموز الجاهزة لإظهار بيانات كل شهادة. موضع رمز QR يتحدد بمكان {"{{qrCode}}"} في الكود.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="space-y-1.5 text-sm">
+                    <span className="font-medium">اتجاه صفحة الطباعة</span>
+                    <select className="w-full rounded-lg border bg-background px-3 py-2" value={templateForm.orientation} onChange={(event) => updateTemplateField("orientation", event.target.value)}>
+                      <option value="landscape">أفقي</option>
+                      <option value="portrait">عمودي</option>
+                    </select>
                   </label>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">يمكن إخفاء النصوص والعناصر القابلة للتحرير. النص المطبوع داخل صورة الخلفية يحتاج إلى خلفية نظيفة.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="space-y-1.5 text-sm">
-                <span className="font-medium">اتجاه الصفحة</span>
-                <select className="w-full rounded-lg border bg-background px-3 py-2" value={templateForm.orientation} onChange={(event) => updateTemplateField("orientation", event.target.value)}>
-                  <option value="landscape">أفقي</option>
-                  <option value="portrait">عمودي</option>
-                </select>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="العرض" type="number" value={templateForm.width} onChange={(value) => updateTemplateField("width", value)} />
-                <Field label="الارتفاع" type="number" value={templateForm.height} onChange={(value) => updateTemplateField("height", value)} />
-              </div>
-            </div>
-            <ImageUploadField label="خلفية القالب" value={templateForm.backgroundUrl} onChange={(value) => updateTemplateField("backgroundUrl", value)} />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <ImageUploadField label="شعار الجهة المصدرة" value={templateForm.logoUrl} onChange={(value) => updateTemplateField("logoUrl", value)} />
-              <ImageUploadField label="صورة توقيع افتراضي (اختياري)" value={templateForm.signatureUrl} onChange={(value) => updateTemplateField("signatureUrl", value)} />
-            </div>
-            <div className="space-y-2 border-t pt-3">
-              <p className="text-sm font-semibold">مواضع العناصر (%)</p>
-              <p className="text-xs text-muted-foreground">اسحب العناصر في المعاينة لتغيير موقعها، أو اضبط الموقع والحجم بالأرقام.</p>
-              {[
-                ["certificateTitle", "عنوان الشهادة"],
-                ["recipientName", "اسم المستفيد"],
-                ["programTitle", "اسم البرنامج"],
-                ["issuerName", "الجهة المصدرة"],
-                ["signature", "التوقيع الافتراضي"],
-                ["serialNumber", "رقم الشهادة"],
-                ["issueDate", "تاريخ الإصدار"],
-                ["qrCode", "رمز QR"],
-                ["logo", "شعار القالب"],
-              ].map(([key, label]) => (
-                <div key={key} className="grid grid-cols-5 items-end gap-2 rounded-lg bg-muted/30 p-2">
-                  <span className="col-span-5 text-xs font-medium sm:col-span-1">{label}</span>
-                  {(["x", "y", "width", "height"] as const).map((part) => (
-                    <Field key={part} label={part === "x" ? "أفقي" : part === "y" ? "عمودي" : part === "width" ? "عرض" : "ارتفاع"} type="number" value={boxFor(layout, key, initialBoxes[key])[part]} onChange={(value) => updateBox(key, part, value)} />
-                  ))}
-                  {["recipientName", "programTitle", "issuerName", "serialNumber", "issueDate"].includes(key) && (
-                    <label className="col-span-5 flex items-center gap-2 text-xs sm:col-span-2">
-                      المحاذاة
-                      <select
-                        className="rounded border bg-background px-2 py-1"
-                        value={alignmentFor(layout, key)}
-                        onChange={(event) => applyLayout({ ...layoutRef.current, [key]: { ...boxFor(layoutRef.current, key, initialBoxes[key]), align: event.target.value } })}
-                      >
-                        <option value="right">يمين</option>
-                        <option value="center">وسط</option>
-                        <option value="left">يسار</option>
-                      </select>
-                    </label>
-                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="العرض" type="number" value={templateForm.width} onChange={(value) => updateTemplateField("width", value)} />
+                    <Field label="الارتفاع" type="number" value={templateForm.height} onChange={(value) => updateTemplateField("height", value)} />
+                  </div>
                 </div>
-              ))}
-            </div>
+                <ImageUploadField label={`شعار القالب (يظهر عند استخدام {{logoUrl}})`} value={templateForm.logoUrl} onChange={(value) => updateTemplateField("logoUrl", value)} />
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium">كود HTML</span>
+                  <textarea
+                    ref={htmlTemplateInputRef}
+                    className="min-h-[420px] w-full rounded-lg border bg-slate-950 px-3 py-3 font-mono text-xs leading-5 text-slate-100"
+                    dir="ltr"
+                    spellCheck={false}
+                    maxLength={20_000}
+                    value={typeof layout.htmlTemplate === "string" ? layout.htmlTemplate : ""}
+                    onChange={(event) => applyLayout({ ...layoutRef.current, htmlTemplate: event.target.value })}
+                  />
+                </label>
+                <div className="space-y-2 rounded-lg bg-muted/30 p-3">
+                  <p className="text-sm font-semibold">إدراج حقل داخل الكود</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      ["{{recipientName}}", "اسم المستفيد"],
+                      ["{{programTitle}}", "اسم البرنامج"],
+                      ["{{issuerName}}", "الجهة المصدرة"],
+                      ["{{issueDate}}", "التاريخ"],
+                      ["{{serialNumber}}", "رقم الشهادة"],
+                      ["{{validationUrl}}", "رابط التحقق"],
+                      ["{{qrCode}}", "رمز QR"],
+                      ["{{logoUrl}}", "رابط الشعار"],
+                      ["{{description}}", "الوصف"],
+                      ["{{recipientEmail}}", "البريد"],
+                      ["{{signatureName}}", "اسم الموقّع"],
+                      ["{{signatureTitle}}", "صفة الموقّع"],
+                      ...Array.from({ length: 8 }, (_, index) => [`{{signer${index + 1}Name}}`, `اسم الموقّع ${index + 1}`]),
+                      ...Array.from({ length: 8 }, (_, index) => [`{{signer${index + 1}Title}}`, `صفة الموقّع ${index + 1}`]),
+                    ].map(([token, label]) => (
+                      <button key={token} type="button" className="rounded border bg-background px-2 py-1 text-xs" onClick={() => insertHtmlTemplateToken(token)}>{label}</button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">يمكنك استخدام {"{{token}}"} داخل النصوص، و{"{{logoUrl}}"} داخل src لصورة الشعار. الكود لا يسمح بتشغيل JavaScript داخل المعاينة والطباعة.</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Field
+                  label="عنوان الشهادة (اختياري)"
+                  value={layout.certificateTitleText ?? ""}
+                  onChange={(value) => applyLayout({ ...layoutRef.current, certificateTitleText: value })}
+                />
+                <div className="space-y-2 rounded-lg bg-muted/30 p-3">
+                  <p className="text-sm font-semibold">العناصر الظاهرة على الشهادة</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {certificateElements.map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={isCertificateElementVisible(layout, key)}
+                          onChange={(event) => {
+                            const hiddenElements = Array.isArray(layoutRef.current.hiddenElements)
+                              ? [...layoutRef.current.hiddenElements]
+                              : [];
+                            const nextHidden = event.target.checked
+                              ? hiddenElements.filter((item: string) => item !== key)
+                              : [...hiddenElements, key];
+                            applyLayout({ ...layoutRef.current, hiddenElements: nextHidden });
+                          }}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">يمكن إخفاء النصوص والعناصر القابلة للتحرير. النص المطبوع داخل صورة الخلفية يحتاج إلى خلفية نظيفة.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="space-y-1.5 text-sm">
+                    <span className="font-medium">اتجاه الصفحة</span>
+                    <select className="w-full rounded-lg border bg-background px-3 py-2" value={templateForm.orientation} onChange={(event) => updateTemplateField("orientation", event.target.value)}>
+                      <option value="landscape">أفقي</option>
+                      <option value="portrait">عمودي</option>
+                    </select>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="العرض" type="number" value={templateForm.width} onChange={(value) => updateTemplateField("width", value)} />
+                    <Field label="الارتفاع" type="number" value={templateForm.height} onChange={(value) => updateTemplateField("height", value)} />
+                  </div>
+                </div>
+                <ImageUploadField label="خلفية القالب" value={templateForm.backgroundUrl} onChange={(value) => updateTemplateField("backgroundUrl", value)} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <ImageUploadField label="شعار الجهة المصدرة" value={templateForm.logoUrl} onChange={(value) => updateTemplateField("logoUrl", value)} />
+                  <ImageUploadField label="صورة توقيع افتراضي (اختياري)" value={templateForm.signatureUrl} onChange={(value) => updateTemplateField("signatureUrl", value)} />
+                </div>
+                <div className="space-y-2 border-t pt-3">
+                  <p className="text-sm font-semibold">مواضع العناصر (%)</p>
+                  <p className="text-xs text-muted-foreground">اسحب العناصر في المعاينة لتغيير موقعها، أو اضبط الموقع والحجم بالأرقام.</p>
+                  {[
+                    ["certificateTitle", "عنوان الشهادة"],
+                    ["recipientName", "اسم المستفيد"],
+                    ["programTitle", "اسم البرنامج"],
+                    ["issuerName", "الجهة المصدرة"],
+                    ["signature", "التوقيع الافتراضي"],
+                    ["serialNumber", "رقم الشهادة"],
+                    ["issueDate", "تاريخ الإصدار"],
+                    ["qrCode", "رمز QR"],
+                    ["logo", "شعار القالب"],
+                  ].map(([key, label]) => (
+                    <div key={key} className="grid grid-cols-5 items-end gap-2 rounded-lg bg-muted/30 p-2">
+                      <span className="col-span-5 text-xs font-medium sm:col-span-1">{label}</span>
+                      {(["x", "y", "width", "height"] as const).map((part) => (
+                        <Field key={part} label={part === "x" ? "أفقي" : part === "y" ? "عمودي" : part === "width" ? "عرض" : "ارتفاع"} type="number" value={boxFor(layout, key, initialBoxes[key])[part]} onChange={(value) => updateBox(key, part, value)} />
+                      ))}
+                      {["recipientName", "programTitle", "issuerName", "serialNumber", "issueDate"].includes(key) && (
+                        <label className="col-span-5 flex items-center gap-2 text-xs sm:col-span-2">
+                          المحاذاة
+                          <select
+                            className="rounded border bg-background px-2 py-1"
+                            value={alignmentFor(layout, key)}
+                            onChange={(event) => applyLayout({ ...layoutRef.current, [key]: { ...boxFor(layoutRef.current, key, initialBoxes[key]), align: event.target.value } })}
+                          >
+                            <option value="right">يمين</option>
+                            <option value="center">وسط</option>
+                            <option value="left">يسار</option>
+                          </select>
+                        </label>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
             <button disabled={saving} className="w-full rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60">
               {saving ? "جارٍ الحفظ..." : templateId ? "حفظ تعديلات القالب" : "إنشاء القالب"}
             </button>
@@ -3026,11 +3485,21 @@ export default function CertificateStudio() {
         <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-bold">معاينة مباشرة</h2>
-            <div className="flex gap-2">
-              <button type="button" className="rounded border px-3 py-1.5 text-sm disabled:opacity-40" disabled={!layoutUndo.length} onClick={undoLayout}>تراجع</button>
-              <button type="button" className="rounded border px-3 py-1.5 text-sm disabled:opacity-40" disabled={!layoutRedo.length} onClick={redoLayout}>إعادة</button>
-            </div>
+            {templateEditorMode === "visual" && (
+              <div className="flex gap-2">
+                <button type="button" className="rounded border px-3 py-1.5 text-sm disabled:opacity-40" disabled={!layoutUndo.length} onClick={undoLayout}>تراجع</button>
+                <button type="button" className="rounded border px-3 py-1.5 text-sm disabled:opacity-40" disabled={!layoutRedo.length} onClick={redoLayout}>إعادة</button>
+              </div>
+            )}
           </div>
+          {templateEditorMode === "html" ? (
+            <iframe
+              title="معاينة قالب الشهادة HTML"
+              sandbox=""
+              srcDoc={previewHtmlTemplate}
+              className="h-[520px] w-full rounded-lg border bg-white"
+            />
+          ) : (
           <div
             ref={previewRef}
             className="relative mx-auto w-full overflow-hidden border-8 border-amber-700/60 bg-amber-50 shadow-inner"
@@ -3136,7 +3605,12 @@ export default function CertificateStudio() {
               );
             })}
           </div>
-          <p className="text-center text-xs text-muted-foreground">الموضع والحجم نسبيان إلى مساحة الشهادة؛ ملف PDF يُنشأ من إعدادات التصميم المحفوظة نفسها.</p>
+          )}
+          <p className="text-center text-xs text-muted-foreground">
+            {templateEditorMode === "html"
+              ? "المعاينة والطباعة تستخدمان القالب كما هو بعد تعطيل أي تعليمات JavaScript."
+              : "الموضع والحجم نسبيان إلى مساحة الشهادة؛ ملف PDF يُنشأ من إعدادات التصميم المحفوظة نفسها."}
+          </p>
         </section>
       </div>
       )}
@@ -3369,6 +3843,9 @@ export default function CertificateStudio() {
             </select>
           </label>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm" disabled={!filteredIssues.length || showTrash} onClick={() => void downloadCollection("zip", selectedIssueIds)}>تنزيل الشهادات PDF بصيغة ZIP (بأسماء المستفيدين)</button>
+          <button type="button" className="rounded-lg border border-primary/40 px-3 py-2 text-sm font-semibold text-primary disabled:opacity-50" disabled={!filteredIssues.length || showTrash} onClick={() => printCertificates(selectedIssueIds.length ? selectedIssueIds : undefined)}>
+            {selectedIssueIds.length ? `طباعة المحدد (${selectedIssueIds.length})` : "طباعة النتائج / حفظ PDF"}
+          </button>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={!filteredIssues.length || showTrash || Boolean(imageExporting)} onClick={() => void downloadImagesZip("png")}>{imageExporting === "png-images" ? "جارٍ تجهيز الصور..." : "تنزيل صور ZIP (PNG)"}</button>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={!filteredIssues.length || showTrash || Boolean(imageExporting)} onClick={() => void downloadImagesZip("jpg")}>{imageExporting === "jpg-images" ? "جارٍ تجهيز الصور..." : "تنزيل صور ZIP (JPG)"}</button>
           <button type="button" className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={!filteredIssues.length || showTrash || Boolean(imageExporting)} onClick={() => void downloadImagesZip("png", true)}>{imageExporting === "png-sheet" ? "جارٍ تجهيز الصور وExcel..." : "ZIP + Excel"}</button>
@@ -3417,9 +3894,9 @@ export default function CertificateStudio() {
               </>}
               {!showTrash && <>
                 <button className="text-sm text-primary" onClick={() => beginEditCertificate(issue)}>تعديل</button>
-                {issue.status !== "reserved" && <button className="text-sm text-primary" onClick={() => openPdf(issue, true)}>معاينة</button>}
-                {(issue.status === "issued" || issue.status === "cancelled") && <button className="text-sm text-primary" onClick={() => openPdf(issue, false)}>تنزيل PDF</button>}
-                {issue.status === "issued" && <button className="text-sm text-primary disabled:opacity-50" disabled={emailSendingId === issue.id} onClick={() => void emailCertificate(issue)}>{emailSendingId === issue.id ? "جارٍ الإرسال..." : "إرسال بالبريد"}</button>}
+                {issue.status !== "reserved" && <button className="text-sm text-primary" onClick={() => openCertificatePreview(issue)}>معاينة</button>}
+                {(issue.status === "issued" || issue.status === "cancelled") && <button className="text-sm text-primary" onClick={() => printOrDownloadCertificate(issue)}>{issue.status === "issued" && issueUsesHtmlTemplate(issue) ? "طباعة / حفظ PDF" : "تنزيل PDF"}</button>}
+                {issue.status === "issued" && <button className="text-sm text-primary disabled:opacity-50" disabled={emailSendingId === issue.id || issueUsesHtmlTemplate(issue)} title={issueUsesHtmlTemplate(issue) ? "طباعة قالب HTML من نافذة الطباعة بدلاً من الإرسال بالبريد" : undefined} onClick={() => void emailCertificate(issue)}>{emailSendingId === issue.id ? "جارٍ الإرسال..." : "إرسال بالبريد"}</button>}
                 {issue.status === "draft" && <button className="text-sm text-emerald-700" onClick={() => void issueDraft(issue)}>إصدار</button>}
                 {issue.status === "issued" && <button className="text-sm text-amber-700" onClick={() => void cancelCertificate(issue)}>إلغاء الشهادة</button>}
                 <button className="text-sm text-destructive" onClick={() => void moveToTrash(issue)}>نقل إلى السلة</button>
