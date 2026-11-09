@@ -21,7 +21,12 @@ const MAX_BULK_NAME_ROWS = 200;
 const MAX_IMAGE_EXPORT_ROWS = 200;
 const MAX_PDF_IMAGE_PIXELS = 4_000_000;
 const MAX_PDF_IMAGE_DIMENSION = 2400;
+const MAX_CERTIFICATE_RENDER_CACHE_BYTES = 32 * 1024 * 1024;
+const MAX_CERTIFICATE_RENDER_CACHE_ENTRY_BYTES = 12 * 1024 * 1024;
 let certificatePdfRendering = false;
+const certificateRenderCache = new Map<string, { buffer: Buffer; etag: string }>();
+const certificateRenderInFlight = new Map<string, Promise<{ buffer: Buffer; etag: string }>>();
+let certificateRenderCacheBytes = 0;
 
 class CertificateSerialConflictError extends Error {
   constructor(readonly serialNumber: string) {
@@ -409,8 +414,56 @@ function buildValidationUrl(serialNumber: string): string {
 
 function publicCertificateImageUrl(issue: any, allowCancelled = false): string {
   const endpoint = allowCancelled ? "image-preview" : "image";
-  const version = issue.updatedAt instanceof Date ? issue.updatedAt.getTime() : "";
+  const updatedAt = issue.updatedAt instanceof Date ? issue.updatedAt.getTime() : Date.parse(String(issue.updatedAt ?? ""));
+  const version = Number.isFinite(updatedAt) ? updatedAt : "";
   return `/api/certificates/public/${encodeURIComponent(issue.serialNumber)}/${endpoint}${version ? `?v=${version}` : ""}`;
+}
+
+function certificateRenderCacheKey(issue: any, type: "image" | "pdf"): string {
+  const updatedAt = issue.updatedAt instanceof Date ? issue.updatedAt.getTime() : Date.parse(String(issue.updatedAt ?? ""));
+  const version = Number.isFinite(updatedAt) ? updatedAt : String(issue.updatedAt ?? "");
+  return `${type}:${issue.serialNumber}:${issue.status}:${version}`;
+}
+
+async function getCachedCertificateRender(
+  key: string,
+  render: () => Promise<Buffer>,
+): Promise<{ buffer: Buffer; etag: string }> {
+  const cached = certificateRenderCache.get(key);
+  if (cached) {
+    certificateRenderCache.delete(key);
+    certificateRenderCache.set(key, cached);
+    return cached;
+  }
+
+  const pending = certificateRenderInFlight.get(key);
+  if (pending) return pending;
+
+  const rendering = render().then((buffer) => {
+    const result = {
+      buffer,
+      etag: `"${createHash("sha256").update(buffer).digest("hex")}"`,
+    };
+    if (buffer.byteLength <= MAX_CERTIFICATE_RENDER_CACHE_ENTRY_BYTES) {
+      while (
+        certificateRenderCacheBytes + buffer.byteLength > MAX_CERTIFICATE_RENDER_CACHE_BYTES &&
+        certificateRenderCache.size > 0
+      ) {
+        const oldestKey = certificateRenderCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        const oldest = certificateRenderCache.get(oldestKey);
+        certificateRenderCache.delete(oldestKey);
+        certificateRenderCacheBytes -= oldest?.buffer.byteLength ?? 0;
+      }
+      certificateRenderCache.set(key, result);
+      certificateRenderCacheBytes += buffer.byteLength;
+    }
+    return result;
+  }).finally(() => {
+    certificateRenderInFlight.delete(key);
+  });
+  certificateRenderInFlight.set(key, rendering);
+  return rendering;
 }
 
 function imageMatchesMimeType(file: Express.Multer.File): boolean {
@@ -879,6 +932,58 @@ async function renderPdfToImage(
 }
 
 async function generateCertificateImageBuffer(issue: any, format: "png" | "jpg" = "png"): Promise<Buffer> {
+  const metadata = isRecord(issue.metadata) ? issue.metadata : {};
+  const layout = normalizeLayout(metadata.layoutConfig ?? {});
+  const hasNonQrOverlays = [
+    "logo",
+    "certificateTitle",
+    "recipientName",
+    "programTitle",
+    "issuerName",
+    "issueDate",
+    "serialNumber",
+    "signature",
+    "signatures",
+    "partners",
+  ].some((key) => isLayoutElementVisible(layout, key));
+  if (
+    metadata.source === "attached-certificate-image" &&
+    !hasNonQrOverlays &&
+    isUploadedCertificateImage(metadata.backgroundUrl)
+  ) {
+    const source = await downloadBufferFromSupabasePublicUrl(metadata.backgroundUrl);
+    const background = await loadImage(source);
+    const scale = Math.min(
+      1,
+      MAX_PDF_IMAGE_DIMENSION / Math.max(background.width, background.height),
+      Math.sqrt(MAX_PDF_IMAGE_PIXELS / (background.width * background.height)),
+    );
+    const width = Math.max(1, Math.round(background.width * scale));
+    const height = Math.max(1, Math.round(background.height * scale));
+    const canvas = createCanvas(width, height);
+    const context = canvas.getContext("2d");
+    context.drawImage(background, 0, 0, width, height);
+
+    if (isLayoutElementVisible(layout, "qrCode") && issue.status === "issued" && issue.validationUrl) {
+      const qrBox = getBox(layout, "qrCode", width, height);
+      if (layout.whiteBackgroundBehindQr === true) {
+        const padding = Math.max(Math.min(qrBox.width, qrBox.height) * 0.06, 4);
+        context.fillStyle = "#ffffff";
+        context.fillRect(
+          qrBox.x - padding,
+          qrBox.y - padding,
+          qrBox.width + padding * 2,
+          qrBox.height + padding * 2,
+        );
+      }
+      const qrBuffer = await QRCode.toBuffer(issue.validationUrl, { type: "png", width: 320, margin: 1 });
+      const qrImage = await loadImage(qrBuffer);
+      context.drawImage(qrImage, qrBox.x, qrBox.y, qrBox.width, qrBox.height);
+    }
+
+    return format === "jpg" ? canvas.toBuffer("image/jpeg", 90) : canvas.toBuffer("image/png");
+  }
+
   const [template] = await db.select().from(certificateTemplatesTable)
     .where(eq(certificateTemplatesTable.id, issue.templateId)).limit(1);
   const pdfBuffer = await generateCertificatePdfBuffer(
@@ -1395,10 +1500,12 @@ async function serveCertificateImage(
     return;
   }
 
-  const image = await generateCertificateImageBuffer(issue);
-  const etag = `"${createHash("sha256").update(image).digest("hex")}"`;
+  const { buffer: image, etag } = await getCachedCertificateRender(
+    certificateRenderCacheKey(issue, "image"),
+    () => generateCertificateImageBuffer(issue),
+  );
   res.setHeader("Content-Type", "image/png");
-  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+  res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
   res.setHeader("ETag", etag);
   res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${certificateFileName(`${slugify(issue.recipientName)}-${issue.serialNumber}`, "certificate")}.png"`);
   if (req.headers["if-none-match"] === etag) {
@@ -1508,15 +1615,23 @@ router.get("/certificates/public/:serial/pdf", async (req, res): Promise<void> =
   }
   const [template] = await db.select().from(certificateTemplatesTable)
     .where(eq(certificateTemplatesTable.id, issue.templateId)).limit(1);
-  const pdfBuffer = await generateCertificatePdfBuffer(
-    issue,
-    templateForIssue(issue, template ?? { width: 1200, height: 800, orientation: "landscape", layoutConfig: DEFAULT_LAYOUT }),
-    await getIssuePartners(issue),
+  const { buffer: pdfBuffer, etag } = await getCachedCertificateRender(
+    certificateRenderCacheKey(issue, "pdf"),
+    async () => generateCertificatePdfBuffer(
+      issue,
+      templateForIssue(issue, template ?? { width: 1200, height: 800, orientation: "landscape", layoutConfig: DEFAULT_LAYOUT }),
+      await getIssuePartners(issue),
+    ),
   );
   res.setHeader("Content-Type", "application/pdf");
   const disposition = req.query.download === "1" ? "attachment" : "inline";
   res.setHeader("Content-Disposition", `${disposition}; filename="${certificateFileName(`${slugify(issue.recipientName)}-${issue.serialNumber}`, "certificate")}.pdf"`);
-  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  res.setHeader("ETag", etag);
+  if (req.headers["if-none-match"] === etag) {
+    res.status(304).end();
+    return;
+  }
   res.end(pdfBuffer);
 });
 
