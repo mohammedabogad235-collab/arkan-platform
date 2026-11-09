@@ -73,3 +73,53 @@ export async function uploadBufferToSupabase(
   const { data } = supabase.storage.from(bucketName).getPublicUrl(uniqueFileName);
   return { publicUrl: data.publicUrl };
 }
+
+export async function downloadBufferFromSupabasePublicUrl(
+  publicUrl: string,
+  maxBytes = 10 * 1024 * 1024,
+): Promise<Buffer> {
+  const { supabaseUrl, supabaseKey, bucketName } = getSupabaseStorageConfig();
+  const configuredUrl = new URL(supabaseUrl);
+  const parsedUrl = new URL(publicUrl);
+  const bucketPath = `${configuredUrl.pathname.replace(/\/+$/, "")}/storage/v1/object/public/${encodeURIComponent(bucketName)}/`;
+
+  if (
+    parsedUrl.origin !== configuredUrl.origin ||
+    parsedUrl.username ||
+    parsedUrl.password ||
+    parsedUrl.search ||
+    parsedUrl.hash ||
+    !parsedUrl.pathname.startsWith(bucketPath)
+  ) {
+    throw new Error("رابط الصورة لا يشير إلى ملف شهادة صالح في مخزن الصور.");
+  }
+
+  let objectPath: string;
+  try {
+    objectPath = parsedUrl.pathname
+      .slice(bucketPath.length)
+      .split("/")
+      .map((segment) => decodeURIComponent(segment))
+      .join("/");
+  } catch {
+    throw new Error("مسار صورة الشهادة غير صالح.");
+  }
+  if (!objectPath || objectPath.split("/").some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\"))) {
+    throw new Error("مسار صورة الشهادة غير صالح.");
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  const { data, error } = await supabase.storage.from(bucketName).download(objectPath);
+  if (error) {
+    logger.error({ error, bucketName }, "Supabase storage download failed");
+    throw new Error(`تعذر تحميل صورة الشهادة من مخزن الملفات: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error("صورة الشهادة غير موجودة في مخزن الملفات.");
+  }
+  if (data.size > maxBytes) {
+    throw new Error("حجم صورة الشهادة يتجاوز الحد المسموح.");
+  }
+
+  return Buffer.from(await data.arrayBuffer());
+}

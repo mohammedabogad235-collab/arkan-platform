@@ -8,7 +8,7 @@ import multer from "multer";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { db, certificateTemplatesTable, certificateIssuesTable, certificatePartnersTable, certificateVerifySettingsTable } from "@workspace/db";
-import { uploadBufferToSupabase } from "../lib/supabase-storage";
+import { downloadBufferFromSupabasePublicUrl, uploadBufferToSupabase } from "../lib/supabase-storage";
 import { sendCertificateEmail } from "../lib/mailer";
 import { hasAdminPermission } from "../lib/access-control";
 import bidiFactory from "bidi-js";
@@ -377,13 +377,7 @@ async function fetchImageBuffer(url?: string | null): Promise<Buffer | undefined
   if (!storageUrl || parsed.hostname !== new URL(storageUrl).hostname) {
     throw new Error("ارفع الصور إلى مخزن الشهادات قبل استخدامها في ملفات PDF");
   }
-  const res = await fetch(parsed, { signal: AbortSignal.timeout(10_000), redirect: "error" });
-  if (!res.ok) throw new Error(`تعذر تحميل صورة الشهادة (${res.status})`);
-  const contentLength = Number(res.headers.get("content-length") || 0);
-  if (contentLength > 10 * 1024 * 1024) throw new Error("حجم صورة الشهادة يتجاوز 10 ميجابايت");
-  const arrayBuffer = await res.arrayBuffer();
-  if (arrayBuffer.byteLength > 10 * 1024 * 1024) throw new Error("حجم صورة الشهادة يتجاوز 10 ميجابايت");
-  return Buffer.from(arrayBuffer);
+  return downloadBufferFromSupabasePublicUrl(parsed.toString());
 }
 
 async function generateSerialNumber(executor: Pick<typeof db, "execute" | "select"> = db): Promise<string> {
