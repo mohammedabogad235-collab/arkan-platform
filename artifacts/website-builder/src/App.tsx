@@ -28,7 +28,14 @@ const Chat = lazy(() => import("@/pages/chat"));
 const AdminSystemStatus = lazy(() => import("@/pages/admin-system-status"));
 const CertificateVerify = lazy(() => import("@/pages/certificate-verify"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const ADMIN_STANDALONE_PATHS = ["/admin/login"];
 

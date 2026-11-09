@@ -19,6 +19,9 @@ const UPLOADED_CERTIFICATE_TEMPLATE_NAME = "قالب توثيق صور جاهز�
 const RESERVED_CODE_TEMPLATE_NAME = "قالب أكواد محجوزة";
 const MAX_BULK_NAME_ROWS = 200;
 const MAX_IMAGE_EXPORT_ROWS = 200;
+const MAX_PDF_IMAGE_PIXELS = 4_000_000;
+const MAX_PDF_IMAGE_DIMENSION = 2400;
+let certificatePdfRendering = false;
 
 class CertificateSerialConflictError extends Error {
   constructor(readonly serialNumber: string) {
@@ -852,8 +855,24 @@ async function renderPdfToImage(
     }
     const page = await document.getPage(1);
     const baseViewport = page.getViewport({ scale: 1 });
-    const scale = Math.min(4, 5000 / Math.max(baseViewport.width, baseViewport.height));
+    const baseWidth = baseViewport.width;
+    const baseHeight = baseViewport.height;
+    if (!Number.isFinite(baseWidth) || !Number.isFinite(baseHeight) || baseWidth <= 0 || baseHeight <= 0) {
+      throw new Error("أبعاد صفحة PDF غير صالحة.");
+    }
+    const scale = Math.min(
+      2,
+      MAX_PDF_IMAGE_DIMENSION / Math.max(baseWidth, baseHeight),
+      Math.sqrt(MAX_PDF_IMAGE_PIXELS / (baseWidth * baseHeight)),
+    );
     const viewport = page.getViewport({ scale });
+    if (
+      !Number.isFinite(viewport.width) ||
+      !Number.isFinite(viewport.height) ||
+      viewport.width * viewport.height > MAX_PDF_IMAGE_PIXELS
+    ) {
+      throw new Error("أبعاد صفحة PDF أكبر من الحد الآمن للتحويل.");
+    }
     const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
     const context = canvas.getContext("2d");
     await page.render({ canvas: null, canvasContext: context, viewport }).promise;
@@ -1000,13 +1019,25 @@ router.post("/certificates/upload-ready", async (req, res, next): Promise<void> 
   }
 
   let prepared: { buffer: Buffer; mimeType: string; extension: string; width: number; height: number };
+  let acquiredPdfRenderLock = false;
   try {
+    if (isPdf) {
+      if (certificatePdfRendering) {
+        res.setHeader("Retry-After", "15");
+        res.status(503).json({ error: "يجري تجهيز ملف PDF آخر. انتظر قليلاً ثم حاول مرة أخرى." });
+        return;
+      }
+      certificatePdfRendering = true;
+      acquiredPdfRenderLock = true;
+    }
     prepared = await prepareCertificateImage(req.file);
   } catch (error) {
     res.status(400).json({
       error: error instanceof Error ? error.message : "تعذر قراءة ملف الشهادة. استخدم PDF من صفحة واحدة أو صورة سليمة.",
     });
     return;
+  } finally {
+    if (acquiredPdfRenderLock) certificatePdfRendering = false;
   }
 
   const imageFile: Express.Multer.File = {
