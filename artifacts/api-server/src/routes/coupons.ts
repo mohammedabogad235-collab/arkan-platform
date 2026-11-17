@@ -21,6 +21,18 @@ function normalizeCouponCode(code: string): string {
   return code.trim().toUpperCase();
 }
 
+function parseCouponExpiry(value: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T23:59:59.999Z`);
+  }
+  return new Date(value);
+}
+
+function isExpiryInPast(value: string): boolean {
+  const date = parseCouponExpiry(value);
+  return Number.isNaN(date.getTime()) || date.getTime() <= Date.now();
+}
+
 function formatCoupon(c: typeof couponsTable.$inferSelect) {
   return {
     ...c,
@@ -30,7 +42,7 @@ function formatCoupon(c: typeof couponsTable.$inferSelect) {
 }
 
 function isCouponExpired(coupon: typeof couponsTable.$inferSelect): boolean {
-  return Boolean(coupon.expiresAt && coupon.expiresAt.getTime() < Date.now());
+  return Boolean(coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now());
 }
 
 function calculateDiscountAmount(coupon: typeof couponsTable.$inferSelect, orderAmount = 0): number {
@@ -85,6 +97,10 @@ router.post("/coupons", asyncHandler(async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? parsed.error.message });
     return;
   }
+  if (parsed.data.expiresAt && isExpiryInPast(parsed.data.expiresAt)) {
+    res.status(400).json({ error: "تاريخ انتهاء الصلاحية يجب أن يكون في المستقبل" });
+    return;
+  }
 
   const code = normalizeCouponCode(parsed.data.code);
   const existing = await db.select({ id: couponsTable.id }).from(couponsTable).where(eq(couponsTable.code, code));
@@ -101,7 +117,7 @@ router.post("/coupons", asyncHandler(async (req, res): Promise<void> => {
       minOrderAmount: parsed.data.minOrderAmount ?? null,
       maxUses: parsed.data.maxUses ?? null,
       isActive: parsed.data.isActive ?? true,
-      expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+      expiresAt: parsed.data.expiresAt ? parseCouponExpiry(parsed.data.expiresAt) : null,
     }).returning();
 
     res.status(201).json(formatCoupon(coupon));
@@ -134,6 +150,10 @@ router.put("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? parsed.error.message });
     return;
   }
+  if (parsed.data.expiresAt && isExpiryInPast(parsed.data.expiresAt)) {
+    res.status(400).json({ error: "تاريخ انتهاء الصلاحية يجب أن يكون في المستقبل" });
+    return;
+  }
 
   const updateData: Partial<typeof couponsTable.$inferInsert> = {};
   if (parsed.data.code !== undefined) updateData.code = normalizeCouponCode(parsed.data.code);
@@ -143,7 +163,7 @@ router.put("/coupons/:id", asyncHandler(async (req, res): Promise<void> => {
   if (parsed.data.maxUses !== undefined) updateData.maxUses = parsed.data.maxUses ?? null;
   if (parsed.data.isActive !== undefined) updateData.isActive = parsed.data.isActive;
   if (parsed.data.expiresAt !== undefined) {
-    updateData.expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;
+    updateData.expiresAt = parsed.data.expiresAt ? parseCouponExpiry(parsed.data.expiresAt) : null;
   }
 
   if (

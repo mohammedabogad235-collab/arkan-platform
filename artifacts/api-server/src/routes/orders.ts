@@ -35,7 +35,7 @@ function normalizeCouponCode(code: string): string {
 }
 
 function isCouponExpired(coupon: typeof couponsTable.$inferSelect): boolean {
-  return Boolean(coupon.expiresAt && coupon.expiresAt.getTime() < Date.now());
+  return Boolean(coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now());
 }
 
 function calculateCouponDiscountAmount(coupon: typeof couponsTable.$inferSelect, amount: number): number {
@@ -82,7 +82,12 @@ async function recalculateOrderCoupon(
   }
 
   const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, normalizedCouponCode));
-  if (!coupon || !coupon.isActive || isCouponExpired(coupon)) {
+  if (
+    !coupon
+    || !coupon.isActive
+    || isCouponExpired(coupon)
+    || (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses)
+  ) {
     return {
       couponCode: normalizedCouponCode,
       discountAmount: 0,
@@ -329,6 +334,24 @@ router.post("/orders", asyncHandler(async (req, res): Promise<void> => {
       if (isCouponExpired(coupon)) return { error: "انتهت صلاحية كود الخصم" };
       if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
         return { error: "تم استنفاد الحد الأقصى لاستخدام هذا الكود" };
+      }
+
+      let estimatedAmount: number | null = parsed.data.customBudget ?? null;
+      if (estimatedAmount === null && parsed.data.packageId != null) {
+        const [selectedPackage] = await tx.select().from(packagesTable).where(eq(packagesTable.id, parsed.data.packageId));
+        if (selectedPackage) {
+          estimatedAmount =
+            parsed.data.currency === "SAR"
+              ? selectedPackage.priceSar
+              : selectedPackage.priceEgp;
+        }
+      }
+      if (
+        estimatedAmount !== null
+        && coupon.minOrderAmount !== null
+        && estimatedAmount < coupon.minOrderAmount
+      ) {
+        return { error: `الحد الأدنى للطلب ${coupon.minOrderAmount} لاستخدام هذا الكود` };
       }
 
       const [reservedCoupon] = await tx.update(couponsTable)
@@ -654,10 +677,76 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
 
   const nextAmount = typeof updateData.totalAmount === "number" ? updateData.totalAmount : originalOrder.totalAmount ?? null;
   const nextCouponCode = typeof updateData.couponCode === "string" || updateData.couponCode === null ? (updateData.couponCode as string | null) : undefined;
-  
-  const couponState = await recalculateOrderCoupon(originalOrder, nextAmount, nextCouponCode);
-  updateData.couponCode = couponState.couponCode;
-  updateData.discountAmount = couponState.discountAmount;
+
+  let couponState: { couponCode: string | null; discountAmount: number | null };
+
+  if (nextCouponCode !== undefined) {
+    const oldCouponCode = originalOrder.couponCode ? normalizeCouponCode(originalOrder.couponCode) : null;
+    const newCouponCode = nextCouponCode ? normalizeCouponCode(nextCouponCode) : null;
+
+    if (oldCouponCode === newCouponCode) {
+      couponState = await recalculateOrderCoupon(originalOrder, nextAmount, newCouponCode);
+      updateData.couponCode = couponState.couponCode;
+      updateData.discountAmount = couponState.discountAmount;
+    } else {
+      const changeResult = await db.transaction(async (tx) => {
+        if (!newCouponCode) {
+          if (oldCouponCode) {
+            await tx.update(couponsTable)
+              .set({ usedCount: sql`${couponsTable.usedCount} - 1` })
+              .where(and(eq(couponsTable.code, oldCouponCode), gt(couponsTable.usedCount, 0)));
+          }
+          return { couponCode: null, discountAmount: null };
+        }
+
+        const [coupon] = await tx.select().from(couponsTable).where(eq(couponsTable.code, newCouponCode));
+        if (!coupon) return { error: "كود الخصم غير موجود أو غير صحيح" };
+        if (!coupon.isActive) return { error: "هذا الكود غير مفعّل حالياً" };
+        if (isCouponExpired(coupon)) return { error: "انتهت صلاحية كود الخصم" };
+        if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
+          return { error: "تم استنفاد الحد الأقصى لاستخدام هذا الكود" };
+        }
+        if (nextAmount != null && coupon.minOrderAmount !== null && nextAmount < coupon.minOrderAmount) {
+          return { error: `الحد الأدنى للطلب ${coupon.minOrderAmount} لاستخدام هذا الكود` };
+        }
+
+        const [reservedCoupon] = await tx.update(couponsTable)
+          .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
+          .where(and(
+            eq(couponsTable.id, coupon.id),
+            eq(couponsTable.isActive, true),
+            or(isNull(couponsTable.maxUses), lt(couponsTable.usedCount, couponsTable.maxUses)),
+            or(isNull(couponsTable.expiresAt), gt(couponsTable.expiresAt, new Date())),
+          ))
+          .returning({ id: couponsTable.id });
+        if (!reservedCoupon) return { error: "لم يعد كود الخصم متاحاً" };
+
+        if (oldCouponCode) {
+          await tx.update(couponsTable)
+            .set({ usedCount: sql`${couponsTable.usedCount} - 1` })
+            .where(and(eq(couponsTable.code, oldCouponCode), gt(couponsTable.usedCount, 0)));
+        }
+
+        const discountAmount =
+          nextAmount == null || nextAmount <= 0
+            ? 0
+            : calculateCouponDiscountAmount(coupon, nextAmount);
+        return { couponCode: newCouponCode, discountAmount };
+      });
+
+      if ("error" in changeResult) {
+        res.status(400).json({ error: changeResult.error });
+        return;
+      }
+      couponState = changeResult;
+      updateData.couponCode = couponState.couponCode;
+      updateData.discountAmount = couponState.discountAmount;
+    }
+  } else {
+    couponState = await recalculateOrderCoupon(originalOrder, nextAmount);
+    updateData.couponCode = couponState.couponCode;
+    updateData.discountAmount = couponState.discountAmount;
+  }
 
   const [updatedOrder] = await db.update(ordersTable).set(updateData as any).where(eq(ordersTable.id, orderId)).returning();
   if (!updatedOrder) { res.status(404).json({ error: "فشل تحديث الطلب" }); return; }

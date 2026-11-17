@@ -1901,8 +1901,20 @@ export default function Admin() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold font-mono text-lg tracking-widest">{coupon.code}</span>
-                            <Badge className={coupon.isActive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-500 border-gray-200"}>
-                              {coupon.isActive ? "نشط" : "موقوف"}
+                            <Badge className={
+                              coupon.expiresAt && new Date(coupon.expiresAt).getTime() <= Date.now()
+                                ? "bg-red-50 text-red-700 border-red-200"
+                                : coupon.maxUses && coupon.usedCount >= coupon.maxUses
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : coupon.isActive
+                                    ? "bg-green-50 text-green-700 border-green-200"
+                                    : "bg-gray-100 text-gray-500 border-gray-200"
+                            }>
+                              {coupon.expiresAt && new Date(coupon.expiresAt).getTime() <= Date.now()
+                                ? "منتهي"
+                                : coupon.maxUses && coupon.usedCount >= coupon.maxUses
+                                  ? "مستنفد"
+                                  : coupon.isActive ? "نشط" : "موقوف"}
                             </Badge>
                             <Badge variant="outline" className="text-xs">
                               {coupon.discountType === "percentage"
