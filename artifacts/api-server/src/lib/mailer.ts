@@ -175,7 +175,7 @@ export async function sendCertificateEmail(options: {
   const validationUrl = escapeHtml(options.validationUrl);
   const subject = options.subject?.trim()
     || (options.language === "en"
-      ? "Your ICDL Certificate Is Ready! | ARKAN WEB 🧡"
+      ? `Your ${options.certificateName} Certificate Is Ready! | ARKAN WEB 🧡`
       : "شهادتك الرسمية أصبحت جاهزة! | ARKAN WEB 🧡");
   const isEnglish = options.language === "en";
   const trainingHours = Number.isInteger(options.trainingHours) ? Number(options.trainingHours) : 35;
@@ -209,7 +209,7 @@ export async function sendCertificateEmail(options: {
 <tr><td style="padding:32px 28px;text-align:right;color:#25364b;">
 <h2 style="font-size:23px;color:#172e49;margin:0 0 20px;">شهادتك أصبحت جاهزة!</h2>
 <p style="font-size:15px;line-height:2;color:#4d5c6e;">مرحبًا <strong>${recipientName}</strong>،</p>
-<p style="font-size:15px;line-height:2;color:#4d5c6e;">يسعد فريق <strong>ARKAN WEB</strong> أن يهنئك بمناسبة إتمام دورة الرخصة الدولية لقيادة الحاسب الآلي (ICDL). نحن سعداء بكونك جزءًا من هذه التجربة، ونتمنى لك مزيدًا من النجاح والتقدم.</p>
+<p style="font-size:15px;line-height:2;color:#4d5c6e;">يسعد فريق <strong>ARKAN WEB</strong> أن يهنئك بمناسبة إتمام دورة <strong>${certificateName}</strong>. نحن سعداء بكونك جزءًا من هذه التجربة، ونتمنى لك مزيدًا من النجاح والتقدم.</p>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f6f2ec;border:1px solid #e7ddd0;border-radius:10px;">
 <tr><td style="padding:22px;text-align:right;">
 <p style="font-size:11px;letter-spacing:2px;color:#b8793e;font-weight:bold;margin:0 0 12px;">YOUR ACHIEVEMENT</p>
