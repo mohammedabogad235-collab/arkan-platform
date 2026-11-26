@@ -73,7 +73,11 @@ app.use(
 
 app.use((req, res, next) => {
   const origin = req.get("Origin");
-  if (origin && !allowedOrigins.has(origin)) {
+  const forwardedProtocol = req.get("X-Forwarded-Proto")?.split(",")[0]?.trim();
+  const requestOrigin = req.get("Host")
+    ? `${forwardedProtocol || (req.secure ? "https" : "http")}://${req.get("Host")}`
+    : undefined;
+  if (origin && !allowedOrigins.has(origin) && origin !== requestOrigin) {
     res.status(403).json({ error: "مصدر الطلب غير مسموح" });
     return;
   }
@@ -82,7 +86,7 @@ app.use((req, res, next) => {
 
 app.use(
   cors({
-    origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
+    origin: true,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [

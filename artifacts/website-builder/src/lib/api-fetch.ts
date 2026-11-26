@@ -1,9 +1,13 @@
+import { Capacitor } from "@capacitor/core";
+
 /** Resolves API requests against the configured remote API, or same-origin `/api`. */
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim() ?? "";
-const API_BASE_URL = /^https?:\/\//i.test(configuredApiUrl)
+const configuredBaseUrl = /^https?:\/\//i.test(configuredApiUrl)
   ? configuredApiUrl.replace(/\/+$/, "")
   : "";
+const NATIVE_API_URL = "https://arkan-platform.onrender.com";
+const API_BASE_URL = Capacitor.getPlatform() === "web" ? configuredBaseUrl : NATIVE_API_URL;
 
 export function resolveApiUrl(url: string): string {
   if (!url.startsWith("/api")) return url;
