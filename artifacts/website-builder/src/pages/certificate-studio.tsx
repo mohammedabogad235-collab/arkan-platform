@@ -77,6 +77,30 @@ type VerifySettings = {
   showLegacyNote: boolean;
 };
 type BulkNameRow = { id: string; name: string; email: string };
+type CertificateBatch = {
+  id: number;
+  name: string;
+  courseName: string;
+  certificateTitle: string;
+  category?: string | null;
+  description?: string | null;
+  courseHours?: number | null;
+  status: string;
+  templateId?: number | null;
+  issueDate: string;
+  updatedAt: string;
+};
+type CertificateRecipient = {
+  id: number;
+  batchId: number;
+  fullName: string;
+  email?: string | null;
+  certificateCode?: string | null;
+  reservationStatus: string;
+  certificateStatus: string;
+  verificationStatus: string;
+  emailStatus: string;
+};
 type LegacyImportRow = {
   id: string;
   fileName: string;
@@ -366,6 +390,7 @@ function certificateHtmlFields(issue: CertificateIssue, template: CertificateTem
 }
 
 type CertificateStudioSection =
+  | "batches"
   | "issue"
   | "codes"
   | "templates"
@@ -374,6 +399,7 @@ type CertificateStudioSection =
   | "verification";
 
 const certificateStudioSections: { id: CertificateStudioSection; label: string; description: string }[] = [
+  { id: "batches", label: "إدارة الدفعات والمستلمين", description: "إنشاء دفعات مستقلة وإضافة المستلمين وحجز أكواد الشهادات." },
   { id: "issue", label: "إصدار الشهادات", description: "إصدار شهادة منفردة أو دفعة من صور وأسماء." },
   { id: "codes", label: "حجز الأكواد", description: "إنشاء أكواد QR مسبقاً أو ربط الأكواد المحجوزة بصور الشهادات." },
   { id: "templates", label: "القوالب والتصميم", description: "إنشاء قوالب مرئية أو HTML، مع حقول بيانات ومعاينة قبل الحفظ." },
@@ -722,6 +748,19 @@ export default function CertificateStudio() {
   const [trashIssues, setTrashIssues] = useState<CertificateIssue[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [stats, setStats] = useState({ total: 0, issued: 0, cancelled: 0, drafts: 0, reserved: 0, trash: 0 });
+  const [batches, setBatches] = useState<CertificateBatch[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [batchRecipients, setBatchRecipients] = useState<CertificateRecipient[]>([]);
+  const [batchForm, setBatchForm] = useState({
+    name: "",
+    courseName: "",
+    certificateTitle: "شهادة إتمام",
+    category: "",
+    description: "",
+    courseHours: "",
+    templateId: "",
+  });
+  const [batchRecipientText, setBatchRecipientText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [referenceTemplateLoading, setReferenceTemplateLoading] = useState(false);
@@ -808,19 +847,120 @@ export default function CertificateStudio() {
   const reservedIssues = issues.filter((issue) => issue.status === "reserved" && !issue.deletedAt);
 
   const refresh = async () => {
-    const [templateData, issueData, partnerData, statsData] = await Promise.all([
+    const [templateData, issueData, partnerData, statsData, batchData] = await Promise.all([
       apiFetchJson<CertificateTemplate[]>("/api/certificates/templates"),
       apiFetchJson<CertificateIssue[]>("/api/certificates"),
       apiFetchJson<Partner[]>("/api/certificates/partners"),
       apiFetchJson<typeof stats>("/api/certificates/admin/stats"),
+      apiFetchJson<{ batches: CertificateBatch[] }>("/api/certificates/batches"),
     ]);
     setTemplates(templateData);
     setIssues(issueData);
     setPartners(partnerData);
     setStats(statsData);
+    setBatches(batchData.batches);
     if (!templateId && templateData[0]) setTemplateId(String(templateData[0].id));
     if (!bulkTemplateId && templateData[0]) setBulkTemplateId(String(templateData[0].id));
     return templateData;
+  };
+
+  const loadBatch = async (batchId: string) => {
+    if (!batchId) {
+      setSelectedBatchId("");
+      setBatchRecipients([]);
+      return;
+    }
+    const data = await apiFetchJson<{ recipients: CertificateRecipient[] }>(`/api/certificates/batches/${batchId}`);
+    setSelectedBatchId(batchId);
+    setBatchRecipients(data.recipients);
+  };
+
+  const createBatch = async () => {
+    if (!batchForm.name.trim() || !batchForm.courseName.trim()) {
+      toast({ variant: "destructive", title: "بيانات الدفعة ناقصة", description: "أدخل اسم الدفعة واسم الدورة." });
+      return;
+    }
+    try {
+      setSaving(true);
+      const data = await apiFetchJson<{ batch: CertificateBatch }>("/api/certificates/batches", {
+        method: "POST",
+        body: JSON.stringify({
+          ...batchForm,
+          courseHours: batchForm.courseHours ? Number(batchForm.courseHours) : null,
+          templateId: batchForm.templateId ? Number(batchForm.templateId) : null,
+        }),
+      });
+      await refresh();
+      await loadBatch(String(data.batch.id));
+      setBatchForm((current) => ({ ...current, name: "", courseName: "", category: "", description: "", courseHours: "" }));
+      toast({ title: "تم إنشاء الدفعة", description: data.batch.name });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر إنشاء الدفعة", description: error instanceof Error ? error.message : "خطأ غير متوقع" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addBatchRecipients = async () => {
+    if (!selectedBatchId) {
+      toast({ variant: "destructive", title: "اختر دفعة", description: "أنشئ أو اختر دفعة أولاً." });
+      return;
+    }
+    const rows = batchRecipientText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+      const match = line.includes("|") ? line.split("|") : line.includes(",") ? line.split(",") : [line];
+      return { fullName: (match[0] || "").trim(), email: (match[1] || "").trim() };
+    });
+    if (!rows.length) return;
+    try {
+      setSaving(true);
+      await apiFetchJson<{ recipients: CertificateRecipient[] }>(`/api/certificates/batches/${selectedBatchId}/recipients`, {
+        method: "POST",
+        body: JSON.stringify({ rows }),
+      });
+      await loadBatch(selectedBatchId);
+      setBatchRecipientText("");
+      toast({ title: "تمت إضافة المستلمين" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر إضافة المستلمين", description: error instanceof Error ? error.message : "خطأ غير متوقع" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reserveBatchCodes = async () => {
+    if (!selectedBatchId) return;
+    try {
+      setSaving(true);
+      const data = await apiFetchJson<{ recipients: CertificateRecipient[] }>(`/api/certificates/batches/${selectedBatchId}/reserve-codes`, { method: "POST" });
+      setBatchRecipients(data.recipients);
+      toast({ title: "تم حجز الأكواد", description: `${data.recipients.filter((recipient) => recipient.certificateCode).length} مستلم مرتبط بكود حقيقي` });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر حجز الأكواد", description: error instanceof Error ? error.message : "خطأ غير متوقع" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const issueBatchCertificates = async () => {
+    if (!selectedBatchId) return;
+    try {
+      setSaving(true);
+      const data = await apiFetchJson<{ count: number; failed: Array<{ reason: string }> }>(
+        `/api/certificates/batches/${selectedBatchId}/issue`,
+        { method: "POST" },
+      );
+      await loadBatch(selectedBatchId);
+      await refresh();
+      toast({
+        title: data.count ? "تم إصدار الشهادات" : "تعذر إصدار الشهادات",
+        description: data.failed.length ? `${data.count} نجح، ${data.failed.length} فشل — ${data.failed[0]?.reason ?? ""}` : `${data.count} شهادة صادرة`,
+        variant: data.count ? "default" : "destructive",
+      });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر إصدار الدفعة", description: error instanceof Error ? error.message : "خطأ غير متوقع" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const loadTrash = async () => {
@@ -2711,6 +2851,93 @@ export default function CertificateStudio() {
       <p className="text-sm font-medium text-primary">
         {certificateStudioSections.find((section) => section.id === activeSection)?.description}
       </p>
+
+      {activeSection === "batches" && (
+      <section className="grid gap-4 lg:grid-cols-[360px_1fr]">
+        <div className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+          <div>
+            <h2 className="text-lg font-bold">إنشاء دفعة جديدة</h2>
+            <p className="mt-1 text-sm text-muted-foreground">أدخل بيانات الدورة مرة واحدة، ثم أضف المستلمين.</p>
+          </div>
+          <Field label="اسم الدفعة" value={batchForm.name} onChange={(value) => setBatchForm((current) => ({ ...current, name: value }))} />
+          <Field label="اسم الدورة" value={batchForm.courseName} onChange={(value) => setBatchForm((current) => ({ ...current, courseName: value }))} />
+          <Field label="عنوان الشهادة" value={batchForm.certificateTitle} onChange={(value) => setBatchForm((current) => ({ ...current, certificateTitle: value }))} />
+          <Field label="الفئة" value={batchForm.category} onChange={(value) => setBatchForm((current) => ({ ...current, category: value }))} />
+          <Field label="الوصف" value={batchForm.description} onChange={(value) => setBatchForm((current) => ({ ...current, description: value }))} />
+          <Field label="عدد الساعات" type="number" value={batchForm.courseHours} onChange={(value) => setBatchForm((current) => ({ ...current, courseHours: value }))} />
+          <label className="block space-y-1.5 text-sm">
+            <span className="font-medium">قالب الشهادة</span>
+            <select className="w-full rounded-lg border bg-background px-3 py-2" value={batchForm.templateId} onChange={(event) => setBatchForm((current) => ({ ...current, templateId: event.target.value }))}>
+              <option value="">بدون تحديد حالياً</option>
+              {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+            </select>
+          </label>
+          <button type="button" className="w-full rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60" disabled={saving} onClick={() => void createBatch()}>
+            إنشاء دفعة مسودة
+          </button>
+        </div>
+
+        <div className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold">المستلمون والحجز</h2>
+              <p className="mt-1 text-sm text-muted-foreground">اختر دفعة، ثم أضف الاسم والبريد.</p>
+            </div>
+            <select
+              className="min-w-56 rounded-lg border bg-background px-3 py-2 text-sm"
+              value={selectedBatchId}
+              onChange={(event) => void loadBatch(event.target.value)}
+            >
+              <option value="">اختر دفعة</option>
+              {batches.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}
+            </select>
+          </div>
+
+          {selectedBatchId ? (
+            <>
+              <textarea
+                className="min-h-28 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                placeholder={"Mohamed Gad | mohammed@example.com\nMalak Gamal | malak@example.com"}
+                value={batchRecipientText}
+                onChange={(event) => setBatchRecipientText(event.target.value)}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="rounded-lg border px-4 py-2 text-sm font-semibold" disabled={saving} onClick={() => void addBatchRecipients()}>
+                  إضافة المستلمين
+                </button>
+                <button type="button" className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={saving || !batchRecipients.length} onClick={() => void reserveBatchCodes()}>
+                  Generate &amp; Reserve Codes
+                </button>
+                <button type="button" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60" disabled={saving || !batchRecipients.length} onClick={() => void issueBatchCertificates()}>
+                  Issue Certificates
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="bg-muted/40"><tr><th className="p-2 text-right">المستلم</th><th className="p-2 text-right">البريد</th><th className="p-2 text-right">كود الشهادة</th><th className="p-2 text-right">الحجز</th><th className="p-2 text-right">الشهادة</th><th className="p-2 text-right">البريد</th></tr></thead>
+                  <tbody className="divide-y">
+                    {batchRecipients.map((recipient) => (
+                      <tr key={recipient.id}>
+                        <td className="p-2">{recipient.fullName}</td>
+                        <td className="p-2" dir="ltr">{recipient.email || "-"}</td>
+                        <td className="p-2 font-mono" dir="ltr">{recipient.certificateCode || "-"}</td>
+                        <td className="p-2">{recipient.reservationStatus}</td>
+                        <td className="p-2">{recipient.certificateStatus}</td>
+                        <td className="p-2">{recipient.emailStatus}</td>
+                      </tr>
+                    ))}
+                    {!batchRecipients.length && <tr><td className="p-4 text-center text-muted-foreground" colSpan={6}>لا يوجد مستلمين بعد.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="rounded-lg bg-muted/30 p-4 text-sm text-muted-foreground">اختر دفعة محفوظة أو أنشئ دفعة جديدة للبدء.</p>
+          )}
+        </div>
+      </section>
+      )}
 
       {activeSection === "verification" && (
       <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">

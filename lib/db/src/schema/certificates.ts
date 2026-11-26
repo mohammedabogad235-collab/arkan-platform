@@ -61,6 +61,72 @@ export const certificateVerifySettingsTable = pgTable("certificate_verify_settin
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const certificateBatchesTable = pgTable("certificate_batches", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  courseName: text("course_name").notNull(),
+  certificateTitle: text("certificate_title").notNull(),
+  category: text("category"),
+  description: text("description"),
+  courseHours: integer("course_hours"),
+  startDate: timestamp("start_date", { withTimezone: true }),
+  completionDate: timestamp("completion_date", { withTimezone: true }),
+  issueDate: timestamp("issue_date", { withTimezone: true }).notNull().defaultNow(),
+  instructorName: text("instructor_name"),
+  organization: text("organization").notNull().default("Arkan Web"),
+  partnerOrganization: text("partner_organization"),
+  templateId: integer("template_id").references(() => certificateTemplatesTable.id),
+  status: text("status").notNull().default("draft"),
+  metadata: jsonb("metadata").notNull().default({}),
+  createdBy: integer("created_by").references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const certificateRecipientsTable = pgTable("certificate_recipients", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").notNull().references(() => certificateBatchesTable.id, { onDelete: "cascade" }),
+  fullName: text("full_name").notNull(),
+  email: text("email"),
+  certificateCode: text("certificate_code"),
+  certificateIssueId: integer("certificate_issue_id").references(() => certificateIssuesTable.id),
+  reservationStatus: text("reservation_status").notNull().default("available"),
+  certificateStatus: text("certificate_status").notNull().default("pending"),
+  verificationStatus: text("verification_status").notNull().default("pending"),
+  emailStatus: text("email_status").notNull().default("pending"),
+  issueDate: timestamp("issue_date", { withTimezone: true }),
+  metadata: jsonb("metadata").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const certificateActivityLogsTable = pgTable("certificate_activity_logs", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").references(() => certificateBatchesTable.id, { onDelete: "set null" }),
+  recipientId: integer("recipient_id").references(() => certificateRecipientsTable.id, { onDelete: "set null" }),
+  certificateIssueId: integer("certificate_issue_id").references(() => certificateIssuesTable.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  result: text("result").notNull(),
+  details: jsonb("details").notNull().default({}),
+  actorId: integer("actor_id").references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const certificateEmailLogsTable = pgTable("certificate_email_logs", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").references(() => certificateBatchesTable.id, { onDelete: "set null" }),
+  recipientId: integer("recipient_id").references(() => certificateRecipientsTable.id, { onDelete: "set null" }),
+  certificateIssueId: integer("certificate_issue_id").references(() => certificateIssuesTable.id, { onDelete: "set null" }),
+  recipientEmail: text("recipient_email").notNull(),
+  status: text("status").notNull().default("pending"),
+  attemptNumber: integer("attempt_number").notNull().default(1),
+  providerResponse: text("provider_response"),
+  messageId: text("message_id"),
+  failureReason: text("failure_reason"),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertCertificateTemplateSchema = createInsertSchema(certificateTemplatesTable).omit({
   id: true,
   createdAt: true,
