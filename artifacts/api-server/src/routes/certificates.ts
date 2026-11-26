@@ -2801,7 +2801,13 @@ router.post("/certificates/:id/send-email", async (req, res): Promise<void> => {
     }),
     await getIssuePartners(issue),
   );
-  await sendCertificateEmail({
+  let png: Buffer | undefined;
+  try {
+    png = await renderPdfToImage(pdf, "png", true);
+  } catch (error) {
+    console.error("تعذر إنشاء نسخة PNG من الشهادة للإرسال:", error);
+  }
+  const delivery = await sendCertificateEmail({
     to: recipientEmail,
     recipientName: issue.recipientName,
     certificateName: issue.programTitle,
@@ -2809,8 +2815,16 @@ router.post("/certificates/:id/send-email", async (req, res): Promise<void> => {
     validationUrl: issue.validationUrl,
     fileName: `${certificateFileName(issue.recipientName, `certificate-${issue.serialNumber}`)}.pdf`,
     pdf,
+    png,
+    language: req.body?.language === "en" ? "en" : "ar",
+    subject: typeof req.body?.subject === "string" ? req.body.subject.trim().slice(0, 300) : undefined,
   });
-  res.json({ success: true, email: recipientEmail });
+  res.json({
+    success: true,
+    email: recipientEmail,
+    messageId: delivery.messageId ?? null,
+    attachments: png ? ["PDF", "PNG"] : ["PDF"],
+  });
 });
 
 router.get("/certificates/:id/preview", async (req, res): Promise<void> => {

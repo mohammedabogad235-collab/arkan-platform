@@ -2541,16 +2541,19 @@ export default function CertificateStudio() {
       toast({ variant: "destructive", title: "البريد الإلكتروني غير صحيح" });
       return;
     }
-    if (!window.confirm(`سيتم إرسال PDF الخاص بشهادة ${issue.recipientName} إلى ${email.trim()}. متابعة؟`)) return;
+    if (!window.confirm(`سيتم إرسال الشهادة الرسمية الخاصة بـ${issue.recipientName} إلى ${email.trim()} كـ PDF وPNG عند توفرها. متابعة؟`)) return;
 
     setEmailSendingId(issue.id);
     try {
-      await apiFetchJson(`/api/certificates/${issue.id}/send-email`, {
+      const result = await apiFetchJson<{ messageId?: string; attachments?: string[] }>(`/api/certificates/${issue.id}/send-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
-      toast({ title: "تم إرسال الشهادة بالبريد", description: email.trim() });
+      toast({
+        title: "تم إرسال الشهادة بالبريد",
+        description: `${email.trim()}${result.attachments?.length ? ` · المرفقات: ${result.attachments.join(" + ")}` : ""}`,
+      });
     } catch (error) {
       toast({ variant: "destructive", title: "تعذر إرسال الشهادة", description: (error as Error).message });
     } finally {
@@ -4002,7 +4005,7 @@ export default function CertificateStudio() {
                 <button className="text-sm text-primary" onClick={() => beginEditCertificate(issue)}>تعديل</button>
                 {issue.status !== "reserved" && <button className="text-sm text-primary" onClick={() => openCertificatePreview(issue)}>معاينة</button>}
                 {(issue.status === "issued" || issue.status === "cancelled") && <button className="text-sm text-primary" onClick={() => printOrDownloadCertificate(issue)}>{issue.status === "issued" && issueUsesHtmlTemplate(issue) ? "طباعة / حفظ PDF" : "تنزيل PDF"}</button>}
-                {issue.status === "issued" && <button className="text-sm text-primary disabled:opacity-50" disabled={emailSendingId === issue.id || issueUsesHtmlTemplate(issue)} title={issueUsesHtmlTemplate(issue) ? "طباعة قالب HTML من نافذة الطباعة بدلاً من الإرسال بالبريد" : undefined} onClick={() => void emailCertificate(issue)}>{emailSendingId === issue.id ? "جارٍ الإرسال..." : "إرسال بالبريد"}</button>}
+                {issue.status === "issued" && <button className="text-sm text-primary disabled:opacity-50" disabled={emailSendingId === issue.id} onClick={() => void emailCertificate(issue)}>{emailSendingId === issue.id ? "جارٍ الإرسال..." : "إرسال بالبريد"}</button>}
                 {issue.status === "draft" && <button className="text-sm text-emerald-700" onClick={() => void issueDraft(issue)}>إصدار</button>}
                 {issue.status === "issued" && <button className="text-sm text-amber-700" onClick={() => void cancelCertificate(issue)}>إلغاء الشهادة</button>}
                 <button className="text-sm text-destructive" onClick={() => void moveToTrash(issue)}>نقل إلى السلة</button>
