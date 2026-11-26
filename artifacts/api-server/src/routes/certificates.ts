@@ -2818,6 +2818,9 @@ router.post("/certificates/:id/send-email", async (req, res): Promise<void> => {
     png,
     language: req.body?.language === "en" ? "en" : "ar",
     subject: typeof req.body?.subject === "string" ? req.body.subject.trim().slice(0, 300) : undefined,
+    trainingHours: isRecord(issue.metadata) && typeof issue.metadata.courseHours === "number"
+      ? issue.metadata.courseHours
+      : undefined,
   });
   res.json({
     success: true,

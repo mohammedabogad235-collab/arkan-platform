@@ -166,6 +166,7 @@ export async function sendCertificateEmail(options: {
   png?: Buffer;
   subject?: string;
   language?: "ar" | "en";
+  trainingHours?: number | null;
 }): Promise<{ messageId?: string; accepted: string[]; response: string }> {
   const { transporter, fromEmail } = await getMailTransport();
   const recipientName = escapeHtml(options.recipientName);
@@ -174,9 +175,10 @@ export async function sendCertificateEmail(options: {
   const validationUrl = escapeHtml(options.validationUrl);
   const subject = options.subject?.trim()
     || (options.language === "en"
-      ? "Your Official Certificate Is Ready! | ARKAN WEB"
-      : "شهادتك الرسمية أصبحت جاهزة! | ARKAN WEB");
+      ? "Your ICDL Certificate Is Ready! | ARKAN WEB 🧡"
+      : "شهادتك الرسمية أصبحت جاهزة! | ARKAN WEB 🧡");
   const isEnglish = options.language === "en";
+  const trainingHours = Number.isInteger(options.trainingHours) ? Number(options.trainingHours) : 35;
 
   try {
     const result = await withTimeout(
@@ -184,35 +186,63 @@ export async function sendCertificateEmail(options: {
         from: `"أركان-ويب " <${fromEmail}>`,
         to: options.to,
         subject,
-        html: `<!doctype html>
-<html dir="${isEnglish ? "ltr" : "rtl"}" lang="${isEnglish ? "en" : "ar"}>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;background:#f2f5f8;font-family:Arial,sans-serif;color:#17243a">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#07111d;padding:24px 12px">
-    <tr><td align="center"><div style="color:#fff;font-size:22px;font-weight:800;letter-spacing:2px">ARKAN <span style="color:#f2a06b">WEB</span></div></td></tr>
-  </table>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f8;padding:24px 12px">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border:1px solid #dde5ed;border-radius:12px">
-        <tr><td style="padding:32px">
-          <h1 style="margin:0 0 16px;color:#07111d;font-size:24px">${isEnglish ? "Congratulations!" : "تهانينا!"}</h1>
-          <p style="line-height:1.8">${isEnglish ? `Dear ${recipientName},` : `مرحبًا ${recipientName}،`}</p>
-          <p style="line-height:1.8">${isEnglish
-            ? `We are pleased to inform you that your certificate for ${certificateName} has been successfully issued.`
-            : `يسر فريق ARKAN WEB إبلاغك بأنه تم إصدار شهادتك الرسمية لدورة ${certificateName} بنجاح.`}</p>
-          <table role="presentation" width="100%" cellpadding="12" cellspacing="0" style="margin:20px 0;background:#f7f9fc;border:1px solid #e2e8f0;border-radius:8px">
-            <tr><td style="font-weight:bold">${isEnglish ? "Recipient" : "اسم المستلم"}</td><td align="${isEnglish ? "right" : "left"}">${recipientName}</td></tr>
-            <tr><td style="font-weight:bold">${isEnglish ? "Course" : "اسم الدورة"}</td><td align="${isEnglish ? "right" : "left"}">${certificateName}</td></tr>
-            <tr><td style="font-weight:bold">${isEnglish ? "Certificate ID" : "كود الشهادة"}</td><td dir="ltr" align="${isEnglish ? "right" : "left"}">${serialNumber}</td></tr>
-          </table>
-          <p style="margin:24px 0"><a href="${validationUrl}" style="display:inline-block;background:#c85c2b;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold">${isEnglish ? "Verify My Certificate" : "التحقق من الشهادتي"}</a></p>
-          <p style="line-height:1.8;color:#526174">${isEnglish
-            ? "Your official certificate is attached to this email as a high-quality file."
-            : "شهادتك الرسمية مرفقة بهذه الرسالة بصيغة PDF وبجودة عالية."}</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
+        html: `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARKAN WEB - Certificate</title>
+</head>
+<body style="margin:0;padding:0;background-color:#eef1f5;font-family:Arial,Tahoma,sans-serif;">
+<div style="display:none;font-size:1px;color:#eef1f5;line-height:1px;">شهادتك الرسمية من ARKAN WEB أصبحت جاهزة.</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#eef1f5;padding:28px 10px;">
+<tr><td align="center">
+<table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;">
+<tr><td style="background:#0a192b;padding:30px 25px;text-align:center;">
+<div style="font-size:29px;font-weight:900;letter-spacing:3px;color:#ffffff;">ARKAN <span style="color:#e28a43;">WEB</span></div>
+<div style="font-size:10px;letter-spacing:3px;color:#dca16e;margin-top:7px;">DIGITAL SOLUTIONS</div>
+<div style="height:1px;background:#34455a;margin-top:23px;"></div>
+<div style="font-size:34px;margin-top:24px;color:#e5a064;">✦</div>
+<h1 style="font-size:27px;color:#ffffff;margin:8px 0;">CONGRATULATIONS!</h1>
+<p style="font-size:12px;letter-spacing:2px;color:#e5a064;margin:0;">YOUR ACHIEVEMENT MATTERS</p>
+</td></tr>
+<tr><td style="padding:32px 28px;text-align:right;color:#25364b;">
+<h2 style="font-size:23px;color:#172e49;margin:0 0 20px;">شهادتك أصبحت جاهزة!</h2>
+<p style="font-size:15px;line-height:2;color:#4d5c6e;">مرحبًا <strong>${recipientName}</strong>،</p>
+<p style="font-size:15px;line-height:2;color:#4d5c6e;">يسعد فريق <strong>ARKAN WEB</strong> أن يهنئك بمناسبة إتمام دورة الرخصة الدولية لقيادة الحاسب الآلي (ICDL). نحن سعداء بكونك جزءًا من هذه التجربة، ونتمنى لك مزيدًا من النجاح والتقدم.</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f6f2ec;border:1px solid #e7ddd0;border-radius:10px;">
+<tr><td style="padding:22px;text-align:right;">
+<p style="font-size:11px;letter-spacing:2px;color:#b8793e;font-weight:bold;margin:0 0 12px;">YOUR ACHIEVEMENT</p>
+<h2 style="font-size:21px;color:#172e49;margin:0 0 18px;">${certificateName}</h2>
+<p style="font-size:13px;color:#65758a;margin:8px 0;">Recipient</p>
+<p style="font-size:15px;font-weight:bold;color:#172e49;margin:0;">${recipientName}</p>
+<p style="font-size:13px;color:#65758a;margin:15px 0 6px;">Certificate ID</p>
+<p style="font-size:14px;font-weight:bold;color:#172e49;margin:0;direction:ltr;text-align:right;">${serialNumber}</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+<tr><td style="padding-top:18px;border-top:1px solid #ded2c3;"><span style="font-size:13px;color:#65758a;">Training Hours</span></td>
+<td align="left" style="padding-top:18px;border-top:1px solid #ded2c3;"><strong style="font-size:23px;color:#d47b37;">${trainingHours} HOURS</strong></td></tr>
+</table>
+</td></tr></table>
+<div style="text-align:center;padding:22px 12px;margin-top:15px;border:1px solid #e8e1d7;border-radius:9px;">
+<div style="font-size:29px;color:#c17b3e;">▧</div>
+<p style="font-size:15px;font-weight:bold;color:#172e49;margin:8px 0;">Your Official Certificate</p>
+<p style="font-size:12px;color:#68778a;line-height:1.8;margin:0;">ستجد شهادتك الرسمية مرفقة بهذه الرسالة بصيغة PNG وبجودة عالية.</p>
+</div>
+<div style="text-align:center;padding:26px 0 12px;">
+<a href="${validationUrl}" style="display:inline-block;background:#d47b37;color:#ffffff;text-decoration:none;padding:15px 30px;border-radius:6px;font-size:13px;font-weight:bold;letter-spacing:1px;">VERIFY YOUR CERTIFICATE</a>
+</div>
+<p style="font-size:13px;line-height:1.9;text-align:center;color:#68778a;">نتمنى لك دوام النجاح والتوفيق في رحلتك التعليمية والمهنية.</p>
+</td></tr>
+<tr><td style="background:#0a192b;padding:26px 20px;text-align:center;">
+<p style="font-size:20px;font-weight:900;letter-spacing:2px;color:#ffffff;margin:0;">ARKAN WEB</p>
+<p style="font-size:10px;letter-spacing:2px;color:#dca16e;margin:8px 0 15px;">DIGITAL SOLUTIONS &amp; DEVELOPMENT</p>
+<div style="height:1px;background:#34455a;"></div>
+<p style="font-size:11px;color:#aab8c9;margin:15px 0 0;">Creating Digital Experiences.</p>
+<p style="font-size:11px;color:#dca16e;margin:8px 0 0;">Thank you for being part of our journey 🧡</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
 </body>
 </html>`,
         text: isEnglish
