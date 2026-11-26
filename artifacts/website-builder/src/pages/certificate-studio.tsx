@@ -2905,6 +2905,13 @@ export default function CertificateStudio() {
 
       {activeSection === "batches" && (
       <div className="space-y-4">
+      <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <iframe
+          title="Arkan enhanced certificate batch studio"
+          src="/certificate-studio-enhanced.html"
+          className="h-[760px] w-full border-0 bg-slate-950"
+        />
+      </section>
       <section className="grid gap-4 lg:grid-cols-[360px_1fr]">
         <div className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
           <div>
