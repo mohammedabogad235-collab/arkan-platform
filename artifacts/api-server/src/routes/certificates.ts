@@ -2313,6 +2313,79 @@ router.post("/certificates/batches", async (req, res): Promise<void> => {
   res.status(201).json({ batch });
 });
 
+router.get("/certificates/batches/:id/activity", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  const batchId = Number(req.params.id);
+  const activity = await db.select().from(certificateActivityLogsTable)
+    .where(eq(certificateActivityLogsTable.batchId, batchId))
+    .orderBy(desc(certificateActivityLogsTable.createdAt));
+  res.json({ activity });
+});
+
+router.get("/certificates/batches/:id/email-logs", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  const batchId = Number(req.params.id);
+  const logs = await db.select().from(certificateEmailLogsTable)
+    .where(eq(certificateEmailLogsTable.batchId, batchId))
+    .orderBy(desc(certificateEmailLogsTable.createdAt));
+  res.json({ logs });
+});
+
+router.get("/certificates/batches/stats", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  const [batches, recipients, issued, emailLogs] = await Promise.all([
+    db.select().from(certificateBatchesTable),
+    db.select().from(certificateRecipientsTable),
+    db.select().from(certificateIssuesTable).where(isNull(certificateIssuesTable.deletedAt)),
+    db.select().from(certificateEmailLogsTable),
+  ]);
+  res.json({
+    totalBatches: batches.length,
+    totalRecipients: recipients.length,
+    reservedCodes: recipients.filter((item) => item.certificateCode).length,
+    issuedCertificates: issued.filter((item) => item.status === "issued").length,
+    publishedCertificates: issued.filter((item) => item.status === "issued" && Boolean(item.qrCodeUrl)).length,
+    validCertificates: issued.filter((item) => item.status === "issued").length,
+    revokedCertificates: issued.filter((item) => item.status === "cancelled").length,
+    sentEmails: emailLogs.filter((item) => item.status === "sent").length,
+    failedEmails: emailLogs.filter((item) => item.status === "failed").length,
+    pendingEmails: recipients.filter((item) => item.emailStatus === "pending").length,
+  });
+});
+
+router.post("/certificates/test-email", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "أدخل بريدًا إلكترونيًا تجريبيًا صحيحًا" });
+    return;
+  }
+  const delivery = await sendCertificateEmail({
+    to: email,
+    recipientName: "مستلم تجريبي",
+    certificateName: "دورة اختبار التصميم",
+    serialNumber: "AW-CERT-TEST-000001",
+    validationUrl: buildValidationUrl("AW-CERT-TEST-000001"),
+    fileName: "ARKAN-Test-Certificate.pdf",
+    pdf: Buffer.from("%PDF-1.4\n%%EOF"),
+    language: req.body?.language === "en" ? "en" : "ar",
+    subject: typeof req.body?.subject === "string" ? req.body.subject.trim().slice(0, 300) : undefined,
+  });
+  res.json({ success: true, messageId: delivery.messageId ?? null });
+});
+
 router.get("/certificates/batches/:id", async (req, res): Promise<void> => {
   if (!(await ensureAdmin(req))) {
     res.status(403).json({ error: "غير مصرح" });
@@ -2430,6 +2503,51 @@ router.post("/certificates/batches/:id/recipients", async (req, res): Promise<vo
     return created;
   });
   res.status(201).json({ count: recipients.length, recipients });
+});
+
+router.patch("/certificates/batches/:batchId/recipients/:recipientId", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  const batchId = Number(req.params.batchId);
+  const recipientId = Number(req.params.recipientId);
+  const body = req.body ?? {};
+  const [recipient] = await db.select().from(certificateRecipientsTable)
+    .where(and(eq(certificateRecipientsTable.id, recipientId), eq(certificateRecipientsTable.batchId, batchId)))
+    .limit(1);
+  if (!recipient) {
+    res.status(404).json({ error: "المستلم غير موجود" });
+    return;
+  }
+  if (recipient.certificateStatus === "issued") {
+    res.status(409).json({ error: "لا يمكن تعديل مستلم بعد إصدار شهادته" });
+    return;
+  }
+  const fullName = typeof body.fullName === "string" ? body.fullName.trim().replace(/\s+/g, " ").slice(0, 200) : recipient.fullName;
+  const email = typeof body.email === "string" ? body.email.trim().slice(0, 320) : recipient.email;
+  if (!fullName) {
+    res.status(400).json({ error: "اسم المستلم مطلوب" });
+    return;
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "البريد الإلكتروني غير صالح" });
+    return;
+  }
+  const [updated] = await db.update(certificateRecipientsTable).set({
+    fullName,
+    email: email || null,
+    updatedAt: new Date(),
+  }).where(eq(certificateRecipientsTable.id, recipientId)).returning();
+  await db.insert(certificateActivityLogsTable).values({
+    batchId,
+    recipientId,
+    action: "Recipient Updated",
+    result: "success",
+    details: { fullName, email: email || null },
+    actorId: getSessionUser(req).userId,
+  });
+  res.json({ recipient: updated });
 });
 
 router.delete("/certificates/batches/:batchId/recipients/:recipientId", async (req, res): Promise<void> => {
@@ -3201,16 +3319,94 @@ router.post("/certificates/:id/send-email", async (req, res): Promise<void> => {
     }),
     await getIssuePartners(issue),
   );
-  await sendCertificateEmail({
-    to: recipientEmail,
-    recipientName: issue.recipientName,
-    certificateName: issue.programTitle,
-    serialNumber: issue.serialNumber,
-    validationUrl: issue.validationUrl,
-    fileName: `${certificateFileName(issue.recipientName, `certificate-${issue.serialNumber}`)}.pdf`,
-    pdf,
-  });
-  res.json({ success: true, email: recipientEmail });
+  let png: Buffer | undefined;
+  try {
+    png = await renderPdfToImage(pdf, "png", true);
+  } catch (error) {
+    console.error("Certificate PNG attachment generation failed:", error);
+  }
+
+  const [recipient] = await db.select().from(certificateRecipientsTable)
+    .where(eq(certificateRecipientsTable.certificateIssueId, id))
+    .limit(1);
+  const previousLogs = recipient
+    ? await db.select({ id: certificateEmailLogsTable.id })
+      .from(certificateEmailLogsTable)
+      .where(eq(certificateEmailLogsTable.recipientId, recipient.id))
+    : [];
+  const attemptNumber = previousLogs.length + 1;
+  if (recipient) {
+    await db.update(certificateRecipientsTable).set({
+      emailStatus: "sending",
+      updatedAt: new Date(),
+    }).where(eq(certificateRecipientsTable.id, recipient.id));
+  }
+  try {
+    const delivery = await sendCertificateEmail({
+      to: recipientEmail,
+      recipientName: issue.recipientName,
+      certificateName: issue.programTitle,
+      serialNumber: issue.serialNumber,
+      validationUrl: issue.validationUrl,
+      fileName: `${certificateFileName(issue.recipientName, `certificate-${issue.serialNumber}`)}.pdf`,
+      pdf,
+      png,
+      language: typeof req.body?.language === "string" && req.body.language === "en" ? "en" : "ar",
+      subject: typeof req.body?.subject === "string" ? req.body.subject.trim().slice(0, 300) : undefined,
+    });
+    await db.insert(certificateEmailLogsTable).values({
+      batchId: recipient?.batchId ?? null,
+      recipientId: recipient?.id ?? null,
+      certificateIssueId: issue.id,
+      recipientEmail,
+      status: "sent",
+      attemptNumber,
+      providerResponse: delivery.response,
+      messageId: delivery.messageId ?? null,
+      sentAt: new Date(),
+    });
+    if (recipient) {
+      await db.update(certificateRecipientsTable).set({
+        emailStatus: "sent",
+        updatedAt: new Date(),
+      }).where(eq(certificateRecipientsTable.id, recipient.id));
+      await db.insert(certificateActivityLogsTable).values({
+        batchId: recipient.batchId,
+        recipientId: recipient.id,
+        certificateIssueId: issue.id,
+        action: "Email Sent",
+        result: "success",
+        details: { recipientEmail, messageId: delivery.messageId ?? null },
+        actorId: getSessionUser(req).userId,
+      });
+    }
+    res.json({ success: true, email: recipientEmail, messageId: delivery.messageId ?? null, attachment: png ? ["PDF", "PNG"] : ["PDF"] });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "تعذر إرسال البريد";
+    await db.insert(certificateEmailLogsTable).values({
+      batchId: recipient?.batchId ?? null,
+      recipientId: recipient?.id ?? null,
+      certificateIssueId: issue.id,
+      recipientEmail,
+      status: "failed",
+      attemptNumber,
+      failureReason: reason,
+    });
+    if (recipient) {
+      await db.update(certificateRecipientsTable).set({ emailStatus: "failed", updatedAt: new Date() })
+        .where(eq(certificateRecipientsTable.id, recipient.id));
+      await db.insert(certificateActivityLogsTable).values({
+        batchId: recipient.batchId,
+        recipientId: recipient.id,
+        certificateIssueId: issue.id,
+        action: "Email Failed",
+        result: "failed",
+        details: { recipientEmail, reason },
+        actorId: getSessionUser(req).userId,
+      });
+    }
+    throw error;
+  }
 });
 
 router.get("/certificates/:id/preview", async (req, res): Promise<void> => {

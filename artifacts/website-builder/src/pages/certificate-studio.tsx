@@ -96,6 +96,7 @@ type CertificateRecipient = {
   fullName: string;
   email?: string | null;
   certificateCode?: string | null;
+  certificateIssueId?: number | null;
   reservationStatus: string;
   certificateStatus: string;
   verificationStatus: string;
@@ -390,21 +391,31 @@ function certificateHtmlFields(issue: CertificateIssue, template: CertificateTem
 }
 
 type CertificateStudioSection =
+  | "overview"
   | "batches"
+  | "recipients"
   | "issue"
   | "codes"
   | "templates"
   | "partners"
   | "manage"
+  | "email"
+  | "logs"
+  | "settings"
   | "verification";
 
 const certificateStudioSections: { id: CertificateStudioSection; label: string; description: string }[] = [
+  { id: "overview", label: "نظرة عامة", description: "إحصاءات الشهادات والدفعات والمستلمين والبريد من قاعدة البيانات." },
   { id: "batches", label: "إدارة الدفعات والمستلمين", description: "إنشاء دفعات مستقلة وإضافة المستلمين وحجز أكواد الشهادات." },
+  { id: "recipients", label: "إدارة المستلمين", description: "البحث والتعديل والحذف والتصدير واختيار المستلمين." },
   { id: "issue", label: "إصدار الشهادات", description: "إصدار شهادة منفردة أو دفعة من صور وأسماء." },
   { id: "codes", label: "حجز الأكواد", description: "إنشاء أكواد QR مسبقاً أو ربط الأكواد المحجوزة بصور الشهادات." },
   { id: "templates", label: "القوالب والتصميم", description: "إنشاء قوالب مرئية أو HTML، مع حقول بيانات ومعاينة قبل الحفظ." },
   { id: "partners", label: "الجهات الشريكة", description: "إدارة الجهات التي يمكن إضافتها إلى الشهادات." },
   { id: "manage", label: "إدارة الشهادات", description: "البحث والتحقق والتنزيل والطباعة الجماعية وإدارة الحالات." },
+  { id: "email", label: "مركز البريد", description: "حالة المزود والقوالب والإرسال الفردي والجماعي وسجلات التسليم." },
+  { id: "logs", label: "سجل النشاط", description: "تتبع إنشاء الدفعات وحجز الأكواد والإصدار والإرسال." },
+  { id: "settings", label: "إعدادات الشهادات", description: "التصميم الافتراضي وجودة الصور وإعدادات التحقق والإرسال." },
   { id: "verification", label: "إعدادات التحقق", description: "تخصيص صفحة التحقق العامة والبيانات التي تظهر للزائر." },
 ];
 
@@ -759,8 +770,31 @@ export default function CertificateStudio() {
     description: "",
     courseHours: "",
     templateId: "",
+    startDate: "",
+    completionDate: "",
+    issueDate: getLocalDateInputValue(),
+    instructorName: "",
+    organization: "Arkan Web",
+    partnerOrganization: "",
   });
   const [batchRecipientText, setBatchRecipientText] = useState("");
+  const [batchStats, setBatchStats] = useState({
+    totalBatches: 0,
+    totalRecipients: 0,
+    reservedCodes: 0,
+    issuedCertificates: 0,
+    publishedCertificates: 0,
+    validCertificates: 0,
+    revokedCertificates: 0,
+    sentEmails: 0,
+    failedEmails: 0,
+    pendingEmails: 0,
+  });
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [recipientFilter, setRecipientFilter] = useState("all");
+  const [batchEmailLogs, setBatchEmailLogs] = useState<any[]>([]);
+  const [batchActivity, setBatchActivity] = useState<any[]>([]);
+  const [testEmail, setTestEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [referenceTemplateLoading, setReferenceTemplateLoading] = useState(false);
@@ -859,6 +893,12 @@ export default function CertificateStudio() {
     setPartners(partnerData);
     setStats(statsData);
     setBatches(batchData.batches);
+    try {
+      const batchStatsData = await apiFetchJson<typeof batchStats>("/api/certificates/batches/stats");
+      setBatchStats(batchStatsData);
+    } catch {
+      // Batch tables may not be migrated yet; keep the existing certificate UI usable.
+    }
     if (!templateId && templateData[0]) setTemplateId(String(templateData[0].id));
     if (!bulkTemplateId && templateData[0]) setBulkTemplateId(String(templateData[0].id));
     return templateData;
@@ -873,6 +913,17 @@ export default function CertificateStudio() {
     const data = await apiFetchJson<{ recipients: CertificateRecipient[] }>(`/api/certificates/batches/${batchId}`);
     setSelectedBatchId(batchId);
     setBatchRecipients(data.recipients);
+    try {
+      const [emailData, activityData] = await Promise.all([
+        apiFetchJson<{ logs: any[] }>(`/api/certificates/batches/${batchId}/email-logs`),
+        apiFetchJson<{ activity: any[] }>(`/api/certificates/batches/${batchId}/activity`),
+      ]);
+      setBatchEmailLogs(emailData.logs);
+      setBatchActivity(activityData.activity);
+    } catch {
+      setBatchEmailLogs([]);
+      setBatchActivity([]);
+    }
   };
 
   const createBatch = async () => {
@@ -2854,19 +2905,6 @@ export default function CertificateStudio() {
 
       {activeSection === "batches" && (
       <div className="space-y-4">
-      <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-          <div>
-            <h2 className="text-lg font-bold">واجهة الدفعات المحسّنة</h2>
-            <p className="mt-1 text-sm text-muted-foreground">معاينة التصميم المرفق داخل قسم الشهادات الحالي.</p>
-          </div>
-        </div>
-        <iframe
-          title="واجهة استوديو الشهادات المحسنة"
-          src="/certificate-studio-enhanced.html"
-          className="h-[720px] w-full border-0 bg-slate-950"
-        />
-      </section>
       <section className="grid gap-4 lg:grid-cols-[360px_1fr]">
         <div className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
           <div>
@@ -2879,6 +2917,12 @@ export default function CertificateStudio() {
           <Field label="الفئة" value={batchForm.category} onChange={(value) => setBatchForm((current) => ({ ...current, category: value }))} />
           <Field label="الوصف" value={batchForm.description} onChange={(value) => setBatchForm((current) => ({ ...current, description: value }))} />
           <Field label="عدد الساعات" type="number" value={batchForm.courseHours} onChange={(value) => setBatchForm((current) => ({ ...current, courseHours: value }))} />
+          <Field label="تاريخ البدء" type="date" value={batchForm.startDate} onChange={(value) => setBatchForm((current) => ({ ...current, startDate: value }))} />
+          <Field label="تاريخ الإتمام" type="date" value={batchForm.completionDate} onChange={(value) => setBatchForm((current) => ({ ...current, completionDate: value }))} />
+          <Field label="تاريخ الإصدار" type="date" value={batchForm.issueDate} onChange={(value) => setBatchForm((current) => ({ ...current, issueDate: value }))} />
+          <Field label="اسم المدرب" value={batchForm.instructorName} onChange={(value) => setBatchForm((current) => ({ ...current, instructorName: value }))} />
+          <Field label="الجهة المصدرة" value={batchForm.organization} onChange={(value) => setBatchForm((current) => ({ ...current, organization: value }))} />
+          <Field label="جهة الشريك" value={batchForm.partnerOrganization} onChange={(value) => setBatchForm((current) => ({ ...current, partnerOrganization: value }))} />
           <label className="block space-y-1.5 text-sm">
             <span className="font-medium">قالب الشهادة</span>
             <select className="w-full rounded-lg border bg-background px-3 py-2" value={batchForm.templateId} onChange={(event) => setBatchForm((current) => ({ ...current, templateId: event.target.value }))}>
@@ -2952,6 +2996,142 @@ export default function CertificateStudio() {
         </div>
       </section>
       </div>
+      )}
+
+      {activeSection === "overview" && (
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {([
+            ["إجمالي الدفعات", batchStats.totalBatches],
+            ["إجمالي المستلمين", batchStats.totalRecipients],
+            ["الأكواد المحجوزة", batchStats.reservedCodes],
+            ["الشهادات الصادرة", batchStats.issuedCertificates],
+            ["الشهادات المنشورة", batchStats.publishedCertificates],
+            ["الشهادات الصحيحة", batchStats.validCertificates],
+            ["الشهادات الملغاة", batchStats.revokedCertificates],
+            ["البريد الناجح", batchStats.sentEmails],
+            ["البريد الفاشل", batchStats.failedEmails],
+            ["البريد المعلق", batchStats.pendingEmails],
+          ] as const).map(([label, value]) => (
+            <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm">
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <p className="mt-2 text-2xl font-bold text-primary">{value}</p>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {activeSection === "recipients" && (
+        <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><h2 className="text-lg font-bold">المستلمون</h2><p className="text-sm text-muted-foreground">البحث والتصفية والتصدير وإدارة الحالات.</p></div>
+            <select className="rounded-lg border px-3 py-2 text-sm" value={recipientFilter} onChange={(event) => setRecipientFilter(event.target.value)}>
+              <option value="all">كل الحالات</option>
+              <option value="reserved">محجوز</option>
+              <option value="issued">صادر</option>
+              <option value="failed">بريد فاشل</option>
+            </select>
+          </div>
+          <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="بحث بالاسم أو البريد أو الكود..." value={recipientSearch} onChange={(event) => setRecipientSearch(event.target.value)} />
+          <div className="overflow-x-auto rounded-xl border">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className="bg-muted/40"><tr><th className="p-2 text-right">الاسم</th><th className="p-2 text-right">البريد</th><th className="p-2 text-right">الكود</th><th className="p-2 text-right">الحجز</th><th className="p-2 text-right">الشهادة</th><th className="p-2 text-right">البريد</th><th className="p-2 text-right">إجراء</th></tr></thead>
+              <tbody className="divide-y">
+                {batchRecipients
+                  .filter((recipient) => recipientFilter === "all"
+                    || (recipientFilter === "reserved" && recipient.reservationStatus === "reserved")
+                    || (recipientFilter === "issued" && recipient.certificateStatus === "issued")
+                    || (recipientFilter === "failed" && recipient.emailStatus === "failed"))
+                  .filter((recipient) => `${recipient.fullName} ${recipient.email || ""} ${recipient.certificateCode || ""}`.toLowerCase().includes(recipientSearch.trim().toLowerCase()))
+                  .map((recipient) => (
+                    <tr key={recipient.id}>
+                      <td className="p-2">{recipient.fullName}</td>
+                      <td className="p-2" dir="ltr">{recipient.email || "-"}</td>
+                      <td className="p-2 font-mono" dir="ltr">{recipient.certificateCode || "-"}</td>
+                      <td className="p-2">{recipient.reservationStatus}</td>
+                      <td className="p-2">{recipient.certificateStatus}</td>
+                      <td className="p-2">{recipient.emailStatus}</td>
+                      <td className="p-2">
+                        {recipient.certificateStatus !== "issued" && (
+                          <button type="button" className="text-destructive" onClick={async () => {
+                            if (!selectedBatchId || !confirm("هل تريد حذف هذا المستلم؟")) return;
+                            await apiFetch(`/api/certificates/batches/${selectedBatchId}/recipients/${recipient.id}`, { method: "DELETE" });
+                            await loadBatch(selectedBatchId);
+                          }}>حذف</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {activeSection === "email" && (
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold">مركز البريد</h2>
+            <p className="text-sm text-muted-foreground">المزود: SMTP / البريد الإلكتروني المعتمد في إعدادات المشروع.</p>
+            <label className="block space-y-1.5 text-sm"><span className="font-medium">بريد تجريبي</span><input className="w-full rounded-lg border px-3 py-2" dir="ltr" value={testEmail} onChange={(event) => setTestEmail(event.target.value)} /></label>
+            <button type="button" className="rounded-lg bg-primary px-4 py-2 font-semibold text-primary-foreground" onClick={async () => {
+              try {
+                await apiFetchJson("/api/certificates/test-email", { method: "POST", body: JSON.stringify({ email: testEmail, language: "ar" }) });
+                toast({ title: "تم إرسال البريد التجريبي" });
+              } catch (error) {
+                toast({ variant: "destructive", title: "تعذر إرسال البريد التجريبي", description: error instanceof Error ? error.message : "" });
+              }
+            }}>Test Email</button>
+            {selectedBatchId && (
+              <button type="button" className="mr-2 rounded-lg border px-4 py-2 font-semibold" onClick={async () => {
+                let sent = 0, failed = 0;
+                for (const recipient of batchRecipients) {
+                  if (!recipient.certificateIssueId || recipient.emailStatus === "sent") continue;
+                  try {
+                    await apiFetch(`/api/certificates/${recipient.certificateIssueId}/send-email`, { method: "POST", body: JSON.stringify({ language: "ar" }) });
+                    sent += 1;
+                  } catch { failed += 1; }
+                }
+                await loadBatch(selectedBatchId);
+                await refresh();
+                toast({ title: "انتهت عملية الإرسال", description: `${sent} نجح، ${failed} فشل` });
+              }}>Send All</button>
+            )}
+          </div>
+          <div className="rounded-2xl border bg-white p-5 shadow-sm">
+            <h2 className="mb-3 text-lg font-bold">سجل البريد</h2>
+            <div className="max-h-96 space-y-2 overflow-y-auto">
+              {batchEmailLogs.map((log) => (
+                <div key={log.id} className="rounded-lg border p-3 text-sm">
+                  <div className="flex justify-between"><strong dir="ltr">{log.recipientEmail}</strong><span>{log.status}</span></div>
+                  <p className="mt-1 text-muted-foreground">محاولة {log.attemptNumber} · {log.failureReason || log.providerResponse || "تم قبوله من مزود البريد"}</p>
+                </div>
+              ))}
+              {!batchEmailLogs.length && <p className="text-sm text-muted-foreground">لا توجد رسائل مسجلة للدفعة.</p>}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {activeSection === "logs" && (
+        <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-bold">سجل نشاط الدفعة</h2>
+          <div className="max-h-96 space-y-2 overflow-y-auto">
+            {batchActivity.map((log) => (
+              <div key={log.id} className="flex items-start justify-between rounded-lg border p-3 text-sm">
+                <div><strong>{log.action}</strong><p className="mt-1 text-muted-foreground">{log.result}</p></div>
+                <time className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString("ar-EG")}</time>
+              </div>
+            ))}
+            {!batchActivity.length && <p className="text-sm text-muted-foreground">اختر دفعة لعرض سجلها أو أنشئ نشاطًا جديدًا.</p>}
+          </div>
+        </section>
+      )}
+
+      {activeSection === "settings" && (
+        <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold">إعدادات الشهادات والبريد</h2>
+          <p className="mt-2 text-sm text-muted-foreground">التصميمات وإعدادات التحقق موجودة في أقسامها الحالية؛ استخدم قسم التحقق لتعديل صفحة التحقق العامة.</p>
+        </section>
       )}
 
       {activeSection === "verification" && (

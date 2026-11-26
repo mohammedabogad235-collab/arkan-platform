@@ -163,33 +163,74 @@ export async function sendCertificateEmail(options: {
   validationUrl: string;
   fileName: string;
   pdf: Buffer;
-}): Promise<void> {
+  png?: Buffer;
+  subject?: string;
+  language?: "ar" | "en";
+}): Promise<{ messageId?: string; accepted: string[]; response: string }> {
   const { transporter, fromEmail } = await getMailTransport();
   const recipientName = escapeHtml(options.recipientName);
   const certificateName = escapeHtml(options.certificateName);
   const serialNumber = escapeHtml(options.serialNumber);
   const validationUrl = escapeHtml(options.validationUrl);
-  const subject = `شهادتك من أركان ويب - ${options.certificateName}`;
+  const subject = options.subject || (options.language === "en"
+    ? `Your Official Certificate Is Ready! | ARKAN WEB`
+    : `شهادتك الرسمية أصبحت جاهزة! | ARKAN WEB`);
 
   try {
-    await withTimeout(
+    const result = await withTimeout(
       transporter.sendMail({
         from: `"أركان-ويب " <${fromEmail}>`,
         to: options.to,
         subject,
         html: `
-          <div dir="rtl" lang="ar" style="font-family:Arial,sans-serif;line-height:1.8;color:#0f172a">
-            <h2>مرحباً ${recipientName}</h2>
-            <p>مرفق شهادتك «${certificateName}» بصيغة PDF.</p>
-            <p>رقم الشهادة: <strong>${serialNumber}</strong></p>
-            <p><a href="${validationUrl}">التحقق من الشهادة</a></p>
-          </div>
+          <!doctype html>
+          <html dir="${options.language === "en" ? "ltr" : "rtl"}" lang="${options.language === "en" ? "en" : "ar"}>
+          <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+          <body style="margin:0;background:#f3f6f9;font-family:Arial,sans-serif;color:#17243a">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#07111d;padding:24px 12px">
+              <tr><td align="center"><div style="color:#fff;font-size:22px;font-weight:bold;letter-spacing:2px">ARKAN <span style="color:#f2a06b">WEB</span></div></td></tr>
+            </table>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f9;padding:24px 12px">
+              <tr><td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;border:1px solid #dde5ed">
+                  <tr><td style="padding:32px">
+                    <h1 style="margin:0 0 16px;font-size:24px;color:#07111d">${options.language === "en" ? "Congratulations!" : "تهانينا!"}</h1>
+                    <p style="line-height:1.8">${options.language === "en" ? `Dear ${recipientName},` : `مرحبًا ${recipientName}،`}</p>
+                    <p style="line-height:1.8">${options.language === "en"
+                      ? `We are pleased to inform you that your certificate for ${certificateName} has been successfully issued.`
+                      : `يسر فريق ARKAN WEB إبلاغك بأن شهادتك الرسمية لدورة ${certificateName} تم إصدارها بنجاح.`}</p>
+                    <table role="presentation" width="100%" cellpadding="12" cellspacing="0" style="background:#f7f9fc;border:1px solid #e2e8f0;border-radius:8px;margin:20px 0">
+                      <tr><td style="font-weight:bold">${options.language === "en" ? "Recipient" : "اسم المستلم"}</td><td align="${options.language === "en" ? "right" : "left"}">${recipientName}</td></tr>
+                      <tr><td style="font-weight:bold">${options.language === "en" ? "Course" : "الدورة"}</td><td align="${options.language === "en" ? "right" : "left"}">${certificateName}</td></tr>
+                      <tr><td style="font-weight:bold">${options.language === "en" ? "Certificate ID" : "كود الشهادة"}</td><td dir="ltr" align="${options.language === "en" ? "right" : "left"}">${serialNumber}</td></tr>
+                    </table>
+                    <p><a href="${validationUrl}" style="display:inline-block;background:#c85c2b;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold">${options.language === "en" ? "Verify My Certificate" : "التحقق من الشهادة"}</a></p>
+                    <p style="line-height:1.8;color:#526174">${options.language === "en"
+                      ? "Your official certificate is attached to this email."
+                      : "شهادتك الرسمية مرفقة بهذه الرسالة بصيغة PDF وPNG عند توفرها."}</p>
+                  </td></tr>
+                </table>
+              </td></tr>
+            </table>
+          </body>
+          </html>
         `,
-        attachments: [{ filename: options.fileName, content: options.pdf, contentType: "application/pdf" }],
+        text: options.language === "en"
+          ? `Dear ${options.recipientName},\n\nYour certificate for ${options.certificateName} is ready.\nCertificate ID: ${options.serialNumber}\nVerify: ${options.validationUrl}`
+          : `مرحبًا ${options.recipientName}،\n\nشهادتك لدورة ${options.certificateName} أصبحت جاهزة.\nكود الشهادة: ${options.serialNumber}\nالتحقق: ${options.validationUrl}`,
+        attachments: [
+          { filename: options.fileName, content: options.pdf, contentType: "application/pdf" },
+          ...(options.png ? [{ filename: options.fileName.replace(/\.pdf$/i, ".png"), content: options.png, contentType: "image/png" }] : []),
+        ],
       }),
       SMTP_SEND_TIMEOUT_MS,
       () => closeTransporter(transporter),
     );
+    return {
+      messageId: typeof result.messageId === "string" ? result.messageId : undefined,
+      accepted: Array.isArray(result.accepted) ? result.accepted.map(String) : [],
+      response: typeof result.response === "string" ? result.response : "",
+    };
   } catch (error) {
     logger.error({ err: error, subject, to: options.to }, "Certificate email delivery failed");
     throw toMailError(error);
