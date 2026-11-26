@@ -2311,7 +2311,7 @@ export default function CertificateStudio() {
   };
 
   const issueDraft = async (issue: CertificateIssue) => {
-    if (!window.confirm(`إصدار الشهادة للمستفيد «${issue.recipientName}» الآن؟`)) return;
+    if (!window.confirm(`هل تريد تحضير الشهادة للمراجعة للمستفيد «${issue.recipientName}»؟ لن يتم نشرها حتى الموافقة.`)) return;
     try {
       const result = await apiFetchJson<CertificateIssue>(`/api/certificates/${issue.id}/issue`, {
         method: "POST",
@@ -2322,9 +2322,24 @@ export default function CertificateStudio() {
         }),
       });
       await refresh();
-      toast({ title: "تم إصدار الشهادة", description: result.serialNumber });
+      toast({ title: "تم تحضير الشهادة للمراجعة", description: `الكود: ${result.serialNumber} — لم تُنشر بعد` });
     } catch (error) {
-      toast({ variant: "destructive", title: "تعذر إصدار المسودة", description: (error as Error).message });
+      toast({ variant: "destructive", title: "تعذر تحضير المسودة", description: (error as Error).message });
+    }
+  };
+
+  const publishCertificate = async (issue: CertificateIssue) => {
+    if (!issue.serialNumber || !issue.validationUrl) {
+      toast({ variant: "destructive", title: "الموافقة غير متاحة", description: "راجع وحضّر الشهادة أولاً لإنشاء الكود ورابط التحقق." });
+      return;
+    }
+    if (!window.confirm(`اعتماد ونشر الشهادة للمستفيد «${issue.recipientName}»؟`)) return;
+    try {
+      await apiFetchJson<CertificateIssue>(`/api/certificates/${issue.id}/publish`, { method: "POST" });
+      await refresh();
+      toast({ title: "تم الاعتماد والنشر", description: "أصبحت الشهادة متاحة للتحقق ويمكن إرسالها بالبريد." });
+    } catch (error) {
+      toast({ variant: "destructive", title: "تعذر الاعتماد والنشر", description: (error as Error).message });
     }
   };
 
@@ -4006,7 +4021,8 @@ export default function CertificateStudio() {
                 {issue.status !== "reserved" && <button className="text-sm text-primary" onClick={() => openCertificatePreview(issue)}>معاينة</button>}
                 {(issue.status === "issued" || issue.status === "cancelled") && <button className="text-sm text-primary" onClick={() => printOrDownloadCertificate(issue)}>{issue.status === "issued" && issueUsesHtmlTemplate(issue) ? "طباعة / حفظ PDF" : "تنزيل PDF"}</button>}
                 {issue.status === "issued" && <button className="text-sm text-primary disabled:opacity-50" disabled={emailSendingId === issue.id} onClick={() => void emailCertificate(issue)}>{emailSendingId === issue.id ? "جارٍ الإرسال..." : "إرسال بالبريد"}</button>}
-                {issue.status === "draft" && <button className="text-sm text-emerald-700" onClick={() => void issueDraft(issue)}>إصدار</button>}
+                {issue.status === "draft" && !issue.serialNumber && <button className="text-sm text-emerald-700" onClick={() => void issueDraft(issue)}>مراجعة وتحضير</button>}
+                {issue.status === "draft" && issue.serialNumber && <button className="text-sm text-emerald-700" onClick={() => void publishCertificate(issue)}>اعتماد ونشر</button>}
                 {issue.status === "issued" && <button className="text-sm text-amber-700" onClick={() => void cancelCertificate(issue)}>إلغاء الشهادة</button>}
                 <button className="text-sm text-destructive" onClick={() => void moveToTrash(issue)}>نقل إلى السلة</button>
               </>}

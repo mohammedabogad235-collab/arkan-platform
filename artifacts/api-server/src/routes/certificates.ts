@@ -1812,8 +1812,14 @@ router.post("/certificates/:id/issue", async (req, res): Promise<void> => {
     qrCodeUrl: validationUrl,
     recipientName,
     programTitle: programTitle || "توثيق شهادة",
-    status: "issued",
+    status: "draft",
     issueDate: draft.issueDate || new Date(),
+    metadata: {
+      ...draftMetadata,
+      published: false,
+      approvalRequired: true,
+      approvalStatus: "pending",
+    },
     updatedAt: new Date(),
   }).where(and(eq(certificateIssuesTable.id, id), eq(certificateIssuesTable.status, "draft"), isNull(certificateIssuesTable.deletedAt)))
     .returning();
@@ -2855,6 +2861,43 @@ router.get("/certificates/:id/preview", async (req, res): Promise<void> => {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${certificateFileName(`${slugify(issue.recipientName || "certificate")}-${issue.serialNumber}`, "certificate")}.pdf"`);
   res.end(pdfBuffer);
+});
+
+router.post("/certificates/:id/publish", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  const id = Number(req.params.id);
+  const [draft] = await db.select().from(certificateIssuesTable)
+    .where(and(eq(certificateIssuesTable.id, id), eq(certificateIssuesTable.status, "draft"), isNull(certificateIssuesTable.deletedAt)))
+    .limit(1);
+  if (!draft) {
+    res.status(404).json({ error: "مسودة الشهادة غير موجودة" });
+    return;
+  }
+  if (!draft.validationUrl || !draft.qrCodeUrl || !draft.serialNumber) {
+    res.status(409).json({ error: "لا يمكن نشر الشهادة قبل إنشاء الكود ورابط التحقق" });
+    return;
+  }
+  const metadata = isRecord(draft.metadata) ? draft.metadata : {};
+  const [published] = await db.update(certificateIssuesTable).set({
+    status: "issued",
+    metadata: {
+      ...metadata,
+      published: true,
+      approvalRequired: false,
+      approvalStatus: "approved",
+      approvedAt: new Date().toISOString(),
+    },
+    updatedAt: new Date(),
+  }).where(and(eq(certificateIssuesTable.id, id), eq(certificateIssuesTable.status, "draft"), isNull(certificateIssuesTable.deletedAt)))
+    .returning();
+  if (!published) {
+    res.status(409).json({ error: "تعذر الاعتماد والنشر؛ ربما تم تغيير الشهادة" });
+    return;
+  }
+  res.json(published);
 });
 
 router.patch("/certificates/:id/cancel", async (req, res): Promise<void> => {
