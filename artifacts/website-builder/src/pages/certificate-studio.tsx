@@ -2853,6 +2853,20 @@ export default function CertificateStudio() {
       </p>
 
       {activeSection === "batches" && (
+      <div className="space-y-4">
+      <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h2 className="text-lg font-bold">واجهة الدفعات المحسّنة</h2>
+            <p className="mt-1 text-sm text-muted-foreground">معاينة التصميم المرفق داخل قسم الشهادات الحالي.</p>
+          </div>
+        </div>
+        <iframe
+          title="واجهة استوديو الشهادات المحسنة"
+          src="/certificate-studio-enhanced.html"
+          className="h-[720px] w-full border-0 bg-slate-950"
+        />
+      </section>
       <section className="grid gap-4 lg:grid-cols-[360px_1fr]">
         <div className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
           <div>
@@ -2937,6 +2951,7 @@ export default function CertificateStudio() {
           )}
         </div>
       </section>
+      </div>
       )}
 
       {activeSection === "verification" && (
