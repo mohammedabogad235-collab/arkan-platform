@@ -2383,13 +2383,15 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
       description: typeof certificate.description === "string" ? certificate.description : existing[0].description,
       issuerName: "Arkan Web",
       issueDate,
-      status: "issued",
+      status: "draft",
       validationUrl,
       qrCodeUrl: qrCodeUrl || existing[0].qrCodeUrl,
       metadata: {
         ...existingMetadata,
         source: "integrated-certificate-studio",
         publishedFromStudio: true,
+        pendingApproval: true,
+        approvedAt: null,
         certificateImageUrl: certificateUrl
           || (typeof existingMetadata.certificateImageUrl === "string" ? existingMetadata.certificateImageUrl : null),
         design: certificate.design,
@@ -2423,11 +2425,13 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
       description: typeof certificate.description === "string" ? certificate.description : null,
       issuerName: "Arkan Web",
       issueDate,
-      status: "issued",
+      status: "draft",
       qrCodeUrl: qrCodeUrl || validationUrl,
       metadata: {
         source: "integrated-certificate-studio",
         publishedFromStudio: true,
+        pendingApproval: true,
+        approvedAt: null,
         design: certificate.design,
         trainingHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
         courseHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
@@ -2439,6 +2443,8 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
   }
   res.status(201).json({
     success: true,
+    status: "draft",
+    pendingApproval: true,
     certificate_url: certificateUrl || issue.validationUrl,
     certificate_id: serialNumber,
     data: { certificate_url: certificateUrl || issue.validationUrl },
@@ -3121,6 +3127,7 @@ router.post("/certificates/:id/publish", async (req, res): Promise<void> => {
     metadata: {
       ...metadata,
       published: true,
+      pendingApproval: false,
       approvalRequired: false,
       approvalStatus: "approved",
       approvedAt: new Date().toISOString(),

@@ -1766,7 +1766,9 @@ window.exportClone=doc=>{
       const raw=await response.text();let result={};try{result=raw?JSON.parse(raw):{};}catch(_){result={message:raw};}
       if(!response.ok)throw new Error(result.message||result.error||`فشل النشر: HTTP ${response.status}`);
       const publishedUrl=result.certificate_url||result.url||result.data?.certificate_url||'';
-      const msg=publishedUrl?`تم قبول الشهادة من الخادم. رابطها: ${publishedUrl}`:'الخادم قبل طلب النشر بنجاح. لم يُرجع رابطًا عامًا للشهادة.';
+      const msg=result.pendingApproval||result.status==='draft'
+        ? 'تم إرسال الشهادة للموافقة. لن تظهر كشارة صادرة قبل اعتمادها من لوحة الإدارة.'
+        : (publishedUrl?`تم قبول الشهادة من الخادم. رابطها: ${publishedUrl}`:'الخادم قبل طلب النشر بنجاح. لم يُرجع رابطًا عامًا للشهادة.');
       setStatus(msg,'success');
       notifyParent({type:'ARKAN_CERTIFICATE_PUBLISHED',payload:{certificateId:certificate.certificateId,certificateUrl:publishedUrl,status:'success'}});
       return result;
