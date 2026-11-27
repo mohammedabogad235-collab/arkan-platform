@@ -2379,7 +2379,7 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
     : new Date();
   const existing = await db.select().from(certificateIssuesTable)
     .where(eq(certificateIssuesTable.serialNumber, serialNumber)).limit(1);
-  if (!existing[0] || !["reserved", "issued", "draft"].includes(existing[0].status)) {
+  if (!existing[0] || !["reserved", "draft"].includes(existing[0].status)) {
     res.status(409).json({ error: "الكود غير محجوز ولا يمكن استخدامه للنشر" });
     return;
   }
@@ -3106,15 +3106,21 @@ router.get("/certificates/:id/preview", async (req, res): Promise<void> => {
     return;
   }
   const [template] = await db.select().from(certificateTemplatesTable).where(eq(certificateTemplatesTable.id, issue.templateId)).limit(1);
-  const pdfBuffer = await generateCertificatePdfBuffer(issue, templateForIssue(issue, template ?? {
-    width: 1200,
-    height: 800,
-    orientation: "landscape",
-    backgroundUrl: null,
-    logoUrl: null,
-    signatureUrl: null,
-    layoutConfig: DEFAULT_LAYOUT,
-  }), await getIssuePartners(issue));
+  const metadata = isRecord(issue.metadata) ? issue.metadata : {};
+  const publishedImageUrl = typeof metadata.certificateImageUrl === "string"
+    ? metadata.certificateImageUrl
+    : null;
+  const pdfBuffer = publishedImageUrl
+    ? await generatePdfFromImageBuffer(await downloadBufferFromSupabasePublicUrl(publishedImageUrl))
+    : await generateCertificatePdfBuffer(issue, templateForIssue(issue, template ?? {
+      width: 1200,
+      height: 800,
+      orientation: "landscape",
+      backgroundUrl: null,
+      logoUrl: null,
+      signatureUrl: null,
+      layoutConfig: DEFAULT_LAYOUT,
+    }), await getIssuePartners(issue));
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${certificateFileName(`${slugify(issue.recipientName || "certificate")}-${issue.serialNumber}`, "certificate")}.pdf"`);
   res.end(pdfBuffer);

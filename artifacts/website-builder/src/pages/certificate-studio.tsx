@@ -53,6 +53,8 @@ type CertificateIssue = {
     source?: string;
     trainingHours?: number;
     courseHours?: number;
+    partnerName?: string;
+    partnerRole?: string;
   };
 };
 type VerifySettings = {
@@ -2097,6 +2099,41 @@ export default function CertificateStudio() {
     setSigners(issue.metadata?.signatures || []);
     setSelectedPartners(issue.metadata?.partnerIds || []);
     setVerificationInput(issue.serialNumber);
+    if (issue.metadata?.source === "integrated-certificate-studio") {
+      const integratedPayload = {
+        certificateId: issue.serialNumber,
+        recipientName: issue.recipientName === "بدون اسم" ? "" : issue.recipientName,
+        recipientEmail: issue.recipientEmail || "",
+        certificateType: issue.programTitle,
+        description: issue.description || "",
+        issuerName: issue.issuerName,
+        issueDate: issue.issueDate ? new Date(issue.issueDate).toISOString().slice(0, 10) : "",
+        trainingHours: typeof issue.metadata.trainingHours === "number"
+          ? issue.metadata.trainingHours
+          : typeof issue.metadata.courseHours === "number"
+            ? issue.metadata.courseHours
+            : 40,
+        partnerName: typeof issue.metadata.partnerName === "string" ? issue.metadata.partnerName : "",
+        partnerRole: typeof issue.metadata.partnerRole === "string" ? issue.metadata.partnerRole : "",
+        verificationUrl: issue.validationUrl,
+        verificationBase: `${window.location.origin}/certificate/verify`,
+        mainOrigin: window.location.origin,
+        publishEndpoint: `${window.location.origin}/api/certificates/publish-integrated`,
+        reservedCodes: reservedIssues.map((reserved) => ({
+          serialNumber: reserved.serialNumber,
+          recipientName: reserved.recipientName,
+        })),
+      };
+      pendingIntegratedPayloadRef.current = integratedPayload;
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          integratedStudioRef.current?.contentWindow?.postMessage({
+            type: "ARKAN_CERTIFICATE_DATA",
+            payload: integratedPayload,
+          }, window.location.origin);
+        });
+      });
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 

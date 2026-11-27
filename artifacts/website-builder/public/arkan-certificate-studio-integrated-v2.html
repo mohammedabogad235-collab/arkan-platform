@@ -1648,7 +1648,9 @@ window.exportClone=doc=>{
       ['descriptionInput',data.description??data.message],
       ['dateInput',data.issueDate??data.issue_date??data.date],
       ['serialInput',data.certificateId??data.certificate_id??data.serial??data.id],
-      ['hoursInput',data.hours??data.trainingHours??data.training_hours]
+      ['hoursInput',data.hours??data.trainingHours??data.training_hours],
+      ['ownerNameInput',data.partnerName??data.partner_name],
+      ['ownerRoleInput',data.partnerRole??data.partner_role]
     ];
     map.forEach(([id,value])=>setField(id,value));
     if(Array.isArray(data.reservedCodes)){
