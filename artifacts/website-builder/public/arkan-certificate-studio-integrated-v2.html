@@ -1598,6 +1598,21 @@ window.exportClone=doc=>{
   }
   async function loadReservedCodes(preferredSerial=''){
     const select=$('reservedCodeSelect');
+    if(!select.dataset.wired){
+      select.dataset.wired='1';
+      select.addEventListener('change',()=>{
+        const selectedSerial=select.value.trim();
+        if(!selectedSerial)return;
+        $('serialInput').value=selectedSerial;
+        $('serialInput').dispatchEvent(new Event('input',{bubbles:true}));
+        $('barcodeView').removeAttribute('src');
+        $('barcodeView').hidden=true;
+        $('barcodeEmpty').hidden=false;
+        $('barcodeStatus').textContent='جارٍ إنشاء QR للكود المحجوز...';
+        setStatus('تم اختيار الكود المحجوز. لن يتم توليد كود جديد.','success');
+        generateQrForCurrentSerial(100);
+      });
+    }
     try{
       const response=await fetch('/api/certificates/reserved',{credentials:'include',headers:{Accept:'application/json'}});
       if(!response.ok)return;
