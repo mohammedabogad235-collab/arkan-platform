@@ -785,6 +785,7 @@ export default function CertificateStudio() {
   const [newlyReserved, setNewlyReserved] = useState<CertificateIssue[]>([]);
   const [reservedImageUploads, setReservedImageUploads] = useState<ReservedImageUpload[]>([]);
   const [attachingImages, setAttachingImages] = useState(false);
+  const integratedStudioRef = useRef<HTMLIFrameElement>(null);
   const [attachmentErrors, setAttachmentErrors] = useState<{ serialNumber: string; reason: string }[]>([]);
   const uploadedCertificatesRef = useRef<UploadedCertificate[]>([]);
   const reservedImageUploadsRef = useRef<ReservedImageUpload[]>([]);
@@ -881,6 +882,22 @@ export default function CertificateStudio() {
     } catch (error) {
       toast({ variant: "destructive", title: "تعذر تنزيل الأكواد المحجوزة", description: (error as Error).message });
     }
+  };
+
+  const openReservedCodeInStudio = (issue: CertificateIssue) => {
+    integratedStudioRef.current?.contentWindow?.postMessage({
+      type: "ARKAN_CERTIFICATE_DATA",
+      payload: {
+        certificateId: issue.serialNumber,
+        recipientName: issue.recipientName === "بدون اسم" ? "" : issue.recipientName,
+        recipientEmail: issue.recipientEmail || "",
+        certificateType: issue.programTitle,
+        issuerName: issue.issuerName,
+        issueDate: issue.issueDate ? new Date(issue.issueDate).toISOString().slice(0, 10) : "",
+        verificationUrl: issue.validationUrl,
+      },
+    }, window.location.origin);
+    document.getElementById("integrated-studio-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const reserveCertificates = async () => {
@@ -2891,6 +2908,7 @@ export default function CertificateStudio() {
                   <span className="font-mono" dir="ltr">{issue.serialNumber}</span>
                   <span className="flex-1">{issue.recipientName}</span>
                   <a className="text-primary underline" href={issue.validationUrl} target="_blank" rel="noreferrer">رابط التحقق</a>
+                  <button type="button" className="text-primary underline" onClick={() => openReservedCodeInStudio(issue)}>اختيار الكود في الاستوديو</button>
                 </div>
               ))}
             </div>
@@ -2908,6 +2926,7 @@ export default function CertificateStudio() {
                 <span className="min-w-24 flex-1">{issue.recipientName}</span>
                 {issue.recipientEmail && <span className="text-muted-foreground" dir="ltr">{issue.recipientEmail}</span>}
                 <a className="text-primary underline" href={issue.validationUrl} target="_blank" rel="noreferrer">رابط التحقق</a>
+                <button type="button" className="text-primary underline" onClick={() => openReservedCodeInStudio(issue)}>اختيار الكود في الاستوديو</button>
                 <button type="button" className="text-primary underline" onClick={() => void downloadReservedCodes([issue.id])}>تنزيل QR + Excel</button>
               </div>
             ))}
@@ -3043,7 +3062,7 @@ export default function CertificateStudio() {
 
       {activeSection === "issue" && (
       <>
-      <section className="overflow-hidden rounded-2xl border border-primary/20 bg-white shadow-sm">
+      <section id="integrated-studio-section" className="overflow-hidden rounded-2xl border border-primary/20 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
           <div>
             <h2 className="text-lg font-bold">استوديو الشهادة المدمج</h2>
@@ -3059,6 +3078,7 @@ export default function CertificateStudio() {
           </a>
         </div>
         <iframe
+          ref={integratedStudioRef}
           title="استوديو الشهادات المدمج"
           src="/arkan-certificate-studio-integrated-v2.html"
           className="h-[860px] w-full border-0 bg-slate-950"

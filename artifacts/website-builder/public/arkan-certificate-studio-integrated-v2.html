@@ -821,6 +821,7 @@ button,input,textarea{font:inherit}
 .stage{padding-top:8px;gap:12px}.stagebar{font-size:9px;letter-spacing:1.3px}.certificate{border-radius:2px}
 @media(max-width:1050px){.app{grid-template-columns:1fr;padding:12px}.panel{position:relative;top:auto;max-height:none;overflow:visible}.stage{align-items:center;overflow-x:auto;width:100%}.certificate,.stagebar{min-width:800px}}
 @media(max-width:560px){.field-grid{grid-template-columns:1fr}.integration-actions{grid-template-columns:1fr}.workflow-strip{font-size:8px}}
+#generateIdBtn{display:none!important}
 
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700&display=swap">
@@ -864,6 +865,7 @@ button,input,textarea{font:inherit}
       <div class="editor-content">
         <div class="field"><label for="categoryInput">نوع الشهادة / العنوان الفرعي</label><input id="categoryInput" type="text" dir="auto" placeholder="مثال: OF APPRECIATION"></div>
         <div class="field"><label for="recipientInput">اسم المستلم</label><input id="recipientInput" type="text" dir="auto" placeholder="اسم الشخص أو الجهة"></div>
+        <div class="field"><label for="recipientEmailInput">البريد الإلكتروني</label><input id="recipientEmailInput" type="email" dir="ltr" placeholder="name@example.com"></div>
         <div class="field"><label for="descriptionInput">نص الشهادة</label><textarea id="descriptionInput" dir="auto" maxlength="600" placeholder="اكتب نص الشهادة أو سبب منحها..."></textarea><div class="help" id="descCount"></div></div>
         <div class="field-grid">
           <div class="field"><label for="dateInput">تاريخ الإصدار</label><input id="dateInput" type="text" dir="auto" placeholder="يوم / شهر / سنة"></div>
@@ -1565,6 +1567,7 @@ window.exportClone=doc=>{
     const map=[
       ['categoryInput',data.certificateType??data.certificate_type??data.category],
       ['recipientInput',data.recipientName??data.recipient_name??data.recipient],
+      ['recipientEmailInput',data.recipientEmail??data.recipient_email??data.email],
       ['descriptionInput',data.description??data.message],
       ['dateInput',data.issueDate??data.issue_date??data.date],
       ['serialInput',data.certificateId??data.certificate_id??data.serial??data.id],
@@ -1585,6 +1588,7 @@ window.exportClone=doc=>{
     return {
       certificateId:$('serialInput').value.trim(),
       recipientName:$('recipientInput').value.trim(),
+      recipientEmail:$('recipientEmailInput').value.trim(),
       certificateType:$('categoryInput').value.trim(),
       description:$('descriptionInput').value.trim(),
       issueDate:$('dateInput').value.trim(),

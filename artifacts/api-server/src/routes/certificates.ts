@@ -2261,6 +2261,11 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
   const assets = isRecord(body.assets) ? body.assets : {};
   const serialNumber = typeof certificate.certificateId === "string" ? certificate.certificateId.trim() : "";
   const recipientName = typeof certificate.recipientName === "string" ? certificate.recipientName.trim() : "";
+  const recipientEmail = typeof certificate.recipientEmail === "string" ? certificate.recipientEmail.trim() : "";
+  if (recipientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+    res.status(400).json({ error: "البريد الإلكتروني غير صالح" });
+    return;
+  }
   const programTitle = typeof certificate.certificateType === "string" && certificate.certificateType.trim()
     ? certificate.certificateType.trim()
     : typeof certificate.description === "string" && certificate.description.trim()
@@ -2321,6 +2326,7 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
   if (existing[0]) {
     [issue] = await db.update(certificateIssuesTable).set({
       recipientName,
+      recipientEmail: recipientEmail || existing[0].recipientEmail,
       programTitle,
       description: typeof certificate.description === "string" ? certificate.description : existing[0].description,
       issuerName: "Arkan Web",
@@ -2357,6 +2363,7 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
       serialNumber,
       validationUrl,
       recipientName,
+      recipientEmail: recipientEmail || null,
       programTitle,
       description: typeof certificate.description === "string" ? certificate.description : null,
       issuerName: "Arkan Web",
