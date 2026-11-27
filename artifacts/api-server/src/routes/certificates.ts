@@ -3038,6 +3038,9 @@ router.post("/certificates/:id/send-email", async (req, res): Promise<void> => {
           ? issue.metadata.courseHours
           : null)
       : null,
+    issueDate: issue.issueDate,
+    issuerName: issue.issuerName,
+    websiteUrl: buildValidationUrl(issue.serialNumber),
   });
   res.json({
     success: true,

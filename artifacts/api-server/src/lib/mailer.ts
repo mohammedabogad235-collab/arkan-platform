@@ -168,6 +168,9 @@ export async function sendCertificateEmail(options: {
   subject?: string;
   language?: "ar" | "en";
   trainingHours?: number | null;
+  issueDate?: Date | null;
+  issuerName?: string | null;
+  websiteUrl?: string | null;
 }): Promise<{ messageId?: string; accepted: string[]; response: string }> {
   const { transporter, fromEmail } = await getMailTransport();
   const recipientName = escapeHtml(options.recipientName);
@@ -179,6 +182,14 @@ export async function sendCertificateEmail(options: {
       ? `Your ${options.certificateName} Certificate Is Ready! | ARKAN WEB 🧡`
       : "شهادتك الرسمية أصبحت جاهزة! | ARKAN WEB 🧡");
   const isEnglish = options.language === "en";
+  const issuerName = escapeHtml(options.issuerName?.trim() || "Arkan Web");
+  const issueDate = options.issueDate
+    ? options.issueDate.toLocaleDateString(options.language === "en" ? "en-US" : "ar-EG", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+    : "";
   const trainingHours = Number.isInteger(options.trainingHours) && Number(options.trainingHours) > 0
     ? Number(options.trainingHours)
     : null;
@@ -208,8 +219,8 @@ export async function sendCertificateEmail(options: {
 <tr><td align="center">
 <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;">
 <tr><td style="background:#0a192b;padding:30px 25px;text-align:center;">
-<div style="font-size:29px;font-weight:900;letter-spacing:3px;color:#ffffff;">ARKAN <span style="color:#e28a43;">WEB</span></div>
-<div style="font-size:10px;letter-spacing:3px;color:#dca16e;margin-top:7px;">DIGITAL SOLUTIONS</div>
+<div dir="ltr" style="font-size:29px;font-weight:900;letter-spacing:3px;color:#ffffff;text-align:right;">ARKAN <span style="color:#e28a43;">WEB</span></div>
+<div style="font-size:10px;letter-spacing:3px;color:#dca16e;margin-top:7px;">${issuerName}</div>
 <div style="height:1px;background:#34455a;margin-top:23px;"></div>
 <div style="font-size:34px;margin-top:24px;color:#e5a064;">✦</div>
 <h1 style="font-size:27px;color:#ffffff;margin:8px 0;">CONGRATULATIONS!</h1>
@@ -228,6 +239,8 @@ export async function sendCertificateEmail(options: {
 <p style="font-size:13px;color:#65758a;margin:15px 0 6px;">Certificate ID</p>
 <p style="font-size:14px;font-weight:bold;color:#172e49;margin:0;direction:ltr;text-align:right;">${serialNumber}</p>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+${issueDate ? `<tr><td style="padding-top:18px;border-top:1px solid #ded2c3;"><span style="font-size:13px;color:#65758a;">Issue Date</span></td>
+<td align="left" style="padding-top:18px;border-top:1px solid #ded2c3;"><strong style="font-size:14px;color:#263244;">${escapeHtml(issueDate)}</strong></td></tr>` : ""}
 ${trainingHours === null ? "" : `<tr><td style="padding-top:18px;border-top:1px solid #ded2c3;"><span style="font-size:13px;color:#65758a;">Training Hours</span></td>
 <td align="left" style="padding-top:18px;border-top:1px solid #ded2c3;"><strong style="font-size:23px;color:#d47b37;">${trainingHours} HOURS</strong></td></tr>`}
 </table>

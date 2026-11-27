@@ -1576,6 +1576,21 @@ window.exportClone=doc=>{
   }
   $('generateQrBtn').addEventListener('click',()=>{generateQr().then(()=>setStatus('تم توليد الباركود. تأكدي من نشر صفحة التحقق قبل إصدار الشهادة.')).catch(()=>{});});
 
+  let automaticQrTimer=null;
+  function generateQrForCurrentSerial(delay=120){
+    const serial=$('serialInput').value.trim();
+    if(!serial)return;
+    if(automaticQrTimer)clearTimeout(automaticQrTimer);
+    automaticQrTimer=setTimeout(()=>{
+      $('barcodeStatus').textContent='جارٍ إنشاء QR للكود المحجوز...';
+      generateQr().catch(()=>{});
+    },delay);
+  }
+  $('serialInput').addEventListener('change',()=>generateQrForCurrentSerial());
+  $('serialInput').addEventListener('input',()=>{
+    if($('serialInput').value.trim())generateQrForCurrentSerial(250);
+  });
+
   function setField(id,value){
     if(value===undefined||value===null||!$(id))return;
     $(id).value=String(value);
@@ -1643,7 +1658,7 @@ window.exportClone=doc=>{
           $('barcodeEmpty').hidden=false;
           $('barcodeStatus').textContent='جارٍ إنشاء QR للكود المحجوز...';
           setStatus('تم اختيار الكود المحجوز. لن يتم توليد كود جديد.','success');
-          window.setTimeout(()=>generateQr().catch(()=>{}),150);
+          generateQrForCurrentSerial(150);
         }
       });
     }
@@ -1661,19 +1676,13 @@ window.exportClone=doc=>{
         verifyInput.value=String(v);
       }
     }
-    const barcode=data.barcodeDataUrl||data.barcode_data_url||data.qrDataUrl||data.qr_data_url;
-    if(typeof barcode==='string'&&/^data:image\/(png|jpeg|webp);base64,/i.test(barcode)){
-      $('barcodeView').src=barcode;$('barcodeView').hidden=false;$('barcodeEmpty').hidden=true;
-      $('barcodeStatus').textContent='تم استلام QR من الموقع الرئيسي.';
-    }else{
-      const serial=$('serialInput').value.trim();
-      if(serial){
-        $('barcodeView').removeAttribute('src');
-        $('barcodeView').hidden=true;
-        $('barcodeEmpty').hidden=false;
-        $('barcodeStatus').textContent='جارٍ إنشاء QR للكود المحجوز...';
-        window.setTimeout(()=>generateQr().catch(()=>{}),150);
-      }
+    const serial=$('serialInput').value.trim();
+    if(serial){
+      $('barcodeView').removeAttribute('src');
+      $('barcodeView').hidden=true;
+      $('barcodeEmpty').hidden=false;
+      $('barcodeStatus').textContent='جارٍ إنشاء QR للكود المحجوز...';
+      generateQrForCurrentSerial(150);
     }
     if(data.partnerLogoDataUrl&&/^data:image\/(png|jpeg|webp);base64,/i.test(data.partnerLogoDataUrl)){$('partnerView').src=data.partnerLogoDataUrl;$('partnerWrap').hidden=false;}
     setStatus('تم استقبال بيانات الشهادة من الموقع الرئيسي وعرضها في المعاينة. راجعي البيانات قبل النشر.','success');
