@@ -2251,6 +2251,137 @@ router.post("/certificates/bulk-issue-images", async (req, res): Promise<void> =
   res.status(201).json({ count: certificates.length, certificates, duplicates: [] });
 });
 
+router.post("/certificates/publish-integrated", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  const body = isRecord(req.body) ? req.body : {};
+  const certificate = isRecord(body.certificate) ? body.certificate : {};
+  const assets = isRecord(body.assets) ? body.assets : {};
+  const serialNumber = typeof certificate.certificateId === "string" ? certificate.certificateId.trim() : "";
+  const recipientName = typeof certificate.recipientName === "string" ? certificate.recipientName.trim() : "";
+  const programTitle = typeof certificate.certificateType === "string" && certificate.certificateType.trim()
+    ? certificate.certificateType.trim()
+    : typeof certificate.description === "string" && certificate.description.trim()
+      ? certificate.description.trim().slice(0, 300)
+      : "ICDL Training Course";
+  if (!isValidSerialNumber(serialNumber) || !recipientName) {
+    res.status(400).json({ error: "الكود واسم المستلم مطلوبان للنشر" });
+    return;
+  }
+  const dataUrlBuffer = (value: unknown): Buffer | null => {
+    if (typeof value !== "string") return null;
+    const match = /^data:image\/(png|jpeg|webp);base64,(.+)$/is.exec(value);
+    if (!match) return null;
+    try { return Buffer.from(match[2], "base64"); } catch { return null; }
+  };
+  const pngAsset = isRecord(assets.certificate_png) ? dataUrlBuffer(assets.certificate_png.data_url) : null;
+  const qrAsset = typeof assets.barcode_png === "string"
+    ? dataUrlBuffer(assets.barcode_png)
+    : isRecord(assets.barcode_png)
+      ? dataUrlBuffer(assets.barcode_png.data_url)
+      : null;
+  if (!pngAsset && !qrAsset) {
+    res.status(400).json({ error: "أرسل صورة الشهادة أو الباركود بصيغة PNG" });
+    return;
+  }
+  const { userId } = getSessionUser(req);
+  if (!userId) {
+    res.status(403).json({ error: "تعذر تحديد المستخدم الذي ينفذ النشر" });
+    return;
+  }
+  let certificateUrl: string | null = null;
+  let qrCodeUrl: string | null = null;
+  if (pngAsset) {
+    const uploaded = await uploadBufferToSupabase({
+      originalname: `ARKAN-${serialNumber}.png`,
+      mimetype: "image/png",
+      buffer: pngAsset,
+    } as Express.Multer.File, userId);
+    certificateUrl = uploaded.publicUrl;
+  }
+  if (qrAsset) {
+    const uploaded = await uploadBufferToSupabase({
+      originalname: `QR-${serialNumber}.png`,
+      mimetype: "image/png",
+      buffer: qrAsset,
+    } as Express.Multer.File, userId);
+    qrCodeUrl = uploaded.publicUrl;
+  }
+  const validationUrl = typeof certificate.verificationUrl === "string" && certificate.verificationUrl.trim()
+    ? certificate.verificationUrl.trim()
+    : buildValidationUrl(serialNumber);
+  const issueDate = typeof certificate.issueDate === "string" && certificate.issueDate.trim()
+    ? parseCertificateDate(certificate.issueDate) ?? new Date()
+    : new Date();
+  const existing = await db.select().from(certificateIssuesTable)
+    .where(eq(certificateIssuesTable.serialNumber, serialNumber)).limit(1);
+  let issue;
+  if (existing[0]) {
+    [issue] = await db.update(certificateIssuesTable).set({
+      recipientName,
+      programTitle,
+      description: typeof certificate.description === "string" ? certificate.description : existing[0].description,
+      issuerName: "Arkan Web",
+      issueDate,
+      status: "issued",
+      validationUrl,
+      qrCodeUrl: qrCodeUrl || existing[0].qrCodeUrl,
+      metadata: {
+        ...(isRecord(existing[0].metadata) ? existing[0].metadata : {}),
+        source: "integrated-certificate-studio",
+        publishedFromStudio: true,
+        design: certificate.design,
+        trainingHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
+        partnerName: typeof certificate.partnerName === "string" ? certificate.partnerName : null,
+        partnerRole: typeof certificate.partnerRole === "string" ? certificate.partnerRole : null,
+      },
+      updatedAt: new Date(),
+    }).where(eq(certificateIssuesTable.id, existing[0].id)).returning();
+  } else {
+    let [template] = await db.select().from(certificateTemplatesTable)
+      .where(eq(certificateTemplatesTable.name, UPLOADED_CERTIFICATE_TEMPLATE_NAME)).limit(1);
+    if (!template) {
+      [template] = await db.insert(certificateTemplatesTable).values({
+        name: UPLOADED_CERTIFICATE_TEMPLATE_NAME,
+        orientation: "landscape",
+        width: 1200,
+        height: 800,
+        layoutConfig: DEFAULT_LAYOUT,
+        createdBy: userId,
+      }).returning();
+    }
+    [issue] = await db.insert(certificateIssuesTable).values({
+      templateId: template.id,
+      serialNumber,
+      validationUrl,
+      recipientName,
+      programTitle,
+      description: typeof certificate.description === "string" ? certificate.description : null,
+      issuerName: "Arkan Web",
+      issueDate,
+      status: "issued",
+      qrCodeUrl: qrCodeUrl || validationUrl,
+      metadata: {
+        source: "integrated-certificate-studio",
+        publishedFromStudio: true,
+        design: certificate.design,
+        trainingHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
+        partnerName: typeof certificate.partnerName === "string" ? certificate.partnerName : null,
+        partnerRole: typeof certificate.partnerRole === "string" ? certificate.partnerRole : null,
+        certificateImageUrl: certificateUrl,
+      },
+    }).returning();
+  }
+  res.status(201).json({
+    success: true,
+    certificate_url: certificateUrl || issue.validationUrl,
+    certificate_id: serialNumber,
+    data: { certificate_url: certificateUrl || issue.validationUrl },
+  });
+});
+
 router.post("/certificates/reserve", async (req, res): Promise<void> => {
   if (!(await ensureAdmin(req))) {
     res.status(403).json({ error: "غير مصرح" });

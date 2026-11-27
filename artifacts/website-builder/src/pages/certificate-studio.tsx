@@ -3043,6 +3043,28 @@ export default function CertificateStudio() {
 
       {activeSection === "issue" && (
       <>
+      <section className="overflow-hidden rounded-2xl border border-primary/20 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h2 className="text-lg font-bold">استوديو الشهادة المدمج</h2>
+            <p className="mt-1 text-sm text-muted-foreground">تصميم الشهادة والباركود والمعاينة والنشر داخل قسم الشهادات نفسه.</p>
+          </div>
+          <a
+            className="rounded-lg border px-3 py-2 text-sm text-primary"
+            href="/arkan-certificate-studio-integrated-v2.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            فتح اللوحة كاملة
+          </a>
+        </div>
+        <iframe
+          title="استوديو الشهادات المدمج"
+          src="/arkan-certificate-studio-integrated-v2.html"
+          className="h-[860px] w-full border-0 bg-slate-950"
+          allow="clipboard-write"
+        />
+      </section>
       <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
