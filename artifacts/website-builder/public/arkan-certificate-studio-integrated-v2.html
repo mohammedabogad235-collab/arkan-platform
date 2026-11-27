@@ -1548,13 +1548,19 @@ window.exportClone=doc=>{
     try{
       const serial=$('serialInput').value.trim();
       if(!serial)throw new Error('أدخلي كود الشهادة أولًا.');
-      const serverQrUrl=`/api/certificates/qr?serial=${encodeURIComponent(serial)}&v=${encodeURIComponent(serial)}`;
-      const view=$('barcodeView');
-      await new Promise((resolve,reject)=>{
-        view.onload=resolve;
-        view.onerror=()=>reject(new Error('تعذر تحميل QR من الخادم.'));
-        view.src=serverQrUrl;
+      const serverQrUrl=`/api/certificates/qr?serial=${encodeURIComponent(serial)}&v=${encodeURIComponent(serial)}&t=${Date.now()}`;
+      const response=await fetch(serverQrUrl,{credentials:'include',cache:'no-store',headers:{Accept:'image/png'}});
+      if(!response.ok)throw new Error(`تعذر تحميل QR للكود المحجوز (HTTP ${response.status}).`);
+      const blob=await response.blob();
+      if(!/^image\/png/i.test(blob.type)&&blob.size<100)throw new Error('استجابة QR من الخادم غير صالحة.');
+      const dataUrl=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(String(reader.result||''));
+        reader.onerror=()=>reject(new Error('تعذر تجهيز صورة QR.'));
+        reader.readAsDataURL(blob);
       });
+      const view=$('barcodeView');
+      view.src=dataUrl;
       view.hidden=false;
       $('barcodeEmpty').hidden=true;
       const verification=verificationUrl();

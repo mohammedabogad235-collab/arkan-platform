@@ -153,6 +153,18 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+const integratedCertificateStudioPath = resolve(__dirname, "../../website-builder/public/arkan-certificate-studio-integrated-v2.html");
+app.get("/arkan-certificate-studio-integrated-v2.html", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  if (existsSync(integratedCertificateStudioPath)) {
+    res.sendFile(integratedCertificateStudioPath);
+    return;
+  }
+  next();
+});
+
 app.get(/^(?!\/api(?:\/|$)).*/, (req: Request, res: Response, next: NextFunction) => {
   if (extname(req.path)) {
     return next();
