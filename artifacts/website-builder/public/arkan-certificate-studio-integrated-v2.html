@@ -616,6 +616,17 @@ button,input,textarea{font:inherit}
   font-size:calc(1.15cqw*var(--fit,1))!important;
 }
 
+/* Keep certificate text readable; fit only the outer layout, never the description. */
+.certificate .description{
+  font-size:clamp(16px,1.55cqw,21px)!important;
+  line-height:1.55!important;
+}
+.certificate .description.ar,
+.certificate.design-light .description.ar{
+  font-size:clamp(18px,1.72cqw,23px)!important;
+  line-height:1.75!important;
+}
+
 
 
 /* User-requested final corrections: do not touch the navy certificate. */
@@ -1241,11 +1252,9 @@ $('sigVariantBtn').addEventListener('click',()=>{variant++;if(oUrl){oIn.value=''
 function fit(capped){
   const baseTop=cert.classList.contains('design-light')?29:21;
   main.style.top=baseTop+'%';
+  cert.style.setProperty('--fit','1');
   const lim=()=>bottom.getBoundingClientRect().top-14;
-  const over=()=>main.getBoundingClientRect().bottom>lim();
-  let f=1.6;cert.style.setProperty('--fit',f);
-  while(over()&&f>0.55){f=Math.round((f-0.05)*100)/100;cert.style.setProperty('--fit',f);}
-  const o=over();
+  const o=main.getBoundingClientRect().bottom>lim();
   if(!o){const free=lim()-main.getBoundingClientRect().bottom;
     if(free>0)main.style.top='calc('+baseTop+'% + '+(free*0.4/cert.getBoundingClientRect().height*100).toFixed(2)+'%)';}
   count.textContent=$('descriptionInput').value.length+' / 600 · حجم الخط بيتظبط تلقائيًا حسب طول النص'+(capped?' · وصلت لأقصى طول يناسب الشهادة':'');
@@ -1562,6 +1571,26 @@ window.exportClone=doc=>{
     $(id).value=String(value);
     $(id).dispatchEvent(new Event('input',{bubbles:true}));
   }
+  async function loadReservedCodeOptions(preferredSerial=''){
+    const select=$('reservedCodeSelect');
+    try{
+      const response=await fetch('/api/certificates/reserved',{credentials:'include',headers:{Accept:'application/json'}});
+      if(!response.ok)return;
+      const codes=await response.json();
+      if(!Array.isArray(codes))return;
+      select.innerHTML='<option value="">اختر كوداً محجوزاً من الموقع الرئيسي</option>';
+      codes.forEach(code=>{
+        if(!code||typeof code.serialNumber!=='string')return;
+        const option=document.createElement('option');
+        option.value=code.serialNumber;
+        option.textContent=`${code.serialNumber}${code.recipientName&&code.recipientName!=='بدون اسم'?` · ${code.recipientName}`:''}`;
+        select.appendChild(option);
+      });
+      select.disabled=!codes.length;
+      const selected=preferredSerial||$('serialInput').value.trim();
+      if(selected)select.value=selected;
+    }catch(_){}
+  }
   function applyExternalData(data={}){
     // Switch the design first because switching restores its saved draft.
     if(data.design==='light'||data.design==='navy'){
@@ -1719,6 +1748,7 @@ window.exportClone=doc=>{
   if(!originInput.value.trim())originInput.value=location.origin;
   if(!endpointInput.value.trim())endpointInput.value=location.origin+'/api/certificates/publish-integrated';
   if(!verifyInput.value.trim())verifyInput.value=location.origin+'/certificate/verify';
+  loadReservedCodeOptions();
   saveConfig();
   if(!endpointInput.value.trim())setStatus('لم يتم إعداد عنوان النشر بعد. يمكنك استخدام المعاينة والتنزيل محليًا، لكن النشر الخارجي يحتاج API فعليًا.');
 })();
