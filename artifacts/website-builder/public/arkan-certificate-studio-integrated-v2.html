@@ -616,17 +616,6 @@ button,input,textarea{font:inherit}
   font-size:calc(1.15cqw*var(--fit,1))!important;
 }
 
-/* Keep certificate text readable; fit only the outer layout, never the description. */
-.certificate .description{
-  font-size:clamp(16px,1.55cqw,21px)!important;
-  line-height:1.55!important;
-}
-.certificate .description.ar,
-.certificate.design-light .description.ar{
-  font-size:clamp(18px,1.72cqw,23px)!important;
-  line-height:1.75!important;
-}
-
 
 
 /* User-requested final corrections: do not touch the navy certificate. */
@@ -882,8 +871,8 @@ button,input,textarea{font:inherit}
           <div class="field"><label for="dateInput">تاريخ الإصدار</label><input id="dateInput" type="text" dir="auto" placeholder="يوم / شهر / سنة"></div>
           <div class="field"><label for="hoursInput">ساعات التدريب</label><input id="hoursInput" type="number" min="1" max="999" step="1" value="40" inputmode="numeric"><div class="help">تظهر في القالب الأبيض فقط.</div></div>
         </div>
-        <div class="field"><label for="reservedCodeSelect">اختيار كود محجوز</label><select id="reservedCodeSelect" dir="ltr" style="width:100%"><option value="">اختر كوداً محجوزاً من الموقع الرئيسي</option></select></div>
-        <div class="field"><label for="serialInput">كود / الرقم التسلسلي</label><div class="input-action-row"><input id="serialInput" type="text" dir="auto" placeholder="يصل تلقائيًا من الموقع الرئيسي أو أدخليه هنا" autocomplete="off"><button class="mini-btn" id="generateIdBtn" type="button">توليد كود</button></div><div class="help">يتم استخدام الكود المحجوز المحدد كما هو. لا يتم توليد كود جديد عند استقبال بيانات من الموقع الرئيسي.</div></div>
+        <div class="field"><label for="reservedCodeSelect">اختيار الكود المحجوز</label><select id="reservedCodeSelect" dir="ltr" style="width:100%"><option value="">اختر كوداً محجوزاً من الموقع الرئيسي</option></select></div>
+        <div class="field"><label for="serialInput">كود / الرقم التسلسلي</label><div class="input-action-row"><input id="serialInput" type="text" dir="auto" placeholder="يصل تلقائيًا من الموقع الرئيسي" autocomplete="off" readonly><button class="mini-btn" id="generateIdBtn" type="button">توليد كود</button></div><div class="help">يتم استخدام الكود المحجوز المحدد فقط. لا يتم إنشاء كود جديد عند الاستلام من الموقع الرئيسي.</div></div>
       </div>
     </details>
 
@@ -1252,22 +1241,21 @@ $('sigVariantBtn').addEventListener('click',()=>{variant++;if(oUrl){oIn.value=''
 function fit(capped){
   const baseTop=cert.classList.contains('design-light')?29:21;
   main.style.top=baseTop+'%';
-  cert.style.setProperty('--fit','1');
   const lim=()=>bottom.getBoundingClientRect().top-14;
-  const o=main.getBoundingClientRect().bottom>lim();
+  const over=()=>main.getBoundingClientRect().bottom>lim();
+  cert.style.setProperty('--fit','1');
+  const o=over();
   if(!o){const free=lim()-main.getBoundingClientRect().bottom;
     if(free>0)main.style.top='calc('+baseTop+'% + '+(free*0.4/cert.getBoundingClientRect().height*100).toFixed(2)+'%)';}
-  count.textContent=$('descriptionInput').value.length+' / 600 · حجم الخط بيتظبط تلقائيًا حسب طول النص'+(capped?' · وصلت لأقصى طول يناسب الشهادة':'');
-  count.style.color=capped?'#ff9a6b':'';
+  count.textContent=$('descriptionInput').value.length+' / 600';
+  count.style.color='';
   return o;
 }
 pairs.forEach(([i,v])=>{$(i).addEventListener('input',()=>{
   $(v).textContent=$(i).value;
   $(v).classList.toggle('ar',AR.test($(i).value));
   if(i==='ownerNameInput')ownerSig();
-  let capped=false;
-  if(i==='descriptionInput'){fit();}
-  fit(capped);
+  fit(false);
   const d={};pairs.forEach(([k])=>{d[k]=$(k).value});save(DK,d);
 });});
 const d0=load(DK,{});
@@ -1497,6 +1485,9 @@ window.exportClone=doc=>{
   const endpointInput=$('publishEndpointInput');
   const verifyInput=$('verificationBaseInput');
   const publishStatus=$('publishStatus');
+  let selectedVerificationUrl='';
+  const serialInput=$('serialInput');
+  if(serialInput)serialInput.readOnly=true;
   const setStatus=(message,kind='')=>{publishStatus.textContent=message;publishStatus.className='publish-status'+(kind?' '+kind:'');};
   const validUrl=(value)=>{try{const u=new URL(value);return ['https:','http:'].includes(u.protocol)?u:null;}catch(_){return null;}};
   const loadConfig=()=>{try{return JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')||{};}catch(_){return {};}};
@@ -1571,7 +1562,7 @@ window.exportClone=doc=>{
     $(id).value=String(value);
     $(id).dispatchEvent(new Event('input',{bubbles:true}));
   }
-  async function loadReservedCodeOptions(preferredSerial=''){
+  async function loadReservedCodes(preferredSerial=''){
     const select=$('reservedCodeSelect');
     try{
       const response=await fetch('/api/certificates/reserved',{credentials:'include',headers:{Accept:'application/json'}});
@@ -1616,46 +1607,32 @@ window.exportClone=doc=>{
         option.textContent=`${code.serialNumber}${code.recipientName&&code.recipientName!=='بدون اسم'?` · ${code.recipientName}`:''}`;
         select.appendChild(option);
       });
+      select.disabled=!data.reservedCodes.length;
       const selected=String(data.certificateId||data.certificate_id||data.serial||data.id||'');
       if(selected)select.value=selected;
-      select.disabled=false;
-      if(!data.reservedCodes.length){
-        const option=document.createElement('option');
-        option.value='';
-        option.textContent='لا توجد أكواد محجوزة حالياً';
-        option.disabled=true;
-        select.appendChild(option);
-        select.disabled=true;
-      }
+    }else{
+      loadReservedCodes(String(data.certificateId||data.certificate_id||data.serial||data.id||''));
     }
     if(!$('reservedCodeSelect').dataset.wired){
       $('reservedCodeSelect').dataset.wired='1';
       $('reservedCodeSelect').addEventListener('change',()=>{
-      if($('reservedCodeSelect').value){
-        setField('serialInput',$('reservedCodeSelect').value);
-        setStatus('تم اختيار الكود المحجوز. لن يتم توليد كود جديد.','success');
-      }
+        if($('reservedCodeSelect').value){
+          setField('serialInput',$('reservedCodeSelect').value);
+          selectedVerificationUrl='';
+          setStatus('تم اختيار الكود المحجوز. لن يتم توليد كود جديد.','success');
+          generateQr().catch(()=>{});
+        }
       });
     }
-    if(data.verificationBase||data.verification_base){
-      verifyInput.value=String(data.verificationBase||data.verification_base);
-    }else if(data.verificationUrl||data.verification_url){
-      const raw=String(data.verificationUrl||data.verification_url);
-      try{
-        const u=new URL(raw);
-        u.searchParams.delete('serial');
-        u.searchParams.delete('certificate_id');
-        verifyInput.value=u.toString();
-      }catch(_){verifyInput.value=raw;}
-    }
-    if(data.mainOrigin||data.main_origin){originInput.value=String(data.mainOrigin||data.main_origin);}
-    if(data.publishEndpoint||data.publish_endpoint){endpointInput.value=String(data.publishEndpoint||data.publish_endpoint);}
-    if(data.verificationBase||data.verification_base){verifyInput.value=String(data.verificationBase||data.verification_base);}
+    if(data.verificationBase||data.verification_base)verifyInput.value=String(data.verificationBase||data.verification_base);
+    if(data.mainOrigin||data.main_origin)originInput.value=String(data.mainOrigin||data.main_origin);
+    if(data.publishEndpoint||data.publish_endpoint)endpointInput.value=String(data.publishEndpoint||data.publish_endpoint);
+    if(data.verificationUrl||data.verification_url){const v=data.verificationUrl||data.verification_url;verifyInput.value=String(v);}
     const barcode=data.barcodeDataUrl||data.barcode_data_url||data.qrDataUrl||data.qr_data_url;
     if(typeof barcode==='string'&&/^data:image\/(png|jpeg|webp);base64,/i.test(barcode)){
       $('barcodeView').src=barcode;$('barcodeView').hidden=false;$('barcodeEmpty').hidden=true;
       $('barcodeStatus').textContent='تم استلام QR من الموقع الرئيسي.';
-    }else if($('serialInput').value.trim()&&verifyInput.value.trim()){generateQr().catch(()=>{});}
+    }else if(data.verificationUrl||data.verification_url){generateQr().catch(()=>{});}
     if(data.partnerLogoDataUrl&&/^data:image\/(png|jpeg|webp);base64,/i.test(data.partnerLogoDataUrl)){$('partnerView').src=data.partnerLogoDataUrl;$('partnerWrap').hidden=false;}
     setStatus('تم استقبال بيانات الشهادة من الموقع الرئيسي وعرضها في المعاينة. راجعي البيانات قبل النشر.','success');
     return collectPayload();
@@ -1748,7 +1725,7 @@ window.exportClone=doc=>{
   if(!originInput.value.trim())originInput.value=location.origin;
   if(!endpointInput.value.trim())endpointInput.value=location.origin+'/api/certificates/publish-integrated';
   if(!verifyInput.value.trim())verifyInput.value=location.origin+'/certificate/verify';
-  loadReservedCodeOptions();
+  loadReservedCodes();
   saveConfig();
   if(!endpointInput.value.trim())setStatus('لم يتم إعداد عنوان النشر بعد. يمكنك استخدام المعاينة والتنزيل محليًا، لكن النشر الخارجي يحتاج API فعليًا.');
 })();
