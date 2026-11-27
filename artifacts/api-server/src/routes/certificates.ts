@@ -1285,6 +1285,21 @@ router.get("/certificates", async (req, res): Promise<void> => {
   res.json(items);
 });
 
+router.get("/certificates/reserved", async (req, res): Promise<void> => {
+  if (!(await ensureAdmin(req))) {
+    res.status(403).json({ error: "غير مصرح" });
+    return;
+  }
+  const items = await db.select()
+    .from(certificateIssuesTable)
+    .where(and(
+      eq(certificateIssuesTable.status, "reserved"),
+      isNull(certificateIssuesTable.deletedAt),
+    ))
+    .orderBy(desc(certificateIssuesTable.createdAt));
+  res.json(items);
+});
+
 router.get("/certificates/trash", async (req, res): Promise<void> => {
   if (!(await ensureAdmin(req))) {
     res.status(403).json({ error: "غير مصرح" });

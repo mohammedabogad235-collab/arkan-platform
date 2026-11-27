@@ -1257,7 +1257,7 @@ pairs.forEach(([i,v])=>{$(i).addEventListener('input',()=>{
   $(v).classList.toggle('ar',AR.test($(i).value));
   if(i==='ownerNameInput')ownerSig();
   let capped=false;
-  if(i==='descriptionInput'){let g=0;while(fit()&&g++<600&&$(i).value){const t=$(i).value.slice(0,-1);$(i).value=t;$(v).textContent=t;capped=true;}}
+  if(i==='descriptionInput'){fit();}
   fit(capped);
   const d={};pairs.forEach(([k])=>{d[k]=$(k).value});save(DK,d);
 });});

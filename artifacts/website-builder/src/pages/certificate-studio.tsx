@@ -811,14 +811,17 @@ export default function CertificateStudio() {
   const reservedIssues = issues.filter((issue) => issue.status === "reserved" && !issue.deletedAt);
 
   const refresh = async () => {
-    const [templateData, issueData, partnerData, statsData] = await Promise.all([
+    const [templateData, issueData, reservedData, partnerData, statsData] = await Promise.all([
       apiFetchJson<CertificateTemplate[]>("/api/certificates/templates"),
       apiFetchJson<CertificateIssue[]>("/api/certificates"),
+      apiFetchJson<CertificateIssue[]>("/api/certificates/reserved"),
       apiFetchJson<Partner[]>("/api/certificates/partners"),
       apiFetchJson<typeof stats>("/api/certificates/admin/stats"),
     ]);
     setTemplates(templateData);
-    setIssues(issueData);
+    const issueById = new Map(issueData.map((issue) => [issue.id, issue]));
+    reservedData.forEach((issue) => issueById.set(issue.id, issue));
+    setIssues(Array.from(issueById.values()));
     setPartners(partnerData);
     setStats(statsData);
     if (!templateId && templateData[0]) setTemplateId(String(templateData[0].id));
@@ -921,11 +924,16 @@ export default function CertificateStudio() {
         })),
     };
     pendingIntegratedPayloadRef.current = payload;
-    integratedStudioRef.current?.contentWindow?.postMessage({
-      type: "ARKAN_CERTIFICATE_DATA",
-      payload,
-    }, window.location.origin);
-    document.getElementById("integrated-studio-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveSection("issue");
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        integratedStudioRef.current?.contentWindow?.postMessage({
+          type: "ARKAN_CERTIFICATE_DATA",
+          payload,
+        }, window.location.origin);
+        document.getElementById("integrated-studio-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
   };
 
   const reserveCertificates = async () => {
