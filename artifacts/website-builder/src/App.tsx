@@ -7,26 +7,52 @@ import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { Layout } from "@/components/layout";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { apiFetchJson } from "@/lib/api-fetch";
-import { lazy, Suspense, useCallback } from "react";
+import { lazy, Suspense, useCallback, type ComponentType } from "react";
 import { SystemGuard } from "@/components/system-guard";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-const Home = lazy(() => import("@/pages/home"));
-const Login = lazy(() => import("@/pages/login"));
-const Register = lazy(() => import("@/pages/register"));
-const VerifyEmail = lazy(() => import("@/pages/verify-email"));
-const Order = lazy(() => import("@/pages/order"));
-const Account = lazy(() => import("@/pages/account"));
-const MyOrders = lazy(() => import("@/pages/my-orders"));
-const Testimonials = lazy(() => import("@/pages/testimonials"));
-const Admin = lazy(() => import("@/pages/admin"));
-const AdminLogin = lazy(() => import("@/pages/admin-login"));
-const Terms = lazy(() => import("@/pages/terms"));
-const Privacy = lazy(() => import("@/pages/privacy"));
-const ForgotPassword = lazy(() => import("@/pages/forgot-password"));
-const Chat = lazy(() => import("@/pages/chat"));
-const AdminSystemStatus = lazy(() => import("@/pages/admin-system-status"));
-const CertificateVerify = lazy(() => import("@/pages/certificate-verify"));
+function isDynamicImportError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /Failed to fetch dynamically imported module|Loading chunk|ChunkLoadError/i.test(error.message);
+}
+
+const lazyPage = <T extends ComponentType<any>>(
+  loader: () => Promise<{ default: T }>,
+) => lazy(async () => {
+  try {
+    const page = await loader();
+    sessionStorage.removeItem("arkan-chunk-reload");
+    return page;
+  } catch (error) {
+    if (isDynamicImportError(error)) {
+      const reloadKey = "arkan-chunk-reload";
+      if (sessionStorage.getItem(reloadKey) !== "1") {
+        sessionStorage.setItem(reloadKey, "1");
+        window.location.reload();
+      } else {
+        sessionStorage.removeItem(reloadKey);
+      }
+    }
+    throw error;
+  }
+});
+
+const Home = lazyPage(() => import("@/pages/home"));
+const Login = lazyPage(() => import("@/pages/login"));
+const Register = lazyPage(() => import("@/pages/register"));
+const VerifyEmail = lazyPage(() => import("@/pages/verify-email"));
+const Order = lazyPage(() => import("@/pages/order"));
+const Account = lazyPage(() => import("@/pages/account"));
+const MyOrders = lazyPage(() => import("@/pages/my-orders"));
+const Testimonials = lazyPage(() => import("@/pages/testimonials"));
+const Admin = lazyPage(() => import("@/pages/admin"));
+const AdminLogin = lazyPage(() => import("@/pages/admin-login"));
+const Terms = lazyPage(() => import("@/pages/terms"));
+const Privacy = lazyPage(() => import("@/pages/privacy"));
+const ForgotPassword = lazyPage(() => import("@/pages/forgot-password"));
+const Chat = lazyPage(() => import("@/pages/chat"));
+const AdminSystemStatus = lazyPage(() => import("@/pages/admin-system-status"));
+const CertificateVerify = lazyPage(() => import("@/pages/certificate-verify"));
 
 const queryClient = new QueryClient({
   defaultOptions: {

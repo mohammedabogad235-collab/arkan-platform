@@ -871,7 +871,8 @@ button,input,textarea{font:inherit}
           <div class="field"><label for="dateInput">تاريخ الإصدار</label><input id="dateInput" type="text" dir="auto" placeholder="يوم / شهر / سنة"></div>
           <div class="field"><label for="hoursInput">ساعات التدريب</label><input id="hoursInput" type="number" min="1" max="999" step="1" value="40" inputmode="numeric"><div class="help">تظهر في القالب الأبيض فقط.</div></div>
         </div>
-        <div class="field"><label for="serialInput">كود / الرقم التسلسلي</label><div class="input-action-row"><input id="serialInput" type="text" dir="auto" placeholder="يصل تلقائيًا من الموقع الرئيسي أو أدخليه هنا" autocomplete="off"><button class="mini-btn" id="generateIdBtn" type="button">توليد كود</button></div><div class="help">لو الموقع الرئيسي أنشأ الكود، سيتم استخدامه كما هو. زر التوليد مخصص للإصدار اليدوي فقط.</div></div>
+        <div class="field"><label for="reservedCodeSelect">اختيار كود محجوز</label><select id="reservedCodeSelect" dir="ltr" style="width:100%"><option value="">اختر كوداً محجوزاً من الموقع الرئيسي</option></select></div>
+        <div class="field"><label for="serialInput">كود / الرقم التسلسلي</label><div class="input-action-row"><input id="serialInput" type="text" dir="auto" placeholder="يصل تلقائيًا من الموقع الرئيسي أو أدخليه هنا" autocomplete="off"><button class="mini-btn" id="generateIdBtn" type="button">توليد كود</button></div><div class="help">يتم استخدام الكود المحجوز المحدد كما هو. لا يتم توليد كود جديد عند استقبال بيانات من الموقع الرئيسي.</div></div>
       </div>
     </details>
 
@@ -1536,7 +1537,9 @@ window.exportClone=doc=>{
     if(!serial)throw new Error('أدخلي كود الشهادة أولًا أو استقبليه من الموقع الرئيسي.');
     if(!base)throw new Error('أضيفي رابط صفحة التحقق العامة أولًا.');
     const u=validUrl(base);if(!u)throw new Error('رابط صفحة التحقق غير صحيح.');
-    u.searchParams.set('certificate_id',serial);
+    u.searchParams.delete('certificate_id');
+    u.searchParams.delete('serial');
+    u.searchParams.set('serial',serial);
     return u.toString();
   }
   async function generateQr(){
@@ -1574,12 +1577,56 @@ window.exportClone=doc=>{
       ['hoursInput',data.hours??data.trainingHours??data.training_hours]
     ];
     map.forEach(([id,value])=>setField(id,value));
-    if(data.verificationUrl||data.verification_url){const v=data.verificationUrl||data.verification_url;verifyInput.value=String(v);}
+    if(Array.isArray(data.reservedCodes)){
+      const select=$('reservedCodeSelect');
+      select.innerHTML='<option value="">اختر كوداً محجوزاً من الموقع الرئيسي</option>';
+      data.reservedCodes.forEach(code=>{
+        if(!code||typeof code.serialNumber!=='string')return;
+        const option=document.createElement('option');
+        option.value=code.serialNumber;
+        option.textContent=`${code.serialNumber}${code.recipientName&&code.recipientName!=='بدون اسم'?` · ${code.recipientName}`:''}`;
+        select.appendChild(option);
+      });
+      const selected=String(data.certificateId||data.certificate_id||data.serial||data.id||'');
+      if(selected)select.value=selected;
+      select.disabled=false;
+      if(!data.reservedCodes.length){
+        const option=document.createElement('option');
+        option.value='';
+        option.textContent='لا توجد أكواد محجوزة حالياً';
+        option.disabled=true;
+        select.appendChild(option);
+        select.disabled=true;
+      }
+    }
+    if(!$('reservedCodeSelect').dataset.wired){
+      $('reservedCodeSelect').dataset.wired='1';
+      $('reservedCodeSelect').addEventListener('change',()=>{
+      if($('reservedCodeSelect').value){
+        setField('serialInput',$('reservedCodeSelect').value);
+        setStatus('تم اختيار الكود المحجوز. لن يتم توليد كود جديد.','success');
+      }
+      });
+    }
+    if(data.verificationBase||data.verification_base){
+      verifyInput.value=String(data.verificationBase||data.verification_base);
+    }else if(data.verificationUrl||data.verification_url){
+      const raw=String(data.verificationUrl||data.verification_url);
+      try{
+        const u=new URL(raw);
+        u.searchParams.delete('serial');
+        u.searchParams.delete('certificate_id');
+        verifyInput.value=u.toString();
+      }catch(_){verifyInput.value=raw;}
+    }
+    if(data.mainOrigin||data.main_origin){originInput.value=String(data.mainOrigin||data.main_origin);}
+    if(data.publishEndpoint||data.publish_endpoint){endpointInput.value=String(data.publishEndpoint||data.publish_endpoint);}
+    if(data.verificationBase||data.verification_base){verifyInput.value=String(data.verificationBase||data.verification_base);}
     const barcode=data.barcodeDataUrl||data.barcode_data_url||data.qrDataUrl||data.qr_data_url;
     if(typeof barcode==='string'&&/^data:image\/(png|jpeg|webp);base64,/i.test(barcode)){
       $('barcodeView').src=barcode;$('barcodeView').hidden=false;$('barcodeEmpty').hidden=true;
       $('barcodeStatus').textContent='تم استلام QR من الموقع الرئيسي.';
-    }else if(data.verificationUrl||data.verification_url){generateQr().catch(()=>{});}
+    }else if($('serialInput').value.trim()&&verifyInput.value.trim()){generateQr().catch(()=>{});}
     if(data.partnerLogoDataUrl&&/^data:image\/(png|jpeg|webp);base64,/i.test(data.partnerLogoDataUrl)){$('partnerView').src=data.partnerLogoDataUrl;$('partnerWrap').hidden=false;}
     setStatus('تم استقبال بيانات الشهادة من الموقع الرئيسي وعرضها في المعاينة. راجعي البيانات قبل النشر.','success');
     return collectPayload();
@@ -1636,7 +1683,7 @@ window.exportClone=doc=>{
       const certificate=collectPayload();
       const png=await certificatePng();
       const barcode=await imageDataUrl($('barcodeView'));
-      const response=await fetch(endpoint.href,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},credentials:endpoint.origin===location.origin?'same-origin':'omit',body:JSON.stringify({event:'arkan.certificate.publish',schema_version:'1.0',certificate,assets:{certificate_png:{mime_type:'image/png',filename:`ARKAN-${certificate.certificateId||'certificate'}.png`,data_url:png},barcode_png:barcode}})});
+      const response=await fetch(endpoint.href,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},credentials:'include',body:JSON.stringify({event:'arkan.certificate.publish',schema_version:'1.0',certificate,assets:{certificate_png:{mime_type:'image/png',filename:`ARKAN-${certificate.certificateId||'certificate'}.png`,data_url:png},barcode_png:barcode}})});
       const raw=await response.text();let result={};try{result=raw?JSON.parse(raw):{};}catch(_){result={message:raw};}
       if(!response.ok)throw new Error(result.message||result.error||`فشل النشر: HTTP ${response.status}`);
       const publishedUrl=result.certificate_url||result.url||result.data?.certificate_url||'';

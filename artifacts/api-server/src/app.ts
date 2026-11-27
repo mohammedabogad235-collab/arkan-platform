@@ -107,6 +107,17 @@ app.use(express.urlencoded({ extended: true }));
 app.use(
   express.static(frontendDistPath, {
     index: false,
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        return;
+      }
+      if (/[/\\]assets[/\\]/.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    },
   }),
 );
 
@@ -147,6 +158,9 @@ app.get(/^(?!\/api(?:\/|$)).*/, (req: Request, res: Response, next: NextFunction
     return next();
   }
 
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   res.sendFile(frontendIndexPath);
 });
 

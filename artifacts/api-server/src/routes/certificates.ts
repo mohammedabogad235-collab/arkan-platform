@@ -1906,6 +1906,7 @@ router.post("/certificates/bulk-from-names", async (req, res): Promise<void> => 
   const rows = Array.isArray(body.rows) ? body.rows : [];
   const programTitle = typeof body.programTitle === "string" ? body.programTitle.trim().slice(0, 300) : "";
   const issuerName = typeof body.issuerName === "string" ? body.issuerName.trim().slice(0, 200) : "";
+  const description = typeof body.description === "string" ? body.description.trim().slice(0, 1000) || null : null;
   const issueDate = parseCertificateDate(body.issueDate);
   if (!Number.isInteger(templateId) || templateId < 1) {
     res.status(400).json({ error: "يجب اختيار قالب صحيح للشهادات" });
@@ -1982,6 +1983,7 @@ router.post("/certificates/bulk-from-names", async (req, res): Promise<void> => 
         recipientEmail: row.email,
         programTitle,
         issuerName,
+        description,
         issueDate,
         status: "issued",
         metadata: {
@@ -2324,6 +2326,7 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
     .where(eq(certificateIssuesTable.serialNumber, serialNumber)).limit(1);
   let issue;
   if (existing[0]) {
+    const existingMetadata = isRecord(existing[0].metadata) ? existing[0].metadata : {};
     [issue] = await db.update(certificateIssuesTable).set({
       recipientName,
       recipientEmail: recipientEmail || existing[0].recipientEmail,
@@ -2335,9 +2338,11 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
       validationUrl,
       qrCodeUrl: qrCodeUrl || existing[0].qrCodeUrl,
       metadata: {
-        ...(isRecord(existing[0].metadata) ? existing[0].metadata : {}),
+        ...existingMetadata,
         source: "integrated-certificate-studio",
         publishedFromStudio: true,
+        certificateImageUrl: certificateUrl
+          || (typeof existingMetadata.certificateImageUrl === "string" ? existingMetadata.certificateImageUrl : null),
         design: certificate.design,
         trainingHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
         partnerName: typeof certificate.partnerName === "string" ? certificate.partnerName : null,
@@ -2460,7 +2465,8 @@ router.post("/certificates/reserve", async (req, res): Promise<void> => {
 
   if (body.programTitle !== undefined && typeof body.programTitle !== "string" ||
       body.issuerName !== undefined && typeof body.issuerName !== "string" ||
-      body.issueDate !== undefined && typeof body.issueDate !== "string") {
+      body.issueDate !== undefined && typeof body.issueDate !== "string" ||
+      body.description !== undefined && typeof body.description !== "string") {
     res.status(400).json({ error: "بيانات الدورة أو التاريخ غير صالحة" });
     return;
   }
@@ -2477,6 +2483,9 @@ router.post("/certificates/reserve", async (req, res): Promise<void> => {
   const issuerName = typeof body.issuerName === "string" && body.issuerName.trim()
     ? body.issuerName.trim().slice(0, 200)
     : "Arkan Web";
+  const description = typeof body.description === "string" && body.description.trim()
+    ? body.description.trim().slice(0, 1000)
+    : null;
   const { userId } = getSessionUser(req);
 
   try {
@@ -2518,6 +2527,7 @@ router.post("/certificates/reserve", async (req, res): Promise<void> => {
           recipientEmail: row.email,
           programTitle,
           issuerName,
+          description,
           issueDate,
           status: "reserved",
           metadata: {

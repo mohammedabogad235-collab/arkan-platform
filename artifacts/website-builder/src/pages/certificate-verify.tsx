@@ -118,7 +118,7 @@ function certificateSerialFromQr(rawValue: string): string | null {
   try {
     const url = new URL(value);
     if (url.pathname.replace(/\/+$/, "") !== "/certificate/verify") return null;
-    serial = url.searchParams.get("serial") ?? "";
+    serial = url.searchParams.get("serial") ?? url.searchParams.get("certificate_id") ?? "";
   } catch {
     // QR codes may contain the serial directly instead of a URL.
   }

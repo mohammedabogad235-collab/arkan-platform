@@ -781,11 +781,13 @@ export default function CertificateStudio() {
   const [reservationProgramTitle, setReservationProgramTitle] = useState("");
   const [reservationIssuerName, setReservationIssuerName] = useState("");
   const [reservationIssueDate, setReservationIssueDate] = useState("");
+  const [reservationDescription, setReservationDescription] = useState("");
   const [reservationBusy, setReservationBusy] = useState(false);
   const [newlyReserved, setNewlyReserved] = useState<CertificateIssue[]>([]);
   const [reservedImageUploads, setReservedImageUploads] = useState<ReservedImageUpload[]>([]);
   const [attachingImages, setAttachingImages] = useState(false);
   const integratedStudioRef = useRef<HTMLIFrameElement>(null);
+  const pendingIntegratedPayloadRef = useRef<Record<string, any> | null>(null);
   const [attachmentErrors, setAttachmentErrors] = useState<{ serialNumber: string; reason: string }[]>([]);
   const uploadedCertificatesRef = useRef<UploadedCertificate[]>([]);
   const reservedImageUploadsRef = useRef<ReservedImageUpload[]>([]);
@@ -823,6 +825,22 @@ export default function CertificateStudio() {
     if (!bulkTemplateId && templateData[0]) setBulkTemplateId(String(templateData[0].id));
     return templateData;
   };
+
+  useEffect(() => {
+    const handleStudioMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const message = event.data as { type?: string; payload?: Record<string, any> } | null;
+      if (message?.type !== "ARKAN_CERTIFICATE_STUDIO_READY") return;
+      const payload = pendingIntegratedPayloadRef.current;
+      if (!payload) return;
+      integratedStudioRef.current?.contentWindow?.postMessage({
+        type: "ARKAN_CERTIFICATE_DATA",
+        payload,
+      }, window.location.origin);
+    };
+    window.addEventListener("message", handleStudioMessage);
+    return () => window.removeEventListener("message", handleStudioMessage);
+  }, []);
 
   const loadTrash = async () => {
     const items = await apiFetchJson<CertificateIssue[]>("/api/certificates/trash");
@@ -885,17 +903,27 @@ export default function CertificateStudio() {
   };
 
   const openReservedCodeInStudio = (issue: CertificateIssue) => {
-    integratedStudioRef.current?.contentWindow?.postMessage({
-      type: "ARKAN_CERTIFICATE_DATA",
-      payload: {
+    const payload = {
         certificateId: issue.serialNumber,
         recipientName: issue.recipientName === "بدون اسم" ? "" : issue.recipientName,
         recipientEmail: issue.recipientEmail || "",
         certificateType: issue.programTitle,
+        description: issue.description || `تشهد هذه الشهادة بأن المستفيد قد أتم بنجاح برنامج ${issue.programTitle}.`,
         issuerName: issue.issuerName,
         issueDate: issue.issueDate ? new Date(issue.issueDate).toISOString().slice(0, 10) : "",
         verificationUrl: issue.validationUrl,
-      },
+        verificationBase: `${window.location.origin}/certificate/verify`,
+        mainOrigin: window.location.origin,
+        publishEndpoint: `${window.location.origin}/api/certificates/publish-integrated`,
+        reservedCodes: reservedIssues.map((reserved) => ({
+          serialNumber: reserved.serialNumber,
+          recipientName: reserved.recipientName,
+        })),
+    };
+    pendingIntegratedPayloadRef.current = payload;
+    integratedStudioRef.current?.contentWindow?.postMessage({
+      type: "ARKAN_CERTIFICATE_DATA",
+      payload,
     }, window.location.origin);
     document.getElementById("integrated-studio-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -938,6 +966,7 @@ export default function CertificateStudio() {
           ...(reservationProgramTitle.trim() ? { programTitle: reservationProgramTitle.trim() } : {}),
           ...(reservationIssuerName.trim() ? { issuerName: reservationIssuerName.trim() } : {}),
           ...(reservationIssueDate ? { issueDate: reservationIssueDate } : {}),
+          ...(reservationDescription.trim() ? { description: reservationDescription.trim() } : {}),
         }),
       });
       setNewlyReserved(payload.certificates);
@@ -982,8 +1011,19 @@ export default function CertificateStudio() {
             image.src = previewUrl;
           });
         const fileStem = file.name.replace(/\.[^.]+$/, "");
-        const generatedSerialNumber = fileStem.match(/AW-CERT-\d{4}-\d{6}/)?.[0] || "";
-        const exactReservedCode = reservedIssues.find((issue) => issue.serialNumber === fileStem.trim());
+        const normalizedStem = fileStem.trim();
+        const generatedSerialNumber = normalizedStem.match(/AW-CERT-\d{4}-\d{6}/)?.[0] || "";
+        const exactReservedCode = reservedIssues.find((issue) => {
+          const serial = issue.serialNumber.trim();
+          if (serial === normalizedStem) return true;
+          return normalizedStem === serial
+            || normalizedStem.startsWith(`${serial}-`)
+            || normalizedStem.startsWith(`${serial}_`)
+            || normalizedStem.startsWith(`${serial} `)
+            || normalizedStem.endsWith(`-${serial}`)
+            || normalizedStem.endsWith(`_${serial}`)
+            || normalizedStem.endsWith(` ${serial}`);
+        });
         const serialNumber = exactReservedCode?.serialNumber || generatedSerialNumber;
         const normalizedName = (value: string) => value.normalize("NFC").trim().replace(/\s+/g, " ");
         const reserved = exactReservedCode ?? (generatedSerialNumber
@@ -2892,6 +2932,10 @@ export default function CertificateStudio() {
           <Field label="اسم الدورة (اختياري)" value={reservationProgramTitle} onChange={setReservationProgramTitle} />
           <Field label="اسم الجهة المصدرة للكود (اختياري)" value={reservationIssuerName} onChange={setReservationIssuerName} />
           <Field label="التاريخ (اختياري)" type="date" value={reservationIssueDate} onChange={setReservationIssueDate} />
+          <label className="block space-y-1.5 text-sm sm:col-span-2">
+            <span className="font-medium">نص الشهادة (اختياري)</span>
+            <textarea className="min-h-20 w-full rounded-lg border bg-background px-3 py-2" value={reservationDescription} onChange={(event) => setReservationDescription(event.target.value)} placeholder="تشهد هذه الشهادة بأن المستفيد قد أتم بنجاح البرنامج المحدد." />
+          </label>
         </div>
         <button type="button" disabled={reservationBusy} className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground disabled:opacity-60" onClick={() => void reserveCertificates()}>
           {reservationBusy ? "جارٍ حجز الأكواد..." : "حجز الأكواد"}
@@ -3083,6 +3127,14 @@ export default function CertificateStudio() {
           src="/arkan-certificate-studio-integrated-v2.html"
           className="h-[860px] w-full border-0 bg-slate-950"
           allow="clipboard-write"
+          onLoad={() => {
+            const payload = pendingIntegratedPayloadRef.current;
+            if (!payload) return;
+            integratedStudioRef.current?.contentWindow?.postMessage({
+              type: "ARKAN_CERTIFICATE_DATA",
+              payload,
+            }, window.location.origin);
+          }}
         />
       </section>
       <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
