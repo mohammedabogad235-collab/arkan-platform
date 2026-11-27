@@ -30,9 +30,15 @@ let certificateRenderCacheBytes = 0;
 
 async function generatePdfFromImageBuffer(imageBuffer: Buffer): Promise<Buffer> {
   const image = await loadImage(imageBuffer);
+  const maxWidth = 842;
+  const maxHeight = 595;
+  const scale = Math.min(maxWidth / image.width, maxHeight / image.height);
+  const pageWidth = image.width * scale;
+  const pageHeight = image.height * scale;
   const doc = new PDFDocument({
-    size: [image.width, image.height],
+    size: [pageWidth, pageHeight],
     margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    autoFirstPage: false,
   });
   const chunks: Buffer[] = [];
   const finished = new Promise<Buffer>((resolve, reject) => {
@@ -40,7 +46,8 @@ async function generatePdfFromImageBuffer(imageBuffer: Buffer): Promise<Buffer> 
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
-  doc.image(imageBuffer, 0, 0, { width: image.width, height: image.height });
+  doc.addPage({ size: [pageWidth, pageHeight], margin: 0 });
+  doc.image(imageBuffer, 0, 0, { width: pageWidth, height: pageHeight });
   doc.end();
   return finished;
 }
@@ -1649,11 +1656,19 @@ router.get("/certificates/public/:serial/pdf", async (req, res): Promise<void> =
     .where(eq(certificateTemplatesTable.id, issue.templateId)).limit(1);
   const { buffer: pdfBuffer, etag } = await getCachedCertificateRender(
     certificateRenderCacheKey(issue, "pdf"),
-    async () => generateCertificatePdfBuffer(
-      issue,
-      templateForIssue(issue, template ?? { width: 1200, height: 800, orientation: "landscape", layoutConfig: DEFAULT_LAYOUT }),
-      await getIssuePartners(issue),
-    ),
+    async () => {
+      const metadata = isRecord(issue.metadata) ? issue.metadata : {};
+      const publishedImageUrl = typeof metadata.certificateImageUrl === "string"
+        ? metadata.certificateImageUrl
+        : null;
+      return publishedImageUrl
+        ? generatePdfFromImageBuffer(await downloadBufferFromSupabasePublicUrl(publishedImageUrl))
+        : generateCertificatePdfBuffer(
+          issue,
+          templateForIssue(issue, template ?? { width: 1200, height: 800, orientation: "landscape", layoutConfig: DEFAULT_LAYOUT }),
+          await getIssuePartners(issue),
+        );
+    },
   );
   res.setHeader("Content-Type", "application/pdf");
   const disposition = req.query.download === "1" ? "attachment" : "inline";
@@ -2765,15 +2780,21 @@ router.get("/certificates/export-zip", async (req, res): Promise<void> => {
   for (const issue of printableItems) {
     const [template] = await db.select().from(certificateTemplatesTable).where(eq(certificateTemplatesTable.id, issue.templateId)).limit(1);
     const partners = await getIssuePartners(issue);
-    const pdfBuffer = await generateCertificatePdfBuffer(issue, templateForIssue(issue, template ?? {
-      width: 1200,
-      height: 800,
-      orientation: "landscape",
-      backgroundUrl: null,
-      logoUrl: null,
-      signatureUrl: null,
-      layoutConfig: DEFAULT_LAYOUT,
-    }), partners);
+    const metadata = isRecord(issue.metadata) ? issue.metadata : {};
+    const publishedImageUrl = typeof metadata.certificateImageUrl === "string"
+      ? metadata.certificateImageUrl
+      : null;
+    const pdfBuffer = publishedImageUrl
+      ? await generatePdfFromImageBuffer(await downloadBufferFromSupabasePublicUrl(publishedImageUrl))
+      : await generateCertificatePdfBuffer(issue, templateForIssue(issue, template ?? {
+        width: 1200,
+        height: 800,
+        orientation: "landscape",
+        backgroundUrl: null,
+        logoUrl: null,
+        signatureUrl: null,
+        layoutConfig: DEFAULT_LAYOUT,
+      }), partners);
     const personName = certificateFileName(issue.recipientName, `certificate-${issue.serialNumber}`);
     const fileName = usedFileNames.has(personName)
       ? `${personName}-${issue.serialNumber}`
