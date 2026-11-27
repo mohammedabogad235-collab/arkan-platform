@@ -2348,14 +2348,16 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
     } as Express.Multer.File, userId);
     qrCodeUrl = uploaded.publicUrl;
   }
-  const validationUrl = typeof certificate.verificationUrl === "string" && certificate.verificationUrl.trim()
-    ? certificate.verificationUrl.trim()
-    : buildValidationUrl(serialNumber);
+  const validationUrl = buildValidationUrl(serialNumber);
   const issueDate = typeof certificate.issueDate === "string" && certificate.issueDate.trim()
     ? parseCertificateDate(certificate.issueDate) ?? new Date()
     : new Date();
   const existing = await db.select().from(certificateIssuesTable)
     .where(eq(certificateIssuesTable.serialNumber, serialNumber)).limit(1);
+  if (!existing[0] || !["reserved", "issued", "draft"].includes(existing[0].status)) {
+    res.status(409).json({ error: "الكود غير محجوز ولا يمكن استخدامه للنشر" });
+    return;
+  }
   let issue;
   if (existing[0]) {
     const existingMetadata = isRecord(existing[0].metadata) ? existing[0].metadata : {};

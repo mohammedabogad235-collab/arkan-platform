@@ -1548,7 +1548,7 @@ window.exportClone=doc=>{
     try{
       const serial=$('serialInput').value.trim();
       if(!serial)throw new Error('أدخلي كود الشهادة أولًا.');
-      const serverQrUrl=`/api/certificates/qr?serial=${encodeURIComponent(serial)}`;
+      const serverQrUrl=`/api/certificates/qr?serial=${encodeURIComponent(serial)}&v=${encodeURIComponent(serial)}`;
       const view=$('barcodeView');
       await new Promise((resolve,reject)=>{
         view.onload=resolve;

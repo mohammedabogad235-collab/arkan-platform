@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { db, siteSettingsTable } from "@workspace/db";
 import { ApiError, getErrorMessage } from "./http";
 import { logger } from "./logger";
+import QRCode from "qrcode";
 
 type MailTransportInfo = {
   transporter: nodemailer.Transporter;
@@ -183,6 +184,12 @@ export async function sendCertificateEmail(options: {
     : null;
 
   try {
+    const qrBuffer = await QRCode.toBuffer(options.validationUrl, {
+      type: "png",
+      width: 320,
+      margin: 2,
+      errorCorrectionLevel: "H",
+    });
     const result = await withTimeout(
       transporter.sendMail({
         from: `"أركان-ويب " <${fromEmail}>`,
@@ -226,7 +233,7 @@ ${trainingHours === null ? "" : `<tr><td style="padding-top:18px;border-top:1px 
 </table>
 </td></tr></table>
 <div style="text-align:center;padding:22px 12px;margin-top:15px;border:1px solid #e8e1d7;border-radius:9px;">
-<div style="font-size:29px;color:#c17b3e;">▧</div>
+<img src="cid:certificate-qr" alt="QR للتحقق من الشهادة" width="120" height="120" style="display:block;width:120px;height:120px;margin:0 auto 10px;border:0;">
 <p style="font-size:15px;font-weight:bold;color:#172e49;margin:8px 0;">Your Official Certificate</p>
 <p style="font-size:12px;color:#68778a;line-height:1.8;margin:0;">ستجد شهادتك الرسمية مرفقة بهذه الرسالة بصيغة PNG وبجودة عالية.</p>
 </div>
@@ -255,6 +262,12 @@ ${trainingHours === null ? "" : `<tr><td style="padding-top:18px;border-top:1px 
           ...(options.png
             ? [{ filename: options.fileName.replace(/\.pdf$/i, ".png"), content: options.png, contentType: "image/png" }]
             : []),
+          {
+            filename: `QR-${options.serialNumber}.png`,
+            content: qrBuffer,
+            contentType: "image/png",
+            cid: "certificate-qr",
+          },
         ],
       }),
       SMTP_SEND_TIMEOUT_MS,
