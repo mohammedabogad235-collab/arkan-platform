@@ -957,6 +957,9 @@ async function renderPdfToImage(
 
 async function generateCertificateImageBuffer(issue: any, format: "png" | "jpg" = "png"): Promise<Buffer> {
   const metadata = isRecord(issue.metadata) ? issue.metadata : {};
+  if (typeof metadata.certificateImageUrl === "string" && isUploadedCertificateImage(metadata.certificateImageUrl)) {
+    return downloadBufferFromSupabasePublicUrl(metadata.certificateImageUrl);
+  }
   const layout = normalizeLayout(metadata.layoutConfig ?? {});
   const hasNonQrOverlays = [
     "logo",
@@ -2966,15 +2969,21 @@ router.get("/certificates/:id/export", async (req, res): Promise<void> => {
 
   const [template] = await db.select().from(certificateTemplatesTable).where(eq(certificateTemplatesTable.id, issue.templateId)).limit(1);
   const partners = await getIssuePartners(issue);
-  const pdfBuffer = await generateCertificatePdfBuffer(issue, templateForIssue(issue, template ?? {
-    width: 1200,
-    height: 800,
-    orientation: "landscape",
-    backgroundUrl: null,
-    logoUrl: null,
-    signatureUrl: null,
-    layoutConfig: DEFAULT_LAYOUT,
-  }), partners);
+  const metadata = isRecord(issue.metadata) ? issue.metadata : {};
+  const publishedImageUrl = typeof metadata.certificateImageUrl === "string"
+    ? metadata.certificateImageUrl
+    : null;
+  const pdfBuffer = publishedImageUrl
+    ? await generatePdfFromImageBuffer(await downloadBufferFromSupabasePublicUrl(publishedImageUrl))
+    : await generateCertificatePdfBuffer(issue, templateForIssue(issue, template ?? {
+      width: 1200,
+      height: 800,
+      orientation: "landscape",
+      backgroundUrl: null,
+      logoUrl: null,
+      signatureUrl: null,
+      layoutConfig: DEFAULT_LAYOUT,
+    }), partners);
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${certificateFileName(`${slugify(issue.recipientName || "certificate")}-${issue.serialNumber}`, "certificate")}.pdf"`);
