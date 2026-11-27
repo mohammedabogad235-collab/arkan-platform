@@ -1546,6 +1546,25 @@ window.exportClone=doc=>{
     const status=$('barcodeStatus');
     status.textContent='جارٍ إنشاء QR...';
     try{
+      const serial=$('serialInput').value.trim();
+      if(!serial)throw new Error('أدخلي كود الشهادة أولًا.');
+      const serverQrUrl=`/api/certificates/qr?serial=${encodeURIComponent(serial)}`;
+      const view=$('barcodeView');
+      await new Promise((resolve,reject)=>{
+        view.onload=resolve;
+        view.onerror=()=>reject(new Error('تعذر تحميل QR من الخادم.'));
+        view.src=serverQrUrl;
+      });
+      view.hidden=false;
+      $('barcodeEmpty').hidden=true;
+      const verification=verificationUrl();
+      status.textContent=`تم وضع QR للكود ${serial} وربطه بالرابط الصحيح.`;
+      setStatus(`تم وضع الباركود داخل الشهادة للكود ${serial}.`,'success');
+      return {url:verification,data:view.src};
+    }catch(serverError){
+      // CDN fallback remains available if the server image endpoint is unavailable.
+    }
+    try{
       if(!(await loadQrLibrary()))throw new Error('تعذر تحميل مكتبة إنشاء QR. تحققي من اتصال الإنترنت أو ارفعي صورة QR جاهزة.');
       const url=verificationUrl();
       const data=await QRCode.toDataURL(url,{width:640,margin:2,errorCorrectionLevel:'H',color:{dark:'#07111d',light:'#ffffff'}});
