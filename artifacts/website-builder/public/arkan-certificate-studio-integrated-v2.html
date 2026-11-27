@@ -1613,7 +1613,12 @@ window.exportClone=doc=>{
       });
       select.disabled=!codes.length;
       const selected=preferredSerial||$('serialInput').value.trim();
-      if(selected)select.value=selected;
+      if(selected){
+        select.value=selected;
+        $('serialInput').value=selected;
+        $('serialInput').dispatchEvent(new Event('input',{bubbles:true}));
+        generateQrForCurrentSerial(100);
+      }
     }catch(_){}
   }
   function applyExternalData(data={}){
@@ -1651,7 +1656,9 @@ window.exportClone=doc=>{
       $('reservedCodeSelect').dataset.wired='1';
       $('reservedCodeSelect').addEventListener('change',()=>{
         if($('reservedCodeSelect').value){
-          setField('serialInput',$('reservedCodeSelect').value);
+          const selectedSerial=$('reservedCodeSelect').value;
+          $('serialInput').value=selectedSerial;
+          $('serialInput').dispatchEvent(new Event('input',{bubbles:true}));
           selectedVerificationUrl='';
           $('barcodeView').removeAttribute('src');
           $('barcodeView').hidden=true;
