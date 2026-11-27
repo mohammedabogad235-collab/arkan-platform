@@ -51,6 +51,8 @@ type CertificateIssue = {
     height?: number;
     orientation?: string;
     source?: string;
+    trainingHours?: number;
+    courseHours?: number;
   };
 };
 type VerifySettings = {
@@ -914,6 +916,11 @@ export default function CertificateStudio() {
         description: issue.description || `تشهد هذه الشهادة بأن المستفيد قد أتم بنجاح برنامج ${issue.programTitle}.`,
         issuerName: issue.issuerName,
         issueDate: issue.issueDate ? new Date(issue.issueDate).toISOString().slice(0, 10) : "",
+        trainingHours: issue.metadata && typeof issue.metadata.trainingHours === "number"
+          ? issue.metadata.trainingHours
+          : issue.metadata && typeof issue.metadata.courseHours === "number"
+            ? issue.metadata.courseHours
+            : 40,
         verificationUrl: issue.validationUrl,
         verificationBase: `${window.location.origin}/certificate/verify`,
         mainOrigin: window.location.origin,

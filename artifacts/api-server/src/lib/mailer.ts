@@ -178,7 +178,9 @@ export async function sendCertificateEmail(options: {
       ? `Your ${options.certificateName} Certificate Is Ready! | ARKAN WEB 🧡`
       : "شهادتك الرسمية أصبحت جاهزة! | ARKAN WEB 🧡");
   const isEnglish = options.language === "en";
-  const trainingHours = Number.isInteger(options.trainingHours) ? Number(options.trainingHours) : 35;
+  const trainingHours = Number.isInteger(options.trainingHours) && Number(options.trainingHours) > 0
+    ? Number(options.trainingHours)
+    : null;
 
   try {
     const result = await withTimeout(
@@ -219,8 +221,8 @@ export async function sendCertificateEmail(options: {
 <p style="font-size:13px;color:#65758a;margin:15px 0 6px;">Certificate ID</p>
 <p style="font-size:14px;font-weight:bold;color:#172e49;margin:0;direction:ltr;text-align:right;">${serialNumber}</p>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-<tr><td style="padding-top:18px;border-top:1px solid #ded2c3;"><span style="font-size:13px;color:#65758a;">Training Hours</span></td>
-<td align="left" style="padding-top:18px;border-top:1px solid #ded2c3;"><strong style="font-size:23px;color:#d47b37;">${trainingHours} HOURS</strong></td></tr>
+${trainingHours === null ? "" : `<tr><td style="padding-top:18px;border-top:1px solid #ded2c3;"><span style="font-size:13px;color:#65758a;">Training Hours</span></td>
+<td align="left" style="padding-top:18px;border-top:1px solid #ded2c3;"><strong style="font-size:23px;color:#d47b37;">${trainingHours} HOURS</strong></td></tr>`}
 </table>
 </td></tr></table>
 <div style="text-align:center;padding:22px 12px;margin-top:15px;border:1px solid #e8e1d7;border-radius:9px;">
@@ -246,8 +248,8 @@ export async function sendCertificateEmail(options: {
 </body>
 </html>`,
         text: isEnglish
-          ? `Dear ${options.recipientName},\n\nYour certificate for ${options.certificateName} is ready.\nCertificate ID: ${options.serialNumber}\nVerify: ${options.validationUrl}`
-          : `مرحبًا ${options.recipientName}،\n\nشهادتك لدورة ${options.certificateName} أصبحت جاهزة.\nكود الشهادة: ${options.serialNumber}\nالتحقق: ${options.validationUrl}`,
+          ? `Dear ${options.recipientName},\n\nYour certificate for ${options.certificateName} is ready.\nCertificate ID: ${options.serialNumber}${trainingHours === null ? "" : `\nTraining Hours: ${trainingHours}`}\nVerify: ${options.validationUrl}`
+          : `مرحبًا ${options.recipientName}،\n\nشهادتك لدورة ${options.certificateName} أصبحت جاهزة.\nكود الشهادة: ${options.serialNumber}${trainingHours === null ? "" : `\nعدد ساعات التدريب: ${trainingHours}`}\nالتحقق: ${options.validationUrl}`,
         attachments: [
           { filename: options.fileName, content: options.pdf, contentType: "application/pdf" },
           ...(options.png

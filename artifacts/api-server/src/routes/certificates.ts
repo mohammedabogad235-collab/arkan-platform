@@ -28,6 +28,23 @@ const certificateRenderCache = new Map<string, { buffer: Buffer; etag: string }>
 const certificateRenderInFlight = new Map<string, Promise<{ buffer: Buffer; etag: string }>>();
 let certificateRenderCacheBytes = 0;
 
+async function generatePdfFromImageBuffer(imageBuffer: Buffer): Promise<Buffer> {
+  const image = await loadImage(imageBuffer);
+  const doc = new PDFDocument({
+    size: [image.width, image.height],
+    margins: { top: 0, bottom: 0, left: 0, right: 0 },
+  });
+  const chunks: Buffer[] = [];
+  const finished = new Promise<Buffer>((resolve, reject) => {
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+  doc.image(imageBuffer, 0, 0, { width: image.width, height: image.height });
+  doc.end();
+  return finished;
+}
+
 class CertificateSerialConflictError extends Error {
   constructor(readonly serialNumber: string) {
     super("يوجد كود شهادة مستخدم بالفعل");
@@ -2360,6 +2377,7 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
           || (typeof existingMetadata.certificateImageUrl === "string" ? existingMetadata.certificateImageUrl : null),
         design: certificate.design,
         trainingHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
+        courseHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
         partnerName: typeof certificate.partnerName === "string" ? certificate.partnerName : null,
         partnerRole: typeof certificate.partnerRole === "string" ? certificate.partnerRole : null,
       },
@@ -2395,6 +2413,7 @@ router.post("/certificates/publish-integrated", async (req, res): Promise<void> 
         publishedFromStudio: true,
         design: certificate.design,
         trainingHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
+        courseHours: typeof certificate.trainingHours === "number" ? certificate.trainingHours : null,
         partnerName: typeof certificate.partnerName === "string" ? certificate.partnerName : null,
         partnerRole: typeof certificate.partnerRole === "string" ? certificate.partnerRole : null,
         certificateImageUrl: certificateUrl,
@@ -2957,24 +2976,47 @@ router.post("/certificates/:id/send-email", async (req, res): Promise<void> => {
 
   const [template] = await db.select().from(certificateTemplatesTable)
     .where(eq(certificateTemplatesTable.id, issue.templateId)).limit(1);
-  const pdf = await generateCertificatePdfBuffer(
-    issue,
-    templateForIssue(issue, template ?? {
-      width: 1200,
-      height: 800,
-      orientation: "landscape",
-      backgroundUrl: null,
-      logoUrl: null,
-      signatureUrl: null,
-      layoutConfig: DEFAULT_LAYOUT,
-    }),
-    await getIssuePartners(issue),
-  );
   let png: Buffer | undefined;
+  let pdf: Buffer;
   try {
-    png = await renderPdfToImage(pdf, "png", true);
+    const issueMetadata = isRecord(issue.metadata) ? issue.metadata : {};
+    const publishedImageUrl = typeof issueMetadata.certificateImageUrl === "string"
+      ? issueMetadata.certificateImageUrl
+      : null;
+    if (publishedImageUrl) {
+      png = await downloadBufferFromSupabasePublicUrl(publishedImageUrl);
+      pdf = await generatePdfFromImageBuffer(png);
+    } else {
+      pdf = await generateCertificatePdfBuffer(
+        issue,
+        templateForIssue(issue, template ?? {
+          width: 1200,
+          height: 800,
+          orientation: "landscape",
+          backgroundUrl: null,
+          logoUrl: null,
+          signatureUrl: null,
+          layoutConfig: DEFAULT_LAYOUT,
+        }),
+        await getIssuePartners(issue),
+      );
+      png = await renderPdfToImage(pdf, "png", true);
+    }
   } catch (error) {
     console.error("تعذر إنشاء نسخة PNG من الشهادة للإرسال:", error);
+    pdf = await generateCertificatePdfBuffer(
+      issue,
+      templateForIssue(issue, template ?? {
+        width: 1200,
+        height: 800,
+        orientation: "landscape",
+        backgroundUrl: null,
+        logoUrl: null,
+        signatureUrl: null,
+        layoutConfig: DEFAULT_LAYOUT,
+      }),
+      await getIssuePartners(issue),
+    );
   }
   const delivery = await sendCertificateEmail({
     to: recipientEmail,
@@ -2987,9 +3029,13 @@ router.post("/certificates/:id/send-email", async (req, res): Promise<void> => {
     png,
     language: req.body?.language === "en" ? "en" : "ar",
     subject: typeof req.body?.subject === "string" ? req.body.subject.trim().slice(0, 300) : undefined,
-    trainingHours: isRecord(issue.metadata) && typeof issue.metadata.courseHours === "number"
-      ? issue.metadata.courseHours
-      : undefined,
+    trainingHours: isRecord(issue.metadata)
+      ? (typeof issue.metadata.trainingHours === "number"
+        ? issue.metadata.trainingHours
+        : typeof issue.metadata.courseHours === "number"
+          ? issue.metadata.courseHours
+          : null)
+      : null,
   });
   res.json({
     success: true,
