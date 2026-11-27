@@ -1548,7 +1548,7 @@ window.exportClone=doc=>{
     try{
       const serial=$('serialInput').value.trim();
       if(!serial)throw new Error('أدخلي كود الشهادة أولًا.');
-      const serverQrUrl=`/api/certificates/qr?serial=${encodeURIComponent(serial)}&v=${encodeURIComponent(serial)}&t=${Date.now()}`;
+      const serverQrUrl=`${location.origin}/api/certificates/qr?serial=${encodeURIComponent(serial)}&v=${encodeURIComponent(serial)}&t=${Date.now()}`;
       const response=await fetch(serverQrUrl,{credentials:'include',cache:'no-store',headers:{Accept:'image/png'}});
       if(!response.ok)throw new Error(`تعذر تحميل QR للكود المحجوز (HTTP ${response.status}).`);
       const blob=await response.blob();
@@ -1568,17 +1568,11 @@ window.exportClone=doc=>{
       setStatus(`تم وضع الباركود داخل الشهادة للكود ${serial}.`,'success');
       return {url:verification,data:view.src};
     }catch(serverError){
-      // CDN fallback remains available if the server image endpoint is unavailable.
+      const message=serverError instanceof Error ? serverError.message : 'تعذر إنشاء QR للكود المحجوز.';
+      status.textContent=message;
+      setStatus(message,'error');
+      throw serverError;
     }
-    try{
-      if(!(await loadQrLibrary()))throw new Error('تعذر تحميل مكتبة إنشاء QR. تحققي من اتصال الإنترنت أو ارفعي صورة QR جاهزة.');
-      const url=verificationUrl();
-      const data=await QRCode.toDataURL(url,{width:640,margin:2,errorCorrectionLevel:'H',color:{dark:'#07111d',light:'#ffffff'}});
-      const view=$('barcodeView');
-      view.onload=()=>{};view.src=data;view.hidden=false;$('barcodeEmpty').hidden=true;
-      status.textContent='تم إنشاء QR وربطه بكود الشهادة. امسحيه للتأكد من أن رابط التحقق يفتح الصفحة الصحيحة.';
-      return {url,data};
-    }catch(error){status.textContent=error.message;setStatus(error.message,'error');throw error;}
   }
   $('generateQrBtn').addEventListener('click',()=>{generateQr().then(()=>setStatus('تم توليد الباركود. تأكدي من نشر صفحة التحقق قبل إصدار الشهادة.')).catch(()=>{});});
 
@@ -1784,6 +1778,7 @@ window.exportClone=doc=>{
   if(!verifyInput.value.trim())verifyInput.value=location.origin+'/certificate/verify';
   loadReservedCodes();
   saveConfig();
+  generateQrForCurrentSerial(300);
   if(!endpointInput.value.trim())setStatus('لم يتم إعداد عنوان النشر بعد. يمكنك استخدام المعاينة والتنزيل محليًا، لكن النشر الخارجي يحتاج API فعليًا.');
 })();
 </script>
