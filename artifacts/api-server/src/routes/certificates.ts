@@ -30,11 +30,13 @@ let certificateRenderCacheBytes = 0;
 
 async function generatePdfFromImageBuffer(imageBuffer: Buffer): Promise<Buffer> {
   const image = await loadImage(imageBuffer);
-  const maxWidth = 842;
-  const maxHeight = 595;
-  const scale = Math.min(maxWidth / image.width, maxHeight / image.height);
-  const pageWidth = image.width * scale;
-  const pageHeight = image.height * scale;
+  const pageWidth = 842;
+  const pageHeight = 595;
+  const scale = Math.min(pageWidth / image.width, pageHeight / image.height);
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  const offsetX = (pageWidth - drawWidth) / 2;
+  const offsetY = (pageHeight - drawHeight) / 2;
   const doc = new PDFDocument({
     size: [pageWidth, pageHeight],
     margins: { top: 0, bottom: 0, left: 0, right: 0 },
@@ -47,7 +49,8 @@ async function generatePdfFromImageBuffer(imageBuffer: Buffer): Promise<Buffer> 
     doc.on("error", reject);
   });
   doc.addPage({ size: [pageWidth, pageHeight], margin: 0 });
-  doc.image(imageBuffer, 0, 0, { width: pageWidth, height: pageHeight });
+  doc.rect(0, 0, pageWidth, pageHeight).fill("#ffffff");
+  doc.image(imageBuffer, offsetX, offsetY, { width: drawWidth, height: drawHeight });
   doc.end();
   return finished;
 }
@@ -446,7 +449,11 @@ function publicCertificateImageUrl(issue: any, allowCancelled = false): string {
 function certificateRenderCacheKey(issue: any, type: "image" | "pdf"): string {
   const updatedAt = issue.updatedAt instanceof Date ? issue.updatedAt.getTime() : Date.parse(String(issue.updatedAt ?? ""));
   const version = Number.isFinite(updatedAt) ? updatedAt : String(issue.updatedAt ?? "");
-  return `${type}:${issue.serialNumber}:${issue.status}:${version}`;
+  const metadata = isRecord(issue.metadata) ? issue.metadata : {};
+  const publishedImage = typeof metadata.certificateImageUrl === "string"
+    ? metadata.certificateImageUrl
+    : "";
+  return `${type}:${issue.serialNumber}:${issue.status}:${version}:${publishedImage}`;
 }
 
 async function getCachedCertificateRender(

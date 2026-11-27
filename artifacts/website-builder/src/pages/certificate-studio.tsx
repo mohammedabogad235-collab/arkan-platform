@@ -1351,11 +1351,11 @@ export default function CertificateStudio() {
           <meta charset="utf-8" />
           <title>شهادات Arkan Web</title>
           <style>
-            @page { margin: 0; }
+            @page { margin: 0; size: A4 landscape; }
             @page certificate-landscape { size: landscape; margin: 0; }
             @page certificate-portrait { size: portrait; margin: 0; }
             html, body { margin: 0; padding: 0; }
-            .print-page { position: relative; display: block; width: 100vw; height: 100vh; overflow: hidden; break-after: page; page-break-after: always; }
+            .print-page { position: relative; display: block; width: 297mm; height: 210mm; overflow: hidden; break-after: page; page-break-after: always; }
             .print-page:last-child { break-after: auto; page-break-after: auto; }
             .print-page.landscape { page: certificate-landscape; }
             .print-page.portrait { page: certificate-portrait; }
